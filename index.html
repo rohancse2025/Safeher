@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>SafeHer - Women Safety App</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Fixed top bar -->
+  <div id="topbar"><span id="app-title">SafeHer</span></div>
+
+  <!-- All screens; JS shows one at a time -->
+  <div id="screens">
+
+    <!-- Login -->
+    <section id="screen-login" class="screen active">
+      <h2 id="h2-login">Login</h2>
+      <form onsubmit="doLogin(event)">
+        <label for="login-user">Phone / Email</label>
+        <input type="text" id="login-user" placeholder="e.g. 9876543210" required />
+        <label for="login-pass">Password</label>
+        <input type="password" id="login-pass" placeholder="Enter password" required />
+        <button type="submit" class="btn-primary">Login</button>
+      </form>
+      <p>No account? <a href="#" onclick="showScreen('screen-register'); return false;">Register</a></p>
+    </section>
+
+    <!-- Register -->
+    <section id="screen-register" class="screen">
+      <h2 id="h2-register">Register</h2>
+      <form onsubmit="doRegister(event)">
+        <label for="reg-name">Full Name</label>
+        <input type="text" id="reg-name" placeholder="e.g. Priya Nair" required />
+        <label for="reg-phone">Phone</label>
+        <input type="tel" id="reg-phone" placeholder="e.g. 9876543210" required />
+        <label for="reg-email">Email</label>
+        <input type="email" id="reg-email" placeholder="e.g. priya@gmail.com" required />
+        <label for="reg-pass">Password</label>
+        <input type="password" id="reg-pass" placeholder="Create a password" required />
+        <button type="submit" class="btn-primary">Register</button>
+      </form>
+      <p>Have an account? <a href="#" onclick="showScreen('screen-login'); return false;">Login</a></p>
+    </section>
+
+    <!-- Home / SOS -->
+    <section id="screen-home" class="screen">
+      <div id="sos-area">
+        <p id="sos-instruction">Press the SOS button in an emergency.</p>
+        <button id="sos-btn" onclick="startSOS()">SOS</button>
+        <div id="sos-countdown">
+          <p id="countdown-text">Sending SOS in 5...</p>
+          <button class="btn-secondary" onclick="cancelSOS()">Cancel</button>
+        </div>
+      </div>
+      <div id="quick-links">
+        <button class="btn-outline" onclick="showScreen('screen-fakecall')">Fake Call</button>
+        <button class="btn-outline" onclick="showScreen('screen-timer')">Safe Timer</button>
+        <button class="btn-outline" onclick="showScreen('screen-helplines')">Helplines</button>
+      </div>
+    </section>
+
+    <!-- SOS Sent confirmation -->
+    <section id="screen-sos-sent" class="screen">
+      <h2 id="h2-sos-sent">SOS Sent</h2>
+      <div id="sos-sent-details"></div>
+      <p class="note">Prototype: alert sending will be connected to the backend.</p>
+      <button class="btn-primary" onclick="showScreen('screen-home')" style="margin-top:12px;">Back to Home</button>
+    </section>
+
+    <!-- Contacts -->
+    <section id="screen-contacts" class="screen">
+      <h2 id="h2-contacts">Trusted Contacts</h2>
+      <form onsubmit="addContact(event)">
+        <label for="c-name">Name</label>
+        <input type="text" id="c-name" placeholder="e.g. Meena Kumari" required />
+        <label for="c-phone">Phone</label>
+        <input type="tel" id="c-phone" placeholder="e.g. 9845001234" required />
+        <label for="c-email">Email (optional)</label>
+        <input type="email" id="c-email" placeholder="e.g. meena@gmail.com" />
+        <button type="submit" class="btn-primary">Add Contact</button>
+      </form>
+      <div id="contacts-list"></div>
+    </section>
+
+    <!-- Live Location -->
+    <section id="screen-location" class="screen">
+      <h2 id="h2-location">Live Location</h2>
+      <div id="map-placeholder">
+        <p>Map Placeholder</p>
+        <p>12.9716&deg; N, 77.5946&deg; E</p>
+        <p>Bengaluru, Karnataka</p>
+      </div>
+      <p><a href="https://maps.google.com/?q=12.9716,77.5946" target="_blank">Open sample tracking link</a></p>
+      <p class="note">Share this link with a trusted person to track your location.</p>
+    </section>
+
+    <!-- Nearby Police and Hospitals -->
+    <section id="screen-nearby" class="screen">
+      <h2 id="h2-nearby">Nearby Police and Hospitals</h2>
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Name</th><th>Distance</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Police</td><td>HSR Layout Police Station</td><td>0.8 km</td></tr>
+          <tr><td>Police</td><td>Koramangala Police Station</td><td>1.4 km</td></tr>
+          <tr><td>Police</td><td>Madiwala Police Station</td><td>2.1 km</td></tr>
+          <tr><td>Hospital</td><td>Fortis Hospital, Bannerghatta Rd</td><td>1.2 km</td></tr>
+          <tr><td>Hospital</td><td>St. John's Medical College Hospital</td><td>2.3 km</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Sample data for Bengaluru. Live data requires backend integration.</p>
+    </section>
+
+    <!-- Helplines -->
+    <section id="screen-helplines" class="screen">
+      <h2 id="h2-helplines">Emergency Helplines</h2>
+      <table>
+        <thead>
+          <tr><th>Service</th><th>Number</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Emergency (All)</td><td><a href="tel:112">112</a></td></tr>
+          <tr><td>Women Helpline</td><td><a href="tel:181">181</a></td></tr>
+          <tr><td>Women Helpline (Alt)</td><td><a href="tel:1091">1091</a></td></tr>
+          <tr><td>Police</td><td><a href="tel:100">100</a></td></tr>
+          <tr><td>Ambulance</td><td><a href="tel:108">108</a></td></tr>
+          <tr><td>Child Helpline</td><td><a href="tel:1098">1098</a></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Volunteer Mode -->
+    <section id="screen-volunteer" class="screen">
+      <h2 id="h2-volunteer">Volunteer Mode</h2>
+      <p>Status: <strong id="vol-status">Unavailable</strong></p>
+      <button id="vol-btn" class="btn-secondary" onclick="toggleVol()">Set Available</button>
+      <div id="vol-alert-card">
+        <p><strong>Alert from nearby user</strong></p>
+        <p>Lakshmi R. &mdash; Near Silk Board, Bengaluru</p>
+        <p>Distance: 1.2 km</p>
+        <button class="btn-primary" onclick="respondVol()">I'm Coming</button>
+      </div>
+    </section>
+
+    <!-- Safe-Arrival Timer -->
+    <section id="screen-timer" class="screen">
+      <h2 id="h2-timer">Safe-Arrival Timer</h2>
+      <form onsubmit="startTimer(event)">
+        <label for="timer-mins">Set time (minutes)</label>
+        <input type="number" id="timer-mins" min="1" max="180" placeholder="e.g. 30" required />
+        <button type="submit" class="btn-primary">Start Timer</button>
+      </form>
+      <div id="timer-display">
+        <p id="timer-text"></p>
+        <button class="btn-primary" onclick="safeArrival()">I'm Safe</button>
+      </div>
+    </section>
+
+    <!-- Fake Call -->
+    <section id="screen-fakecall" class="screen">
+      <h2 id="h2-fakecall">Incoming Call</h2>
+      <div id="fakecall-card">
+        <p id="caller-name-disp">Mom</p>
+        <p id="caller-num-disp">+91 98765 43210</p>
+        <div id="fakecall-btns">
+          <button class="btn-primary" onclick="acceptCall()">Accept</button>
+          <button class="btn-danger" onclick="declineCall()">Decline</button>
+        </div>
+        <div id="fakecall-active">
+          <p>Call in progress...</p>
+          <button class="btn-danger" onclick="endCall()">End Call</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Language Settings -->
+    <section id="screen-language" class="screen">
+      <h2 id="h2-language">Language Settings</h2>
+      <p>Select a language:</p>
+      <div id="lang-options">
+        <button class="btn-outline" onclick="setLang('en')">English</button>
+        <button class="btn-outline" onclick="setLang('kn')">Kannada</button>
+        <button class="btn-outline" onclick="setLang('hi')">Hindi</button>
+      </div>
+      <p id="lang-note"></p>
+    </section>
+
+  </div><!-- end #screens -->
+
+  <!-- Bottom navigation (hidden until after login) -->
+  <nav id="bottomnav">
+    <button id="nav-home"      class="nav-btn" onclick="showScreen('screen-home')">Home</button>
+    <button id="nav-contacts"  class="nav-btn" onclick="showScreen('screen-contacts')">Contacts</button>
+    <button id="nav-police"    class="nav-btn" onclick="showScreen('screen-nearby')">Police</button>
+    <button id="nav-volunteer" class="nav-btn" onclick="showScreen('screen-volunteer')">Volunteer</button>
+    <button id="nav-more"      class="nav-btn" onclick="toggleMore()">More</button>
+  </nav>
+
+  <!-- More menu (slides up above nav when More is tapped) -->
+  <div id="more-menu">
+    <button class="more-item" onclick="showScreen('screen-location')">Live Location</button>
+    <button class="more-item" onclick="showScreen('screen-helplines')">Helplines</button>
+    <button class="more-item" onclick="showScreen('screen-timer')">Safe Timer</button>
+    <button class="more-item" onclick="showScreen('screen-fakecall')">Fake Call</button>
+    <button class="more-item" onclick="showScreen('screen-language')">Language</button>
+  </div>
+
+  <!-- Fixed footer on every screen -->
+  <footer id="main-footer">SafeHer | CMRIT, Dept of CSE | Rohan P, Pooja M B, Preetem M H</footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

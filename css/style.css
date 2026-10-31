@@ -1,0 +1,318 @@
+/* SafeHer — style.css
+   Font: Arial. Primary colour: #1f3a5f (dark blue). No gradients or animations.
+   SOS button is the only large red element.
+*/
+
+/* ---- Reset ---- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+  color: #222;
+}
+
+/* ---- Top bar ---- */
+#topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 44px;
+  background: #1f3a5f;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 1.1em;
+  font-weight: bold;
+  z-index: 200;
+}
+
+/* ---- Screens wrapper ---- */
+#screens {
+  margin-top: 44px;          /* clear topbar */
+  padding: 16px 16px 80px;   /* bottom clears nav + footer */
+}
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ---- Headings ---- */
+h2 {
+  font-size: 1.1em;
+  color: #1f3a5f;
+  border-bottom: 2px solid #1f3a5f;
+  padding-bottom: 6px;
+  margin-bottom: 14px;
+}
+
+/* ---- Body text and links ---- */
+p { margin: 8px 0; line-height: 1.5; font-size: 0.95em; }
+a { color: #1f3a5f; }
+.note { color: #666; font-size: 0.82em; margin-top: 6px; }
+
+/* ---- Forms ---- */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+label { font-weight: bold; font-size: 0.88em; margin-top: 6px; }
+
+input[type="text"],
+input[type="tel"],
+input[type="email"],
+input[type="password"],
+input[type="number"] {
+  padding: 9px 8px;
+  border: 1px solid #aaa;
+  font-size: 0.95em;
+  font-family: Arial, sans-serif;
+  background: #fff;
+  width: 100%;
+}
+
+/* ---- Buttons ---- */
+.btn-primary {
+  background: #1f3a5f;
+  color: #fff;
+  border: none;
+  padding: 11px;
+  font-size: 0.95em;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: #1f3a5f;
+  border: 2px solid #1f3a5f;
+  padding: 9px 16px;
+  font-size: 0.95em;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.btn-outline {
+  background: #fff;
+  color: #1f3a5f;
+  border: 1px solid #1f3a5f;
+  padding: 8px 14px;
+  font-size: 0.88em;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: #c0392b;
+  color: #fff;
+  border: none;
+  padding: 11px;
+  font-size: 0.95em;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* ---- Tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.88em;
+}
+
+th, td {
+  border: 1px solid #aaa;
+  padding: 8px 6px;
+  text-align: left;
+}
+
+th { background: #1f3a5f; color: #fff; }
+tr:nth-child(even) td { background: #ebebeb; }
+
+/* ---- Home / SOS screen ---- */
+#sos-area { text-align: center; padding: 20px 0; }
+
+#sos-instruction { color: #555; margin-bottom: 8px; }
+
+/* The only large red element in the app */
+#sos-btn {
+  background: #c0392b;
+  color: #fff;
+  border: 4px solid #a93226;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  font-size: 2em;
+  font-weight: bold;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  display: block;
+  margin: 12px auto;
+}
+
+#sos-countdown { display: none; margin-top: 10px; }
+
+#countdown-text {
+  font-size: 1.3em;
+  font-weight: bold;
+  color: #c0392b;
+  margin-bottom: 10px;
+}
+
+/* Quick-access buttons below SOS */
+#quick-links {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* ---- SOS Sent screen ---- */
+#sos-sent-details {
+  border: 1px solid #aaa;
+  padding: 12px;
+  background: #fff;
+  margin: 12px 0;
+}
+
+#sos-sent-details p { margin: 5px 0; }
+
+/* ---- Contacts screen ---- */
+#contacts-list { margin-top: 8px; overflow-x: auto; }
+
+/* ---- Live Location screen ---- */
+#map-placeholder {
+  background: #ddd;
+  border: 1px solid #aaa;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  color: #555;
+  font-size: 0.9em;
+  margin-bottom: 10px;
+}
+
+/* ---- Volunteer screen ---- */
+#vol-btn { margin-top: 10px; }
+
+#vol-alert-card {
+  display: none;
+  border: 1px solid #aaa;
+  padding: 14px;
+  background: #fff;
+  margin-top: 14px;
+}
+
+#vol-alert-card p { margin: 4px 0; font-size: 0.9em; }
+
+/* ---- Safe-Arrival Timer screen ---- */
+#timer-display { display: none; margin-top: 14px; text-align: center; }
+
+#timer-text {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #1f3a5f;
+  margin-bottom: 12px;
+}
+
+/* ---- Fake Call screen ---- */
+#fakecall-card {
+  text-align: center;
+  border: 1px solid #aaa;
+  padding: 24px 16px;
+  background: #fff;
+  margin-top: 8px;
+}
+
+#caller-name-disp {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+#caller-num-disp { color: #555; margin-bottom: 16px; }
+
+#fakecall-btns { display: flex; gap: 12px; }
+
+#fakecall-active { display: none; margin-top: 16px; }
+#fakecall-active p { margin-bottom: 12px; color: #555; }
+
+/* ---- Language screen ---- */
+#lang-options { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+#lang-note { color: #1f3a5f; font-weight: bold; min-height: 20px; }
+
+/* ---- Bottom navigation bar ---- */
+#bottomnav {
+  display: none;   /* shown by JS after login */
+  position: fixed;
+  bottom: 24px; left: 0; right: 0;
+  height: 44px;
+  background: #1f3a5f;
+  z-index: 200;
+}
+
+.nav-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #bbb;
+  font-size: 0.75em;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  padding: 0 4px;
+  height: 100%;
+}
+
+.nav-btn.active-nav {
+  color: #fff;
+  border-top: 2px solid #fff;
+  background: #2a4f7c;
+}
+
+/* ---- More menu (above bottom nav) ---- */
+#more-menu {
+  display: none;
+  position: fixed;
+  bottom: 68px; left: 0; right: 0; /* 44px nav + 24px footer */
+  background: #fff;
+  border: 1px solid #aaa;
+  z-index: 300;
+}
+
+.more-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9em;
+  font-family: Arial, sans-serif;
+  color: #222;
+}
+
+/* ---- Fixed footer ---- */
+#main-footer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 24px;
+  background: #e0e0e0;
+  color: #555;
+  font-size: 0.67em;
+  text-align: center;
+  line-height: 24px;
+  z-index: 200;
+}
