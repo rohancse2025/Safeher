@@ -5,6 +5,8 @@ SafeHer.sos = (function() {
   var countdownInterval = null;
   var liveTrackingInterval = null;
   var currentAlertId = null;
+  var alertStartTime = null;
+  var durationTimer = null;
   var mapInstance = null;
   var markerInstance = null;
   var currentLat = null;
@@ -24,7 +26,37 @@ SafeHer.sos = (function() {
       .replace(/"/g, '&quot;');
   }
 
-  // ─── Emergency Message Builder ────────────────────────────
+  // ─── Duration Counter (mm:ss) ───────────────────────────
+  function startDurationCounter() {
+    clearInterval(durationTimer);
+    alertStartTime = Date.now();
+    updateDurationDisplay();
+
+    durationTimer = setInterval(function() {
+      updateDurationDisplay();
+    }, 1000);
+  }
+
+  function updateDurationDisplay() {
+    var durEl = document.getElementById('sos-duration');
+    if (!durEl || !alertStartTime) return;
+
+    var elapsedSecs = Math.floor((Date.now() - alertStartTime) / 1000);
+    var mins = Math.floor(elapsedSecs / 60);
+    var secs = elapsedSecs % 60;
+    var mm = (mins < 10 ? '0' : '') + mins;
+    var ss = (secs < 10 ? '0' : '') + secs;
+
+    durEl.textContent = mm + ':' + ss;
+  }
+
+  function stopDurationCounter() {
+    clearInterval(durationTimer);
+    durationTimer = null;
+    alertStartTime = null;
+    var durEl = document.getElementById('sos-duration');
+    if (durEl) durEl.textContent = '00:00';
+  }
   function buildAlertMessage() {
     var user = SafeHer.api.getUser();
     var userName = user && user.name ? user.name : 'SafeHer User';
@@ -122,7 +154,17 @@ SafeHer.sos = (function() {
 
     // Switch to SOS active screen
     SafeHer.router.go('sos-active');
-    SafeHer.toast('Emergency alert triggered!');
+    SafeHer.toast('SOS activated');
+
+    if (mapInstance) {
+      mapInstance.invalidateSize();
+      setTimeout(function() {
+        if (mapInstance) mapInstance.invalidateSize();
+      }, 300);
+    }
+
+    // Start mm:ss active duration counter
+    startDurationCounter();
 
     // Start 10-second location updates
     startTrackingInterval();
@@ -189,10 +231,14 @@ SafeHer.sos = (function() {
       var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMessage;
       var initial = (c.name || '?').charAt(0).toUpperCase();
 
+      var telUrl = 'tel:' + rawPhone;
+
       html += '<div class="sos-notified-item">' +
         '<div class="sos-notified-left">' +
           '<div class="sos-notified-avatar">' + escapeHtml(initial) + '</div>' +
-          '<span class="sos-notified-name">' + escapeHtml(c.name) + '</span>' +
+          '<a class="sos-notified-name" href="' + telUrl + '" title="Call ' + escapeHtml(c.name) + '">' +
+            escapeHtml(c.name) +
+          '</a>' +
         '</div>' +
         '<div class="sos-contact-btns">' +
           '<a class="sos-btn-wa" href="' + waUrl + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>' +
@@ -288,6 +334,7 @@ SafeHer.sos = (function() {
   // ─── End Alert ("I'm Safe") ──────────────────────────────
   function endAlert() {
     stopTrackingInterval();
+    stopDurationCounter();
 
     if (currentAlertId) {
       // PUT /api/alerts/:id
@@ -306,7 +353,10 @@ SafeHer.sos = (function() {
   function init() {
     SafeHer.router.onShow('sos-active', function() {
       if (mapInstance) {
-        setTimeout(function() { mapInstance.invalidateSize(); }, 200);
+        mapInstance.invalidateSize();
+        setTimeout(function() {
+          if (mapInstance) mapInstance.invalidateSize();
+        }, 300);
       }
     });
   }

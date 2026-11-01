@@ -226,6 +226,7 @@
         <div class="home-location-row">
           <span class="material-symbols-rounded home-loc-icon">location_on</span>
           <span id="home-location">Locating…</span>
+          <button id="home-loc-enable" class="home-loc-enable" onclick="SafeHer.home.retryLocation()" style="display: none;">Enable</button>
         </div>
       </div>
       <button class="home-avatar" onclick="SafeHer.router.go('profile')"
@@ -260,8 +261,8 @@
           <button class="chip" onclick="SafeHer.router.go('fake-call')">
             <span class="material-symbols-rounded">phone</span>Fake Call
           </button>
-          <button class="chip" onclick="SafeHer.router.go('location')">
-            <span class="material-symbols-rounded">location_on</span>Location
+          <button class="chip" onclick="SafeHer.router.go('tips')">
+            <span class="material-symbols-rounded">lightbulb</span>Tips
           </button>
         </div>
       </div>
@@ -269,11 +270,11 @@
       <!-- Tile grid -->
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.router.go('live-location')">
-          <span class="material-symbols-rounded">my_location</span>
+          <span class="material-symbols-rounded">map</span>
           <span class="tile-label">Live Location</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('share-location')">
-          <span class="material-symbols-rounded">share_location</span>
+          <span class="material-symbols-rounded">share</span>
           <span class="tile-label">Share Location</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('helplines')">
@@ -281,7 +282,7 @@
           <span class="tile-label">Call Police</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('nearby-places')">
-          <span class="material-symbols-rounded">location_searching</span>
+          <span class="material-symbols-rounded">pin_drop</span>
           <span class="tile-label">Nearby Places</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('volunteers')">
@@ -326,9 +327,12 @@
     <div class="page-wrap" style="padding-bottom: 24px;">
       <div class="sos-sent-banner">
         <div class="sos-pulse-indicator"></div>
-        <div>
-          <p class="sos-sent-heading">Emergency Alert Sent</p>
-          <p class="sos-sent-time" id="sos-alert-time">Just now</p>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <p class="sos-sent-heading">SOS Activated</p>
+            <p class="sos-sent-time" id="sos-alert-time">Just now</p>
+          </div>
+          <div class="sos-duration-badge" id="sos-duration">00:00</div>
         </div>
       </div>
 
@@ -348,6 +352,13 @@
       <div class="sos-status-box">
         <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">hourglass_top</span>
         <span class="sos-status-label" id="sos-status-sub">Waiting for volunteers...</span>
+      </div>
+
+      <!-- Call 112 Button -->
+      <div style="margin-bottom: 14px;">
+        <a href="tel:112" class="btn btn-primary" style="background: var(--crimson); gap: 8px; font-weight: 600;">
+          <span class="material-symbols-rounded">call</span>Call 112
+        </a>
       </div>
 
       <!-- Notified Contacts Section -->

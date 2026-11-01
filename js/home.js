@@ -31,18 +31,33 @@ SafeHer.home = (function() {
   }
 
   // ── Location via Geolocation + Nominatim ───────────────
-  function setLocText(txt) {
+  function setLocText(txt, showEnable) {
     var el = document.getElementById('home-location');
+    var enableBtn = document.getElementById('home-loc-enable');
     if (el) el.textContent = txt;
+    if (enableBtn) enableBtn.style.display = showEnable ? 'inline' : 'none';
   }
 
-  function fetchLocation() {
-    if (locFetched) return;
-    if (!navigator.geolocation) { setLocText('Location off'); return; }
+  function fetchLocation(isRetry) {
+    if (locFetched && !isRetry) return;
+    if (!navigator.geolocation) {
+      setLocText('Location off', false);
+      return;
+    }
 
-    setLocText('Locating…');
+    setLocText('Locating…', false);
+
+    var timedOut = false;
+    var timer = setTimeout(function() {
+      timedOut = true;
+      setLocText('Location off', true);
+    }, 5000);
+
     navigator.geolocation.getCurrentPosition(
       function(pos) {
+        clearTimeout(timer);
+        if (timedOut) return;
+
         locFetched = true;
         var lat = pos.coords.latitude.toFixed(5);
         var lon = pos.coords.longitude.toFixed(5);
@@ -58,13 +73,21 @@ SafeHer.home = (function() {
             var a     = data.address || {};
             var city  = a.city || a.town || a.village || a.county || '';
             var state = a.state || '';
-            setLocText(city ? city + (state ? ', ' + state : '') : 'Location found');
+            setLocText(city ? city + (state ? ', ' + state : '') : 'Location found', false);
           })
-          .catch(function() { setLocText('Location off'); });
+          .catch(function() { setLocText('Location off', true); });
       },
-      function() { setLocText('Location off'); },
-      { timeout: 8000 }
+      function() {
+        clearTimeout(timer);
+        setLocText('Location off', true);
+      },
+      { timeout: 5000 }
     );
+  }
+
+  function retryLocation() {
+    locFetched = false;
+    fetchLocation(true);
   }
 
   // ── Refresh (runs each time Home is shown) ─────────────
@@ -88,5 +111,5 @@ SafeHer.home = (function() {
     });
   }
 
-  return { init: init, triggerSOS: triggerSOS, setSOSActive: setSOSActive };
+  return { init: init, triggerSOS: triggerSOS, setSOSActive: setSOSActive, retryLocation: retryLocation };
 })();
