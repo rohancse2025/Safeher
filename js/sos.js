@@ -1,4 +1,4 @@
-// js/sos.js – SOS countdown, alert dispatch, live tracking, Leaflet map, and alert history
+// js/sos.js – SOS modes (normal, silent, emergency), tap detector, audio siren, live tracking, Leaflet map, and PIN protection
 
 SafeHer.sos = (function() {
   var countdownSecs = 5;
@@ -7,11 +7,25 @@ SafeHer.sos = (function() {
   var currentAlertId = null;
   var alertStartTime = null;
   var durationTimer = null;
+  var currentMode = 'normal'; // 'normal' | 'silent' | 'emergency'
+
   var mapInstance = null;
   var markerInstance = null;
   var currentLat = null;
   var currentLng = null;
   var currentAlertTime = '';
+
+  // Tap counter window for overlay
+  var tapTimes = [];
+  var silentPendingTimer = null;
+  var wakeLock = null;
+
+  // Web Audio Context for Emergency Siren
+  var audioCtx = null;
+  var sirenOsc = null;
+  var sirenGain = null;
+  var sirenTimer = null;
+  var vibeTimer = null;
 
   // Fallback location: Bengaluru (12.9716, 77.5946)
   var BENGALURU_LAT = 12.9716;
@@ -24,6 +38,48 @@ SafeHer.sos = (function() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // ─── Mode Detection from Tap Count ─────────────────────────
+  // Evaluates taps within a 2-second window
+  // 1 tap on SOS button: starts normal countdown
+  // 3 taps (SOS tap + 2 taps on overlay within 2s): switches to Silent mode
+  // 5 taps (SOS tap + 4 taps on overlay within 2s): switches immediately to Emergency mode
+  function registerTap() {
+    var now = Date.now();
+    tapTimes.push(now);
+    tapTimes = tapTimes.filter(function(t) { return now - t <= 2000; });
+
+    var count = tapTimes.length;
+    if (count >= 5) {
+      if (silentPendingTimer) {
+        clearTimeout(silentPendingTimer);
+        silentPendingTimer = null;
+      }
+      tapTimes = [];
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      var overlay = document.getElementById('sos-countdown-overlay');
+      if (overlay) overlay.classList.remove('active');
+      startEmergencyMode();
+      return 'emergency';
+    } else if (count >= 3) {
+      if (silentPendingTimer) {
+        clearTimeout(silentPendingTimer);
+      }
+      silentPendingTimer = setTimeout(function() {
+        silentPendingTimer = null;
+        tapTimes = [];
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        var overlay = document.getElementById('sos-countdown-overlay');
+        if (overlay) overlay.classList.remove('active');
+        startSilentMode();
+      }, 400);
+      return 'silent_pending';
+    }
+    // 1 or 2 taps: stay in countdown
+    return 'normal';
   }
 
   // ─── Duration Counter (mm:ss) ───────────────────────────
@@ -39,15 +95,18 @@ SafeHer.sos = (function() {
 
   function updateDurationDisplay() {
     var durEl = document.getElementById('sos-duration');
-    if (!durEl || !alertStartTime) return;
+    var emDurEl = document.getElementById('em-sos-duration');
+    if (!alertStartTime) return;
 
     var elapsedSecs = Math.floor((Date.now() - alertStartTime) / 1000);
     var mins = Math.floor(elapsedSecs / 60);
     var secs = elapsedSecs % 60;
     var mm = (mins < 10 ? '0' : '') + mins;
     var ss = (secs < 10 ? '0' : '') + secs;
+    var formatted = mm + ':' + ss;
 
-    durEl.textContent = mm + ':' + ss;
+    if (durEl) durEl.textContent = formatted;
+    if (emDurEl) emDurEl.textContent = formatted;
   }
 
   function stopDurationCounter() {
@@ -56,7 +115,10 @@ SafeHer.sos = (function() {
     alertStartTime = null;
     var durEl = document.getElementById('sos-duration');
     if (durEl) durEl.textContent = '00:00';
+    var emDurEl = document.getElementById('em-sos-duration');
+    if (emDurEl) emDurEl.textContent = '00:00';
   }
+
   function buildAlertMessage() {
     var user = SafeHer.api.getUser();
     var userName = user && user.name ? user.name : 'SafeHer User';
@@ -68,15 +130,34 @@ SafeHer.sos = (function() {
     return 'EMERGENCY: ' + userName + ' triggered an SOS alert on SafeHer at ' + time + '. Location: ' + mapsUrl;
   }
 
-  // ─── 5-4-3-2-1 Countdown ─────────────────────────────────
+  // ─── 5-4-3-2-1 Countdown (Normal Mode) ────────────────────
   function startCountdown() {
-    countdownSecs = 5;
-    var overlay = document.getElementById('sos-countdown-overlay');
-    var numEl = document.getElementById('sos-countdown-num');
-    if (!overlay || !numEl) {
-      console.warn('SOS overlay or number element not found');
+    // If no PIN set, prompt to set one first
+    if (!SafeHer.api.hasPin()) {
+      SafeHer.pin.openSetPin('home', function() {
+        startCountdown();
+      });
       return;
     }
+
+    var overlay = document.getElementById('sos-countdown-overlay');
+    if (overlay && overlay.classList.contains('active')) {
+      // Countdown is already active, this counts as an additional tap
+      registerTap();
+      return;
+    }
+
+    if (silentPendingTimer) {
+      clearTimeout(silentPendingTimer);
+      silentPendingTimer = null;
+    }
+
+    currentMode = 'normal';
+    tapTimes = [Date.now()]; // first tap on the SOS button counts
+    countdownSecs = 5;
+
+    var numEl = document.getElementById('sos-countdown-num');
+    if (!overlay || !numEl) return;
 
     numEl.textContent = countdownSecs;
     overlay.classList.add('active');
@@ -88,86 +169,270 @@ SafeHer.sos = (function() {
         numEl.textContent = countdownSecs;
       } else {
         clearInterval(countdownInterval);
+        countdownInterval = null;
         overlay.classList.remove('active');
-        triggerActiveAlert();
+        triggerActiveAlert('normal');
       }
     }, 1000);
   }
 
   function cancelCountdown() {
+    if (silentPendingTimer) {
+      clearTimeout(silentPendingTimer);
+      silentPendingTimer = null;
+    }
     clearInterval(countdownInterval);
+    countdownInterval = null;
+    tapTimes = [];
     var overlay = document.getElementById('sos-countdown-overlay');
     if (overlay) overlay.classList.remove('active');
     SafeHer.toast('SOS alert cancelled');
   }
 
+  function onOverlayTap(e) {
+    if (e.target && e.target.classList.contains('sos-countdown-cancel')) return;
+    registerTap();
+  }
+
   // ─── Trigger Active SOS ──────────────────────────────────
-  function triggerActiveAlert() {
+  function triggerActiveAlert(mode) {
+    currentMode = mode || 'normal';
+
     if (SafeHer.home && SafeHer.home.setSOSActive) {
       SafeHer.home.setSOSActive(true);
     }
 
-    // Try geolocation with fallback
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        function(pos) {
-          onLocationResolved(pos.coords.latitude, pos.coords.longitude, false);
-        },
-        function() {
-          SafeHer.toast('Location off. Using Bengaluru fallback.');
-          onLocationResolved(BENGALURU_LAT, BENGALURU_LNG, true);
-        },
-        { timeout: 7000 }
-      );
-    } else {
-      SafeHer.toast('Geolocation unsupported. Using Bengaluru fallback.');
-      onLocationResolved(BENGALURU_LAT, BENGALURU_LNG, true);
-    }
-  }
-
-  function onLocationResolved(lat, lng, isFallback) {
-    currentLat = lat;
-    currentLng = lng;
+    currentLat = BENGALURU_LAT;
+    currentLng = BENGALURU_LNG;
 
     var now = new Date();
-    var timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    currentAlertTime = timeStr;
+    currentAlertTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    // Save alert into alert history via api.js
-    // POST /api/alerts
+    // Save alert into alert history via api.js immediately
     var newAlert = SafeHer.api.addAlert({
-      time: timeStr,
+      time: currentAlertTime,
       timestamp: Date.now(),
-      lat: lat,
-      lng: lng,
+      lat: currentLat,
+      lng: currentLng,
+      mode: currentMode,
       status: 'active'
     });
     currentAlertId = newAlert ? newAlert.id : Date.now();
 
-    // Render screen
-    var timeEl = document.getElementById('sos-alert-time');
-    if (timeEl) timeEl.textContent = timeStr;
+    startDurationCounter();
+    startTrackingInterval();
 
-    updateMap(lat, lng);
-    updateGmapsLink(lat, lng);
-    renderNotifiedContacts();
+    // Render screen IMMEDIATELY without delay
+    if (currentMode === 'normal') {
+      var timeEl = document.getElementById('sos-alert-time');
+      if (timeEl) timeEl.textContent = currentAlertTime;
 
-    // Switch to SOS active screen
-    SafeHer.router.go('sos-active');
-    SafeHer.toast('SOS activated');
+      updateMap(currentLat, currentLng);
+      updateGmapsLink(currentLat, currentLng, 'sos-gmaps-link');
+      renderNotifiedContacts('sos-notified-list');
 
-    if (mapInstance) {
-      mapInstance.invalidateSize();
-      setTimeout(function() {
-        if (mapInstance) mapInstance.invalidateSize();
-      }, 300);
+      SafeHer.router.go('sos-active');
+      SafeHer.toast('SOS activated');
+
+      if (mapInstance) {
+        mapInstance.invalidateSize();
+        setTimeout(function() {
+          if (mapInstance) mapInstance.invalidateSize();
+        }, 300);
+      }
+    } else if (currentMode === 'silent') {
+      renderSilentMode();
+    } else if (currentMode === 'emergency') {
+      renderEmergencyMode();
     }
 
-    // Start mm:ss active duration counter
-    startDurationCounter();
+    // Now resolve real location in the background
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          currentLat = pos.coords.latitude;
+          currentLng = pos.coords.longitude;
 
-    // Start 10-second location updates
-    startTrackingInterval();
+          if (currentAlertId) {
+            SafeHer.api.updateAlert(currentAlertId, {
+              lat: currentLat,
+              lng: currentLng
+            });
+          }
+
+          if (currentMode === 'normal') {
+            updateMap(currentLat, currentLng);
+            updateGmapsLink(currentLat, currentLng, 'sos-gmaps-link');
+            renderNotifiedContacts('sos-notified-list');
+          } else if (currentMode === 'emergency') {
+            updateGmapsLink(currentLat, currentLng, 'em-gmaps-link');
+            renderNotifiedContacts('em-notified-list');
+          }
+        },
+        function() {
+          if (currentMode !== 'silent') {
+            SafeHer.toast('Location off. Using Bengaluru fallback.');
+          }
+        },
+        { timeout: 7000 }
+      );
+    } else {
+      if (currentMode !== 'silent') {
+        SafeHer.toast('Geolocation unsupported. Using Bengaluru fallback.');
+      }
+    }
+  }
+
+  // ─── Silent Mode ──────────────────────────────────────────
+  // Note: in production, silent background alert push to contacts will be handled via the backend.
+  var silentTapTimes = [];
+
+  function startSilentMode() {
+    triggerActiveAlert('silent');
+  }
+
+  function renderSilentMode() {
+    SafeHer.router.go('silent-mode');
+
+    // Request Screen Wake Lock
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(function(lock) {
+        wakeLock = lock;
+      }).catch(function() {});
+    }
+
+    // Try requestFullscreen
+    var docEl = document.documentElement;
+    if (docEl.requestFullscreen) {
+      docEl.requestFullscreen().catch(function() {});
+    }
+  }
+
+  function onSilentScreenTap() {
+    var now = Date.now();
+    silentTapTimes.push(now);
+    silentTapTimes = silentTapTimes.filter(function(t) { return now - t <= 2000; });
+
+    if (silentTapTimes.length >= 3) {
+      silentTapTimes = [];
+      SafeHer.askPin(
+        function() {
+          // Correct PIN -> end alert
+          endAlertSilently();
+        },
+        function() {
+          // Wrong PIN or cancelled -> return silently to black screen
+        },
+        { blackTheme: true }
+      );
+    }
+  }
+
+  function endAlertSilently() {
+    if (silentPendingTimer) {
+      clearTimeout(silentPendingTimer);
+      silentPendingTimer = null;
+    }
+    stopTrackingInterval();
+    stopDurationCounter();
+    releaseWakeLock();
+
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(function() {});
+    }
+
+    if (currentAlertId) {
+      SafeHer.api.updateAlert(currentAlertId, {
+        status: 'resolved',
+        endTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      });
+      currentAlertId = null;
+    }
+
+    if (SafeHer.home && SafeHer.home.setSOSActive) {
+      SafeHer.home.setSOSActive(false);
+    }
+
+    SafeHer.toast('SOS ended');
+    SafeHer.router.go('home');
+  }
+
+  // ─── Emergency Mode ───────────────────────────────────────
+  function startEmergencyMode() {
+    triggerActiveAlert('emergency');
+  }
+
+  function renderEmergencyMode() {
+    SafeHer.router.go('emergency-mode');
+    updateGmapsLink(currentLat, currentLng, 'em-gmaps-link');
+    renderNotifiedContacts('em-notified-list');
+    startSiren();
+    startVibration();
+  }
+
+  function startSiren() {
+    try {
+      var AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      audioCtx = new AudioContext();
+
+      sirenOsc = audioCtx.createOscillator();
+      sirenGain = audioCtx.createGain();
+
+      sirenOsc.type = 'sawtooth';
+      sirenGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+
+      sirenOsc.connect(sirenGain);
+      sirenGain.connect(audioCtx.destination);
+      sirenOsc.start();
+
+      // Oscillate frequency between 700Hz and 1200Hz
+      var high = true;
+      sirenTimer = setInterval(function() {
+        if (!audioCtx || !sirenOsc) return;
+        var now = audioCtx.currentTime;
+        var targetFreq = high ? 1200 : 700;
+        sirenOsc.frequency.exponentialRampToValueAtTime(targetFreq, now + 0.35);
+        high = !high;
+      }, 400);
+    } catch(e) {}
+  }
+
+  function stopSiren() {
+    clearInterval(sirenTimer);
+    sirenTimer = null;
+    if (sirenOsc) {
+      try { sirenOsc.stop(); sirenOsc.disconnect(); } catch(e) {}
+      sirenOsc = null;
+    }
+    if (audioCtx) {
+      try { audioCtx.close(); } catch(e) {}
+      audioCtx = null;
+    }
+  }
+
+  function startVibration() {
+    if (!('vibrate' in navigator)) return;
+    navigator.vibrate([500, 250, 500, 250]);
+    clearInterval(vibeTimer);
+    vibeTimer = setInterval(function() {
+      navigator.vibrate([500, 250, 500, 250]);
+    }, 1500);
+  }
+
+  function stopVibration() {
+    clearInterval(vibeTimer);
+    vibeTimer = null;
+    if ('vibrate' in navigator) navigator.vibrate(0);
+  }
+
+  // ─── Stop Alarm with PIN (Emergency Mode) ──────────────────
+  function requestStopAlarm() {
+    SafeHer.askPin(function() {
+      stopSiren();
+      stopVibration();
+      finishEndingAlert();
+    });
   }
 
   // ─── Leaflet Map Setup & Update ───────────────────────────
@@ -201,15 +466,16 @@ SafeHer.sos = (function() {
     }
   }
 
-  function updateGmapsLink(lat, lng) {
-    var link = document.getElementById('sos-gmaps-link');
+  function updateGmapsLink(lat, lng, elementId) {
+    var id = elementId || 'sos-gmaps-link';
+    var link = document.getElementById(id);
     if (link) {
       link.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
     }
   }
 
-  function renderNotifiedContacts() {
-    var listEl = document.getElementById('sos-notified-list');
+  function renderNotifiedContacts(containerId) {
+    var listEl = document.getElementById(containerId || 'sos-notified-list');
     if (!listEl) return;
 
     var contacts = SafeHer.api.getContacts();
@@ -225,13 +491,11 @@ SafeHer.sos = (function() {
     for (var i = 0; i < contacts.length; i++) {
       var c = contacts[i];
       var rawPhone = (c.phone || '').replace(/\D/g, '');
-      // Format 10 digit Indian number for wa.me/91<phone>
       var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
       var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMessage;
       var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMessage;
-      var initial = (c.name || '?').charAt(0).toUpperCase();
-
       var telUrl = 'tel:' + rawPhone;
+      var initial = (c.name || '?').charAt(0).toUpperCase();
 
       html += '<div class="sos-notified-item">' +
         '<div class="sos-notified-left">' +
@@ -250,10 +514,8 @@ SafeHer.sos = (function() {
     listEl.innerHTML = html;
   }
 
-  // ─── Share to All ─────────────────────────────────────────
   function shareToAll() {
     var message = buildAlertMessage();
-
     if (navigator.share) {
       navigator.share({
         title: 'Emergency SOS - SafeHer',
@@ -261,9 +523,7 @@ SafeHer.sos = (function() {
       }).then(function() {
         SafeHer.toast('Alert shared');
       }).catch(function(err) {
-        if (err.name !== 'AbortError') {
-          copyAlertMessageFallback(message);
-        }
+        if (err.name !== 'AbortError') copyAlertMessageFallback(message);
       });
     } else {
       copyAlertMessageFallback(message);
@@ -278,7 +538,6 @@ SafeHer.sos = (function() {
         SafeHer.toast('Could not copy alert');
       });
     } else {
-      // Fallback text copy for older browsers
       var ta = document.createElement('textarea');
       ta.value = message;
       ta.style.position = 'fixed';
@@ -306,7 +565,6 @@ SafeHer.sos = (function() {
           currentLat = pos.coords.latitude;
           currentLng = pos.coords.longitude;
 
-          // PUT /api/alerts/:id
           if (currentAlertId) {
             SafeHer.api.updateAlert(currentAlertId, {
               lat: currentLat,
@@ -314,13 +572,15 @@ SafeHer.sos = (function() {
             });
           }
 
-          updateMap(currentLat, currentLng);
-          updateGmapsLink(currentLat, currentLng);
-          renderNotifiedContacts();
+          if (currentMode === 'normal') {
+            updateMap(currentLat, currentLng);
+            updateGmapsLink(currentLat, currentLng);
+            renderNotifiedContacts('sos-notified-list');
+          } else if (currentMode === 'emergency') {
+            updateGmapsLink(currentLat, currentLng, 'em-gmaps-link');
+          }
         },
-        function() {
-          // Keep current lat/lng on temporary GPS failure
-        },
+        function() {},
         { timeout: 5000 }
       );
     }, 10000);
@@ -331,14 +591,37 @@ SafeHer.sos = (function() {
     liveTrackingInterval = null;
   }
 
-  // ─── End Alert ("I'm Safe") ──────────────────────────────
-  function endAlert() {
+  function releaseWakeLock() {
+    if (wakeLock) {
+      wakeLock.release().catch(function() {});
+      wakeLock = null;
+    }
+  }
+
+  // ─── End Alert ("I'm Safe" & "Stop Alarm") protected by PIN ─
+  function requestEndAlert() {
+    SafeHer.askPin(function() {
+      finishEndingAlert();
+    });
+  }
+
+  function finishEndingAlert() {
+    if (silentPendingTimer) {
+      clearTimeout(silentPendingTimer);
+      silentPendingTimer = null;
+    }
     stopTrackingInterval();
     stopDurationCounter();
+    stopSiren();
+    stopVibration();
+    releaseWakeLock();
 
+    var endTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (currentAlertId) {
-      // PUT /api/alerts/:id
-      SafeHer.api.updateAlert(currentAlertId, { status: 'resolved' });
+      SafeHer.api.updateAlert(currentAlertId, {
+        status: 'resolved',
+        endTime: endTimeStr
+      });
       currentAlertId = null;
     }
 
@@ -346,7 +629,7 @@ SafeHer.sos = (function() {
       SafeHer.home.setSOSActive(false);
     }
 
-    SafeHer.toast("Alert ended. You're marked safe.");
+    SafeHer.toast('SOS ended');
     SafeHer.router.go('home');
   }
 
@@ -359,13 +642,22 @@ SafeHer.sos = (function() {
         }, 300);
       }
     });
+
+    var overlay = document.getElementById('sos-countdown-overlay');
+    if (overlay) {
+      overlay.onclick = onOverlayTap;
+    }
   }
 
   return {
     init: init,
     startCountdown: startCountdown,
     cancelCountdown: cancelCountdown,
-    endAlert: endAlert,
+    startSilentMode: startSilentMode,
+    startEmergencyMode: startEmergencyMode,
+    onSilentScreenTap: onSilentScreenTap,
+    requestEndAlert: requestEndAlert,
+    requestStopAlarm: requestStopAlarm,
     shareToAll: shareToAll
   };
 })();

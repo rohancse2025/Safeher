@@ -1345,6 +1345,92 @@ body {
   text-align: center;
 }
 
+/* ─── Tips Screen ─────────────────────────────────────────────── */
+.tips-tabs {
+  display: flex;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 3px;
+  margin-bottom: 16px;
+  gap: 4px;
+}
+
+.tips-tab-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: none;
+  color: var(--text-gray);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tips-tab-btn.active {
+  background: var(--white);
+  color: var(--crimson);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tip-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 14px;
+}
+
+.tip-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.tip-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-btn);
+  background: var(--pink-light);
+  color: var(--crimson);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tip-card-icon .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.tip-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.tip-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tip-card-text {
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.5;
+}
+
 /* ─── Signup Success ──────────────────────────────────────────── */
 .success-wrap {
   display: flex;
@@ -1388,4 +1474,558 @@ body {
   color: var(--text-gray);
   line-height: 1.7;
   margin-bottom: 8px;
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  margin-bottom: 20px;
+}
+
+.profile-avatar-large {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  color: var(--crimson);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.profile-avatar-large .material-symbols-rounded {
+  font-size: 36px;
+}
+
+.profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.profile-phone {
+  font-size: 13px;
+  color: var(--text-gray);
+  margin-top: 2px;
+}
+
+.settings-section {
+  margin-bottom: 20px;
+}
+
+.settings-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 8px;
+}
+
+.settings-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  cursor: pointer;
+}
+
+.settings-tile-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-tile-icon {
+  font-size: 22px;
+  color: var(--crimson);
+}
+
+.settings-tile-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.settings-tile-sub {
+  font-size: 11px;
+  color: var(--text-gray);
+  margin-top: 2px;
+}
+
+.settings-arrow {
+  color: var(--text-gray);
+  font-size: 20px;
+}
+
+.profile-edit-btn {
+  margin-top: 10px;
+  font-size: 12px;
+  padding: 6px 14px;
+  width: auto;
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  gap: 6px;
+}
+
+.settings-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+}
+
+.setting-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.setting-toggle-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.setting-toggle-sub {
+  font-size: 11px;
+  color: var(--text-gray);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+/* Switch Toggle Component */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border);
+  transition: 0.2s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: var(--white);
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--crimson);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* Alert History List */
+.alert-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-history-item {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alert-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alert-item-time {
+  font-size: 12px;
+  color: var(--text-dark);
+  font-weight: 500;
+}
+
+.alert-mode-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.alert-mode-normal {
+  background: var(--pink-light);
+  color: var(--crimson);
+  border: 1px solid var(--border);
+}
+
+.alert-mode-silent {
+  background: #2C2C2E;
+  color: #FFFFFF;
+}
+
+.alert-mode-emergency {
+  background: var(--crimson);
+  color: #FFFFFF;
+}
+
+.alert-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.alert-status-active {
+  background: #FADBD8;
+  color: #C0392B;
+}
+
+.alert-status-resolved {
+  background: #D4EFDF;
+  color: #27AE60;
+}
+
+.alert-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.alert-item-ended {
+  color: var(--text-gray);
+}
+
+.alert-item-link {
+  color: var(--crimson);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+}
+
+.alert-item-link .material-symbols-rounded {
+  font-size: 14px;
+}
+
+.alert-empty-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-empty-icon {
+  font-size: 36px;
+  color: var(--text-gray);
+  margin-bottom: 2px;
+}
+
+.alert-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.alert-empty-sub {
+  font-size: 11px;
+  color: var(--text-gray);
+  max-width: 240px;
+  line-height: 1.4;
+}
+
+/* About Card */
+.about-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 14px 12px;
+}
+
+.about-app-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--crimson);
+}
+
+.about-version {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-gray);
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 1px 6px;
+}
+
+.about-desc {
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.5;
+}
+
+/* Account Actions Wrap */
+.account-actions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.btn-clear-data {
+  color: var(--crimson) !important;
+  border-color: var(--crimson-ring2) !important;
+}
+
+/* ─── Silent Mode Screen ──────────────────────────────────────── */
+.screen-silent {
+  background: #000 !important;
+  cursor: none;
+  z-index: 600;
+}
+
+/* ─── Emergency Mode Screen ──────────────────────────────────── */
+.screen-emergency {
+  background: #A80F3C;
+  color: var(--white);
+  z-index: 600;
+}
+
+.em-banner {
+  padding: 24px 16px 16px;
+  text-align: center;
+  background: #800A2D;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.em-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--white);
+}
+
+.em-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 4px;
+}
+
+.em-duration-badge {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 12px;
+  border-radius: var(--radius-btn);
+  margin-top: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.em-call-btn {
+  background: var(--white);
+  color: var(--crimson);
+  font-size: 18px;
+  font-weight: 700;
+  padding: 16px;
+  border-radius: var(--radius-tile);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+}
+
+.em-stop-btn {
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ─── Reusable Full-Screen PIN Pad Overlay ────────────────────── */
+.pin-pad-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--white);
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.2s ease;
+}
+
+.pin-pad-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.pin-pad-overlay.pin-black-theme {
+  background: #000;
+  color: #fff;
+}
+
+.pin-pad-overlay.pin-black-theme .pin-pad-title {
+  color: #fff;
+}
+
+.pin-pad-overlay.pin-black-theme .pin-dot {
+  border-color: #555;
+  background: transparent;
+}
+
+.pin-pad-overlay.pin-black-theme .pin-dot.filled {
+  background: #fff;
+}
+
+.pin-pad-overlay.pin-black-theme .pin-key {
+  color: #fff;
+  background: #111;
+  border-color: #333;
+}
+
+.pin-pad-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px 28px;
+  width: 100%;
+}
+
+.pin-pad-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.pin-pad-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.pin-dots-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.pin-dot.filled {
+  background: var(--crimson);
+  border-color: var(--crimson);
+}
+
+.pin-shake {
+  animation: pin-shake-anim 0.35s ease;
+}
+
+@keyframes pin-shake-anim {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-10px); }
+  40%, 80% { transform: translateX(10px); }
+}
+
+.pin-block-msg {
+  font-size: 12px;
+  color: var(--crimson);
+  margin-bottom: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.pin-key {
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text-dark);
+  font-family: 'Poppins', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease;
+}
+
+.pin-key:active {
+  background: var(--pink-light);
+}
+
+.pin-key.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.pin-key-action {
+  font-size: 18px;
+  border: none;
+  background: transparent;
 }

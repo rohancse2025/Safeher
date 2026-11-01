@@ -10,7 +10,7 @@ SafeHer.router = (function() {
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
     'fake-call', 'location', 'live-location', 'share-location',
     'helplines', 'nearby-places', 'volunteers', 'safe-timer',
-    'sos-active'
+    'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin'
   ];
 
   var current = null;
@@ -67,8 +67,11 @@ window.addEventListener('DOMContentLoaded', function() {
 
   SafeHer.onboarding.init();
   SafeHer.auth.init();
+  SafeHer.pin.init();
   SafeHer.home.init();
   SafeHer.contacts.init();
+  SafeHer.tips.init();
+  SafeHer.profile.init();
   SafeHer.sos.init();
 
   // Check for SOS shortcut launch (?sos=1)

@@ -377,7 +377,7 @@
 
       <!-- I'm Safe Button -->
       <div style="margin-top: 18px;">
-        <button class="btn btn-primary" onclick="SafeHer.sos.endAlert()" style="background: #27AE60;">
+        <button class="btn btn-primary" onclick="SafeHer.sos.requestEndAlert()" style="background: #27AE60;">
           <span class="material-symbols-rounded">check</span>I'm Safe
         </button>
       </div>
@@ -594,15 +594,284 @@
 
   <!-- ── Tips ────────────────────────────────────────────── -->
   <div id="screen-tips" class="screen has-nav">
-    <div class="page-wrap">
-      <p class="page-title">Tips</p>
+    <div class="topbar">
+      <span class="topbar-title" style="margin-left: 8px;">Safety Advice</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 80px;">
+      <!-- Segmented Tab Controls -->
+      <div class="tips-tabs">
+        <button class="tips-tab-btn active" id="tab-btn-tips" onclick="SafeHer.tips.switchTab('tips')">Tips</button>
+        <button class="tips-tab-btn" id="tab-btn-defense" onclick="SafeHer.tips.switchTab('defense')">Self-Defense</button>
+      </div>
+
+      <!-- Container for Cards -->
+      <div class="tips-list" id="tips-cards-container"></div>
     </div>
   </div>
 
   <!-- ── Profile ─────────────────────────────────────────── -->
   <div id="screen-profile" class="screen has-nav">
+    <div class="topbar">
+      <span class="topbar-title" style="margin-left: 8px;">Profile & Settings</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 80px;">
+      <!-- User Card -->
+      <div class="profile-card">
+        <div class="profile-avatar-large">
+          <span id="profile-avatar-letter">U</span>
+        </div>
+        <p class="profile-name" id="profile-name">SafeHer User</p>
+        <p class="profile-phone" id="profile-phone">+91 XXXXXXXXXX</p>
+        <button class="btn btn-secondary profile-edit-btn" onclick="SafeHer.profile.openEditModal()">
+          <span class="material-symbols-rounded" style="font-size: 16px;">edit</span>Edit Profile
+        </button>
+      </div>
+
+      <!-- Security Settings -->
+      <div class="settings-section">
+        <p class="settings-section-title">Security</p>
+        <div class="settings-tile" onclick="SafeHer.pin.openChangePin()">
+          <div class="settings-tile-left">
+            <span class="material-symbols-rounded settings-tile-icon">pin</span>
+            <div>
+              <p class="settings-tile-title">Change Safety PIN</p>
+              <p class="settings-tile-sub">Required to cancel an SOS alert</p>
+            </div>
+          </div>
+          <span class="material-symbols-rounded settings-arrow">chevron_right</span>
+        </div>
+      </div>
+
+      <!-- Notifications Settings -->
+      <div class="settings-section">
+        <p class="settings-section-title">Notifications</p>
+        <div class="settings-card">
+          <div class="setting-toggle-row">
+            <div>
+              <p class="setting-toggle-title">SMS Alerts</p>
+              <p class="setting-toggle-sub">Prepared SOS messages to emergency contacts</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="notif-sms" onchange="SafeHer.profile.saveNotifications()" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="setting-toggle-row">
+            <div>
+              <p class="setting-toggle-title">Sound & Siren</p>
+              <p class="setting-toggle-sub">Play emergency alarm siren in emergency mode</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="notif-sound" onchange="SafeHer.profile.saveNotifications()" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="setting-toggle-row" style="border-bottom: none;">
+            <div>
+              <p class="setting-toggle-title">Location Tracking</p>
+              <p class="setting-toggle-sub">Continuous live GPS tracking while SOS is active</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="notif-location" onchange="SafeHer.profile.saveNotifications()" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alert History -->
+      <div class="settings-section">
+        <p class="settings-section-title">Alert History</p>
+        <div id="profile-alert-history" class="alert-history-list"></div>
+      </div>
+
+      <!-- About SafeHer -->
+      <div class="settings-section">
+        <p class="settings-section-title">About</p>
+        <div class="about-card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">shield</span>
+            <span class="about-app-name">SafeHer</span>
+            <span class="about-version">v1.0</span>
+          </div>
+          <p class="about-desc">Your safety, always with you — personal safety and emergency alert companion for mobile browsers.</p>
+        </div>
+      </div>
+
+      <!-- Account Actions -->
+      <div class="account-actions-wrap">
+        <button class="btn btn-secondary" onclick="SafeHer.auth.logout()" style="color: var(--text-dark);">
+          <span class="material-symbols-rounded">logout</span>Logout
+        </button>
+        <button class="btn btn-secondary btn-clear-data" onclick="SafeHer.profile.confirmClearAllData()">
+          <span class="material-symbols-rounded">delete_forever</span>Clear All Data
+        </button>
+      </div>
+    </div>
+
+    <!-- Edit Profile Modal Sheet -->
+    <div id="profile-edit-modal" class="modal-backdrop" style="display: none;">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <span class="modal-title">Edit Profile</span>
+          <button class="modal-close-btn" onclick="SafeHer.profile.closeEditModal()">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+        <form onsubmit="SafeHer.profile.submitEditForm(); return false;" class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="profile-edit-name">Full Name</label>
+            <input class="form-input" id="profile-edit-name" type="text" placeholder="Your full name" />
+            <span class="form-error" id="err-profile-name"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="profile-edit-phone">Phone Number</label>
+            <input class="form-input" id="profile-edit-phone" type="tel" placeholder="10-digit number" inputmode="numeric" maxlength="10" />
+            <span class="form-error" id="err-profile-phone"></span>
+          </div>
+          <div class="form-submit-wrap" style="display: flex; gap: 8px; margin-top: 14px;">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.profile.closeEditModal()" style="flex: 1;">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Silent Mode Screen ──────────────────────────────── -->
+  <div id="screen-silent-mode" class="screen screen-silent" onclick="SafeHer.sos.onSilentScreenTap()">
+    <!-- Completely black screen with no icons, text, or animation -->
+  </div>
+
+  <!-- ── Emergency Mode Screen ────────────────────────────── -->
+  <div id="screen-emergency-mode" class="screen screen-emergency">
+    <div class="em-banner">
+      <p class="em-title">EMERGENCY</p>
+      <p class="em-subtitle">Alarm & SOS Active</p>
+      <div class="em-duration-badge" id="em-sos-duration">00:00</div>
+    </div>
+
+    <div class="page-wrap" style="padding-bottom: 24px;">
+      <!-- Call 112 Large Button -->
+      <a href="tel:112" class="btn em-call-btn">
+        <span class="material-symbols-rounded" style="font-size: 28px;">call</span>Call 112
+      </a>
+
+      <!-- Google Maps Link -->
+      <div style="margin-top: 14px;">
+        <a id="em-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="background: rgba(255,255,255,0.95); font-weight: 600;">
+          <span class="material-symbols-rounded">map</span>Open in Google Maps
+        </a>
+      </div>
+
+      <!-- Contacts Notified -->
+      <div class="sos-contacts-section" style="margin-top: 16px;">
+        <p class="sos-section-title">Contacts Notified</p>
+        <div id="em-notified-list" class="sos-notified-list"></div>
+      </div>
+
+      <!-- Stop Alarm (requires PIN) -->
+      <div style="margin-top: 20px;">
+        <button class="btn em-stop-btn" onclick="SafeHer.sos.requestStopAlarm()">
+          <span class="material-symbols-rounded">gpp_maybe</span>Stop Alarm (PIN required)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Set Safety PIN Screen ────────────────────────────── -->
+  <div id="screen-set-pin" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Set Safety PIN</span>
+    </div>
     <div class="page-wrap">
-      <p class="page-title">Profile</p>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <span class="material-symbols-rounded" style="font-size: 48px; color: var(--crimson);">lock</span>
+        <h2 style="font-size: 18px; font-weight: 600; margin-top: 6px;">Create a 4-Digit PIN</h2>
+        <p style="font-size: 13px; color: var(--text-gray); margin-top: 4px;">You will need this to cancel an SOS</p>
+      </div>
+      <form onsubmit="SafeHer.pin.submitSetPin(); return false;">
+        <div class="form-group">
+          <label class="form-label" for="set-pin-1">Enter 4-Digit PIN</label>
+          <input class="form-input" id="set-pin-1" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align: center; font-size: 20px; letter-spacing: 4px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="set-pin-2">Confirm PIN</label>
+          <input class="form-input" id="set-pin-2" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align: center; font-size: 20px; letter-spacing: 4px;" />
+        </div>
+        <span class="form-error" id="err-set-pin" style="display: block; margin-bottom: 12px; text-align: center;"></span>
+        <button type="submit" class="btn btn-primary">Save PIN</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Change Safety PIN Screen ──────────────────────────── -->
+  <div id="screen-change-pin" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('profile')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Change Safety PIN</span>
+    </div>
+    <div class="page-wrap">
+      <form onsubmit="SafeHer.pin.submitChangePin(); return false;">
+        <div class="form-group">
+          <label class="form-label" for="change-pin-old">Current 4-Digit PIN</label>
+          <input class="form-input" id="change-pin-old" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align: center; font-size: 18px; letter-spacing: 4px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="change-pin-new">New 4-Digit PIN</label>
+          <input class="form-input" id="change-pin-new" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align: center; font-size: 18px; letter-spacing: 4px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="change-pin-confirm">Confirm New PIN</label>
+          <input class="form-input" id="change-pin-confirm" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align: center; font-size: 18px; letter-spacing: 4px;" />
+        </div>
+        <span class="form-error" id="err-change-pin" style="display: block; margin-bottom: 12px; text-align: center;"></span>
+        <button type="submit" class="btn btn-primary">Update PIN</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Reusable Full-Screen PIN Pad Overlay ──────────────── -->
+  <div id="pin-pad-overlay" class="pin-pad-overlay">
+    <div class="pin-pad-content">
+      <div class="pin-pad-header">
+        <p class="pin-pad-title">Enter Safety PIN</p>
+      </div>
+
+      <!-- 4 Dots -->
+      <div class="pin-dots-row">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+      </div>
+
+      <p class="pin-block-msg" id="pin-block-msg" style="display: none;"></p>
+
+      <!-- Numeric keypad -->
+      <div class="pin-keypad">
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('1')">1</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('2')">2</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('3')">3</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('4')">4</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('5')">5</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('6')">6</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('7')">7</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('8')">8</button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('9')">9</button>
+        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleCancel()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+        <button class="pin-key" onclick="SafeHer.pin.handleDigit('0')">0</button>
+        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleDelete()">
+          <span class="material-symbols-rounded">backspace</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -637,8 +906,11 @@
 <script src="./js/app.js"></script>
 <script src="./js/onboarding.js"></script>
 <script src="./js/auth.js"></script>
+<script src="./js/pin.js"></script>
 <script src="./js/home.js"></script>
 <script src="./js/contacts.js"></script>
+<script src="./js/tips.js"></script>
+<script src="./js/profile.js"></script>
 <script src="./js/sos.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 </body>

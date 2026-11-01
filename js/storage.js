@@ -24,5 +24,20 @@ SafeHer.storage = {
     try {
       localStorage.removeItem(this._key(key));
     } catch(e) {}
+  },
+
+  clearAll: function() {
+    try {
+      var keysToRemove = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('safeher_') === 0) {
+          keysToRemove.push(k);
+        }
+      }
+      for (var j = 0; j < keysToRemove.length; j++) {
+        localStorage.removeItem(keysToRemove[j]);
+      }
+    } catch(e) {}
   }
 };

@@ -140,7 +140,11 @@ SafeHer.auth = (function() {
 
   // ─── Signup success ────────────────────────────────────────
   function continueAfterSignup() {
-    SafeHer.router.go('home');
+    if (SafeHer.pin && SafeHer.pin.openSetPin) {
+      SafeHer.pin.openSetPin('home');
+    } else {
+      SafeHer.router.go('home');
+    }
   }
 
   // ─── Login ────────────────────────────────────────────────

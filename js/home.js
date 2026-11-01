@@ -111,5 +111,10 @@ SafeHer.home = (function() {
     });
   }
 
-  return { init: init, triggerSOS: triggerSOS, setSOSActive: setSOSActive, retryLocation: retryLocation };
+  return {
+    init: init,
+    triggerSOS: triggerSOS,
+    setSOSActive: setSOSActive,
+    retryLocation: retryLocation
+  };
 })();

@@ -1,6 +1,6 @@
 // sw.js - SafeHer Service Worker with relative caching for GitHub Pages subfolders
 
-var CACHE_NAME = 'safeher-v1';
+var CACHE_NAME = 'safeher-v3';
 var ASSETS = [
   './',
   './index.html',
@@ -11,8 +11,11 @@ var ASSETS = [
   './js/app.js',
   './js/onboarding.js',
   './js/auth.js',
+  './js/pin.js',
   './js/home.js',
   './js/contacts.js',
+  './js/tips.js',
+  './js/profile.js',
   './js/sos.js',
   './assets/logo.png',
   './assets/onboard1.svg',
