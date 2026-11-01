@@ -2,215 +2,633 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>SafeHer - Women Safety App</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SafeHer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
-  <!-- Fixed top bar -->
-  <div id="topbar"><span id="app-title">SafeHer</span></div>
+<div id="app">
 
-  <!-- All screens; JS shows one at a time -->
-  <div id="screens">
+  <!-- Toast -->
+  <div id="toast" role="status" aria-live="polite"></div>
 
-    <!-- Login -->
-    <section id="screen-login" class="screen active">
-      <h2 id="h2-login">Login</h2>
-      <form onsubmit="doLogin(event)">
-        <label for="login-user">Phone / Email</label>
-        <input type="text" id="login-user" placeholder="e.g. 9876543210" required />
-        <label for="login-pass">Password</label>
-        <input type="password" id="login-pass" placeholder="Enter password" required />
-        <button type="submit" class="btn-primary">Login</button>
-      </form>
-      <p>No account? <a href="#" onclick="showScreen('screen-register'); return false;">Register</a></p>
-    </section>
-
-    <!-- Register -->
-    <section id="screen-register" class="screen">
-      <h2 id="h2-register">Register</h2>
-      <form onsubmit="doRegister(event)">
-        <label for="reg-name">Full Name</label>
-        <input type="text" id="reg-name" placeholder="e.g. Priya Nair" required />
-        <label for="reg-phone">Phone</label>
-        <input type="tel" id="reg-phone" placeholder="e.g. 9876543210" required />
-        <label for="reg-email">Email</label>
-        <input type="email" id="reg-email" placeholder="e.g. priya@gmail.com" required />
-        <label for="reg-pass">Password</label>
-        <input type="password" id="reg-pass" placeholder="Create a password" required />
-        <button type="submit" class="btn-primary">Register</button>
-      </form>
-      <p>Have an account? <a href="#" onclick="showScreen('screen-login'); return false;">Login</a></p>
-    </section>
-
-    <!-- Home / SOS -->
-    <section id="screen-home" class="screen">
-      <div id="sos-area">
-        <p id="sos-instruction">Press the SOS button in an emergency.</p>
-        <button id="sos-btn" onclick="startSOS()">SOS</button>
-        <div id="sos-countdown">
-          <p id="countdown-text">Sending SOS in 5...</p>
-          <button class="btn-secondary" onclick="cancelSOS()">Cancel</button>
-        </div>
-      </div>
-      <div id="quick-links">
-        <button class="btn-outline" onclick="showScreen('screen-fakecall')">Fake Call</button>
-        <button class="btn-outline" onclick="showScreen('screen-timer')">Safe Timer</button>
-        <button class="btn-outline" onclick="showScreen('screen-helplines')">Helplines</button>
-      </div>
-    </section>
-
-    <!-- SOS Sent confirmation -->
-    <section id="screen-sos-sent" class="screen">
-      <h2 id="h2-sos-sent">SOS Sent</h2>
-      <div id="sos-sent-details"></div>
-      <p class="note">Prototype: alert sending will be connected to the backend.</p>
-      <button class="btn-primary" onclick="showScreen('screen-home')" style="margin-top:12px;">Back to Home</button>
-    </section>
-
-    <!-- Contacts -->
-    <section id="screen-contacts" class="screen">
-      <h2 id="h2-contacts">Trusted Contacts</h2>
-      <form onsubmit="addContact(event)">
-        <label for="c-name">Name</label>
-        <input type="text" id="c-name" placeholder="e.g. Meena Kumari" required />
-        <label for="c-phone">Phone</label>
-        <input type="tel" id="c-phone" placeholder="e.g. 9845001234" required />
-        <label for="c-email">Email (optional)</label>
-        <input type="email" id="c-email" placeholder="e.g. meena@gmail.com" />
-        <button type="submit" class="btn-primary">Add Contact</button>
-      </form>
-      <div id="contacts-list"></div>
-    </section>
-
-    <!-- Live Location -->
-    <section id="screen-location" class="screen">
-      <h2 id="h2-location">Live Location</h2>
-      <div id="map-placeholder">
-        <p>Map Placeholder</p>
-        <p>12.9716&deg; N, 77.5946&deg; E</p>
-        <p>Bengaluru, Karnataka</p>
-      </div>
-      <p><a href="https://maps.google.com/?q=12.9716,77.5946" target="_blank">Open sample tracking link</a></p>
-      <p class="note">Share this link with a trusted person to track your location.</p>
-    </section>
-
-    <!-- Nearby Police and Hospitals -->
-    <section id="screen-nearby" class="screen">
-      <h2 id="h2-nearby">Nearby Police and Hospitals</h2>
-      <table>
-        <thead>
-          <tr><th>Type</th><th>Name</th><th>Distance</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Police</td><td>HSR Layout Police Station</td><td>0.8 km</td></tr>
-          <tr><td>Police</td><td>Koramangala Police Station</td><td>1.4 km</td></tr>
-          <tr><td>Police</td><td>Madiwala Police Station</td><td>2.1 km</td></tr>
-          <tr><td>Hospital</td><td>Fortis Hospital, Bannerghatta Rd</td><td>1.2 km</td></tr>
-          <tr><td>Hospital</td><td>St. John's Medical College Hospital</td><td>2.3 km</td></tr>
-        </tbody>
-      </table>
-      <p class="note">Sample data for Bengaluru. Live data requires backend integration.</p>
-    </section>
-
-    <!-- Helplines -->
-    <section id="screen-helplines" class="screen">
-      <h2 id="h2-helplines">Emergency Helplines</h2>
-      <table>
-        <thead>
-          <tr><th>Service</th><th>Number</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Emergency (All)</td><td><a href="tel:112">112</a></td></tr>
-          <tr><td>Women Helpline</td><td><a href="tel:181">181</a></td></tr>
-          <tr><td>Women Helpline (Alt)</td><td><a href="tel:1091">1091</a></td></tr>
-          <tr><td>Police</td><td><a href="tel:100">100</a></td></tr>
-          <tr><td>Ambulance</td><td><a href="tel:108">108</a></td></tr>
-          <tr><td>Child Helpline</td><td><a href="tel:1098">1098</a></td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <!-- Volunteer Mode -->
-    <section id="screen-volunteer" class="screen">
-      <h2 id="h2-volunteer">Volunteer Mode</h2>
-      <p>Status: <strong id="vol-status">Unavailable</strong></p>
-      <button id="vol-btn" class="btn-secondary" onclick="toggleVol()">Set Available</button>
-      <div id="vol-alert-card">
-        <p><strong>Alert from nearby user</strong></p>
-        <p>Lakshmi R. &mdash; Near Silk Board, Bengaluru</p>
-        <p>Distance: 1.2 km</p>
-        <button class="btn-primary" onclick="respondVol()">I'm Coming</button>
-      </div>
-    </section>
-
-    <!-- Safe-Arrival Timer -->
-    <section id="screen-timer" class="screen">
-      <h2 id="h2-timer">Safe-Arrival Timer</h2>
-      <form onsubmit="startTimer(event)">
-        <label for="timer-mins">Set time (minutes)</label>
-        <input type="number" id="timer-mins" min="1" max="180" placeholder="e.g. 30" required />
-        <button type="submit" class="btn-primary">Start Timer</button>
-      </form>
-      <div id="timer-display">
-        <p id="timer-text"></p>
-        <button class="btn-primary" onclick="safeArrival()">I'm Safe</button>
-      </div>
-    </section>
-
-    <!-- Fake Call -->
-    <section id="screen-fakecall" class="screen">
-      <h2 id="h2-fakecall">Incoming Call</h2>
-      <div id="fakecall-card">
-        <p id="caller-name-disp">Mom</p>
-        <p id="caller-num-disp">+91 98765 43210</p>
-        <div id="fakecall-btns">
-          <button class="btn-primary" onclick="acceptCall()">Accept</button>
-          <button class="btn-danger" onclick="declineCall()">Decline</button>
-        </div>
-        <div id="fakecall-active">
-          <p>Call in progress...</p>
-          <button class="btn-danger" onclick="endCall()">End Call</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Language Settings -->
-    <section id="screen-language" class="screen">
-      <h2 id="h2-language">Language Settings</h2>
-      <p>Select a language:</p>
-      <div id="lang-options">
-        <button class="btn-outline" onclick="setLang('en')">English</button>
-        <button class="btn-outline" onclick="setLang('kn')">Kannada</button>
-        <button class="btn-outline" onclick="setLang('hi')">Hindi</button>
-      </div>
-      <p id="lang-note"></p>
-    </section>
-
-  </div><!-- end #screens -->
-
-  <!-- Bottom navigation (hidden until after login) -->
-  <nav id="bottomnav">
-    <button id="nav-home"      class="nav-btn" onclick="showScreen('screen-home')">Home</button>
-    <button id="nav-contacts"  class="nav-btn" onclick="showScreen('screen-contacts')">Contacts</button>
-    <button id="nav-police"    class="nav-btn" onclick="showScreen('screen-nearby')">Police</button>
-    <button id="nav-volunteer" class="nav-btn" onclick="showScreen('screen-volunteer')">Volunteer</button>
-    <button id="nav-more"      class="nav-btn" onclick="toggleMore()">More</button>
-  </nav>
-
-  <!-- More menu (slides up above nav when More is tapped) -->
-  <div id="more-menu">
-    <button class="more-item" onclick="showScreen('screen-location')">Live Location</button>
-    <button class="more-item" onclick="showScreen('screen-helplines')">Helplines</button>
-    <button class="more-item" onclick="showScreen('screen-timer')">Safe Timer</button>
-    <button class="more-item" onclick="showScreen('screen-fakecall')">Fake Call</button>
-    <button class="more-item" onclick="showScreen('screen-language')">Language</button>
+  <!-- ── Splash ──────────────────────────────────────────── -->
+  <div id="screen-splash" class="screen screen-splash">
+    <div class="splash-inner">
+      <img src="./assets/logo.png" alt="SafeHer" class="splash-logo"
+           onerror="this.style.display='none';document.getElementById('splash-fallback').style.display='block'" />
+      <span id="splash-fallback" class="splash-fallback">SafeHer</span>
+      <p class="splash-tagline">Your safety, always with you</p>
+    </div>
   </div>
 
-  <!-- Fixed footer on every screen -->
-  <footer id="main-footer">SafeHer | CMRIT, Dept of CSE | Rohan P, Pooja M B, Preetem M H</footer>
+  <!-- ── Onboarding ──────────────────────────────────────── -->
+  <div id="screen-onboarding" class="screen">
+    <button class="onboard-skip" id="onboard-skip">Skip</button>
+    <div class="onboard-slider-wrap">
+      <div class="onboard-slider" id="onboard-slider">
+        <div class="onboard-slide">
+          <div class="onboard-illus">
+            <span class="material-symbols-rounded illus-icon">location_on</span>
+            <img src="./assets/onboard1.svg" alt="" onerror="this.style.display='none'" />
+          </div>
+          <p class="onboard-heading">Track Anytime, Anywhere</p>
+          <p class="onboard-text">Share your live location with people you trust.</p>
+          <p class="onboard-text">Stay visible so help can always reach you.</p>
+        </div>
+        <div class="onboard-slide">
+          <div class="onboard-illus">
+            <span class="material-symbols-rounded illus-icon">contacts</span>
+            <img src="./assets/onboard2.svg" alt="" onerror="this.style.display='none'" />
+          </div>
+          <p class="onboard-heading">Emergency Contacts at One Tap</p>
+          <p class="onboard-text">Save your trusted contacts for quick alerts.</p>
+          <p class="onboard-text">One tap sends your location to all of them.</p>
+        </div>
+        <div class="onboard-slide">
+          <div class="onboard-illus">
+            <span class="material-symbols-rounded illus-icon">location_searching</span>
+            <img src="./assets/onboard3.svg" alt="" onerror="this.style.display='none'" />
+          </div>
+          <p class="onboard-heading">Find Safe Places Nearby</p>
+          <p class="onboard-text">Locate nearby police stations and hospitals.</p>
+          <p class="onboard-text">Know where to go when you need help fast.</p>
+        </div>
+      </div>
+    </div>
+    <div class="onboard-dots" id="onboard-dots">
+      <span class="onboard-dot active" data-index="0"></span>
+      <span class="onboard-dot" data-index="1"></span>
+      <span class="onboard-dot" data-index="2"></span>
+    </div>
+    <div class="onboard-actions">
+      <button class="btn btn-primary" id="onboard-btn">Next</button>
+    </div>
+  </div>
 
-  <script src="js/app.js"></script>
+  <!-- ── Auth / Welcome ──────────────────────────────────── -->
+  <div id="screen-auth" class="screen">
+    <div class="auth-welcome-wrap">
+      <div class="auth-logo-box">
+        <span class="material-symbols-rounded auth-logo-icon">shield</span>
+        <img src="./assets/logo.png" alt="" class="auth-logo-img"
+             onerror="this.style.display='none'" />
+      </div>
+      <h1 class="auth-app-name">SafeHer</h1>
+      <p class="auth-tagline">Your safety, always with you</p>
+      <div class="auth-btn-group">
+        <button class="btn btn-primary" onclick="SafeHer.auth.showLogin()">Login</button>
+        <button class="btn btn-secondary" onclick="SafeHer.auth.showRegister()">Create Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Register ────────────────────────────────────────── -->
+  <div id="screen-register" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('auth')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Create Account</span>
+    </div>
+    <div class="page-wrap">
+      <form onsubmit="SafeHer.auth.submitRegister(); return false;">
+        <div class="form-group">
+          <label class="form-label" for="reg-name">Full Name</label>
+          <input class="form-input" id="reg-name" type="text"
+                 placeholder="Your full name" autocomplete="name" />
+          <span class="form-error" id="err-name"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-phone">Phone Number</label>
+          <input class="form-input" id="reg-phone" type="tel"
+                 placeholder="10-digit number" inputmode="numeric"
+                 maxlength="10" autocomplete="tel" />
+          <span class="form-error" id="err-phone"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-email">Email</label>
+          <input class="form-input" id="reg-email" type="email"
+                 placeholder="your@email.com" autocomplete="email" />
+          <span class="form-error" id="err-email"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-pass">Password</label>
+          <input class="form-input" id="reg-pass" type="password"
+                 placeholder="At least 6 characters" autocomplete="new-password" />
+          <span class="form-error" id="err-pass"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-confirm">Confirm Password</label>
+          <input class="form-input" id="reg-confirm" type="password"
+                 placeholder="Repeat password" autocomplete="new-password" />
+          <span class="form-error" id="err-confirm"></span>
+        </div>
+        <div class="form-submit-wrap">
+          <button type="submit" class="btn btn-primary">Create Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Verify OTP ──────────────────────────────────────── -->
+  <div id="screen-verify-otp" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('register')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Verify Phone</span>
+    </div>
+    <div class="page-wrap">
+      <p class="otp-phone-hint" id="otp-phone-hint">Enter the code sent to your phone</p>
+      <div class="otp-row">
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" />
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" />
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" />
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" />
+      </div>
+      <p class="otp-note">Demo OTP: any 4 digits</p>
+      <div class="otp-resend-row">
+        <span id="otp-timer-text">Resend OTP in 30s</span>
+        <button id="otp-resend-btn" class="otp-resend-btn"
+                onclick="SafeHer.auth.resendOTP()">Resend</button>
+      </div>
+      <span class="form-error" id="err-otp"
+            style="display:block;margin-bottom:10px"></span>
+      <button class="btn btn-primary" onclick="SafeHer.auth.submitOTP()">Verify</button>
+    </div>
+  </div>
+
+  <!-- ── Signup Success ──────────────────────────────────── -->
+  <div id="screen-signup-success" class="screen">
+    <div class="page-wrap success-wrap">
+      <div class="success-illus">
+        <span class="material-symbols-rounded"
+              style="font-size:72px;color:var(--crimson)">check_circle</span>
+        <img src="./assets/success.svg" alt="" onerror="this.style.display='none'" />
+      </div>
+      <p class="success-heading">You're all set!</p>
+      <p class="success-subtext">Your account has been created.<br/>Welcome to SafeHer.</p>
+      <button class="btn btn-primary"
+              onclick="SafeHer.auth.continueAfterSignup()">Continue</button>
+    </div>
+  </div>
+
+  <!-- ── Login ───────────────────────────────────────────── -->
+  <div id="screen-login" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('auth')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Login</span>
+    </div>
+    <div class="page-wrap">
+      <form onsubmit="SafeHer.auth.submitLogin(); return false;">
+        <div class="form-group">
+          <label class="form-label" for="login-phone">Phone Number</label>
+          <input class="form-input" id="login-phone" type="tel"
+                 placeholder="10-digit number" inputmode="numeric"
+                 maxlength="10" autocomplete="tel" />
+          <span class="form-error" id="err-login-phone"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="login-pass">Password</label>
+          <input class="form-input" id="login-pass" type="password"
+                 placeholder="Your password" autocomplete="current-password" />
+          <span class="form-error" id="err-login-pass"></span>
+        </div>
+        <span class="form-error" id="err-login"
+              style="display:block;margin-bottom:12px"></span>
+        <div class="form-submit-wrap">
+          <button type="submit" class="btn btn-primary">Login</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       HOME SCREEN
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-home" class="screen has-nav">
+
+    <!-- Sticky header -->
+    <div class="home-header">
+      <div class="home-greeting">
+        <p class="home-hello">Hello, <span id="home-name">there</span></p>
+        <div class="home-location-row">
+          <span class="material-symbols-rounded home-loc-icon">location_on</span>
+          <span id="home-location">Locating…</span>
+        </div>
+      </div>
+      <button class="home-avatar" onclick="SafeHer.router.go('profile')"
+              aria-label="Open profile">
+        <span class="material-symbols-rounded">account_circle</span>
+      </button>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="home-body">
+
+      <!-- SOS section -->
+      <div class="sos-section">
+        <p class="sos-heading">Are you in emergency?</p>
+        <p class="sos-sub">Press the SOS button and your contacts will be alerted</p>
+
+        <div class="sos-wrap">
+          <div class="sos-ring2">
+            <div class="sos-ring1">
+              <button class="sos-btn" id="sos-btn"
+                      onclick="SafeHer.home.triggerSOS()">SOS</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sos-status">
+          <span class="status-dot status-safe" id="status-dot"></span>
+          <span id="sos-status-text">You are safe</span>
+        </div>
+
+        <div class="chip-row">
+          <button class="chip" onclick="SafeHer.router.go('fake-call')">
+            <span class="material-symbols-rounded">phone</span>Fake Call
+          </button>
+          <button class="chip" onclick="SafeHer.router.go('location')">
+            <span class="material-symbols-rounded">location_on</span>Location
+          </button>
+        </div>
+      </div>
+
+      <!-- Tile grid -->
+      <div class="tile-grid">
+        <button class="tile" onclick="SafeHer.router.go('live-location')">
+          <span class="material-symbols-rounded">my_location</span>
+          <span class="tile-label">Live Location</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('share-location')">
+          <span class="material-symbols-rounded">share_location</span>
+          <span class="tile-label">Share Location</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('helplines')">
+          <span class="material-symbols-rounded">local_police</span>
+          <span class="tile-label">Call Police</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('nearby-places')">
+          <span class="material-symbols-rounded">location_searching</span>
+          <span class="tile-label">Nearby Places</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('volunteers')">
+          <span class="material-symbols-rounded">groups</span>
+          <span class="tile-label">Volunteers</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('safe-timer')">
+          <span class="material-symbols-rounded">timer</span>
+          <span class="tile-label">Safe Timer</span>
+        </button>
+      </div>
+
+      <!-- Footer stats -->
+      <div class="home-stats">
+        <button class="stat-link" onclick="SafeHer.router.go('contacts')">
+          Trusted contacts: <span id="home-contacts-count">0</span>
+        </button>
+        <span class="stat-sep">·</span>
+        <span class="stat-text">Volunteers nearby:
+          <span id="home-volunteers-count">0</span>
+        </span>
+      </div>
+
+    </div><!-- /.home-body -->
+  </div><!-- /#screen-home -->
+
+  <!-- ── SOS Countdown Overlay ───────────────────────────── -->
+  <div id="sos-countdown-overlay" class="sos-countdown-overlay">
+    <div class="sos-countdown-content">
+      <p class="sos-countdown-tag">EMERGENCY ALERT</p>
+      <div class="sos-countdown-number" id="sos-countdown-num">5</div>
+      <p class="sos-countdown-desc">Sending emergency alert to your contacts...</p>
+      <button class="btn sos-countdown-cancel" onclick="SafeHer.sos.cancelCountdown()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ── SOS Active / Sent Screen ──────────────────────────── -->
+  <div id="screen-sos-active" class="screen">
+    <div class="topbar">
+      <span class="topbar-title" style="color: var(--crimson);">SOS Alert Active</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 24px;">
+      <div class="sos-sent-banner">
+        <div class="sos-pulse-indicator"></div>
+        <div>
+          <p class="sos-sent-heading">Emergency Alert Sent</p>
+          <p class="sos-sent-time" id="sos-alert-time">Just now</p>
+        </div>
+      </div>
+
+      <!-- Leaflet Map Container -->
+      <div class="sos-map-wrap">
+        <div id="sos-map" class="sos-map"></div>
+      </div>
+
+      <!-- Google Maps Link -->
+      <div class="sos-link-row">
+        <a id="sos-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 13px; padding: 10px 14px;">
+          <span class="material-symbols-rounded">map</span>Open in Google Maps
+        </a>
+      </div>
+
+      <!-- Live Volunteers Status -->
+      <div class="sos-status-box">
+        <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">hourglass_top</span>
+        <span class="sos-status-label" id="sos-status-sub">Waiting for volunteers...</span>
+      </div>
+
+      <!-- Notified Contacts Section -->
+      <div class="sos-contacts-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <p class="sos-section-title" style="margin-bottom: 0;">Contacts Notified</p>
+          <button class="btn btn-secondary sos-share-all-btn" onclick="SafeHer.sos.shareToAll()" aria-label="Share alert with all contacts">
+            <span class="material-symbols-rounded" style="font-size: 16px;">share</span>Share to all
+          </button>
+        </div>
+        <div id="sos-notified-list" class="sos-notified-list"></div>
+      </div>
+
+      <!-- Prototype Note -->
+      <p class="prototype-note">Prototype: alerts will be sent via the backend.</p>
+
+      <!-- I'm Safe Button -->
+      <div style="margin-top: 18px;">
+        <button class="btn btn-primary" onclick="SafeHer.sos.endAlert()" style="background: #27AE60;">
+          <span class="material-symbols-rounded">check</span>I'm Safe
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Fake Call ────────────────────────────────────────── -->
+  <div id="screen-fake-call" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Fake Call</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">phone</span>
+      <p class="placeholder-text">Fake Call coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Location ─────────────────────────────────────────── -->
+  <div id="screen-location" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Location</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">location_on</span>
+      <p class="placeholder-text">Location screen coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Live Location ────────────────────────────────────── -->
+  <div id="screen-live-location" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Live Location</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">my_location</span>
+      <p class="placeholder-text">Live Location coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Share Location ───────────────────────────────────── -->
+  <div id="screen-share-location" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Share Location</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">share_location</span>
+      <p class="placeholder-text">Share Location coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Helplines ─────────────────────────────────────────── -->
+  <div id="screen-helplines" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Helplines</span>
+    </div>
+    <div class="page-wrap">
+      <p class="helplines-note">Tap a number to call</p>
+
+      <div class="helpline-row">
+        <div class="helpline-info">
+          <p class="helpline-name">Emergency Response</p>
+          <p class="helpline-num">112</p>
+        </div>
+        <a class="call-btn" href="tel:112" aria-label="Call 112">
+          <span class="material-symbols-rounded">call</span>
+        </a>
+      </div>
+
+      <div class="helpline-row">
+        <div class="helpline-info">
+          <p class="helpline-name">Women Helpline</p>
+          <p class="helpline-num">181</p>
+        </div>
+        <a class="call-btn" href="tel:181" aria-label="Call 181">
+          <span class="material-symbols-rounded">call</span>
+        </a>
+      </div>
+
+      <div class="helpline-row">
+        <div class="helpline-info">
+          <p class="helpline-name">Women Distress</p>
+          <p class="helpline-num">1091</p>
+        </div>
+        <a class="call-btn" href="tel:1091" aria-label="Call 1091">
+          <span class="material-symbols-rounded">call</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Nearby Places ────────────────────────────────────── -->
+  <div id="screen-nearby-places" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Nearby Places</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">location_searching</span>
+      <p class="placeholder-text">Nearby Places coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Volunteers ───────────────────────────────────────── -->
+  <div id="screen-volunteers" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Volunteers</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">groups</span>
+      <p class="placeholder-text">Volunteers coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Safe Timer ───────────────────────────────────────── -->
+  <div id="screen-safe-timer" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Safe Timer</span>
+    </div>
+    <div class="page-wrap placeholder-wrap">
+      <span class="material-symbols-rounded placeholder-icon">timer</span>
+      <p class="placeholder-text">Safe Timer coming soon</p>
+    </div>
+  </div>
+
+  <!-- ── Contacts ────────────────────────────────────────── -->
+  <div id="screen-contacts" class="screen has-nav">
+    <div class="topbar">
+      <span class="topbar-title" style="margin-left: 8px;">Emergency Contacts</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 80px;">
+      <div id="contacts-empty" class="contacts-empty" style="display: none;">
+        <span class="material-symbols-rounded empty-icon">contacts</span>
+        <p class="empty-title">No contacts added yet</p>
+        <p class="empty-sub">Add trusted people who will be alerted in emergencies.</p>
+        <button class="btn btn-primary" onclick="SafeHer.contacts.openModal()" style="margin-top: 10px; max-width: 200px;">Add Contact</button>
+      </div>
+
+      <div id="contacts-list" class="contacts-list"></div>
+    </div>
+
+    <!-- Floating Add Button -->
+    <button class="fab-btn" id="contacts-fab-btn" onclick="SafeHer.contacts.openModal()" aria-label="Add Contact">
+      <span class="material-symbols-rounded">add</span>
+    </button>
+
+    <!-- Add/Edit Contact Modal Sheet -->
+    <div id="contact-modal" class="modal-backdrop" style="display: none;">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <span class="modal-title" id="contact-modal-title">Add Contact</span>
+          <button class="modal-close-btn" onclick="SafeHer.contacts.closeModal()">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+        <form onsubmit="SafeHer.contacts.submitForm(); return false;" class="modal-body">
+          <input type="hidden" id="contact-edit-id" value="" />
+          <div class="form-group">
+            <label class="form-label" for="contact-name">Name</label>
+            <input class="form-input" id="contact-name" type="text" placeholder="Contact name" />
+            <span class="form-error" id="err-contact-name"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-phone">Phone Number</label>
+            <input class="form-input" id="contact-phone" type="tel" placeholder="10-digit number" inputmode="numeric" maxlength="10" />
+            <span class="form-error" id="err-contact-phone"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-email">Email (Optional)</label>
+            <input class="form-input" id="contact-email" type="email" placeholder="contact@email.com" />
+            <span class="form-error" id="err-contact-email"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-relation">Relationship</label>
+            <select class="form-input form-select" id="contact-relation">
+              <option value="Parent">Parent</option>
+              <option value="Sibling">Sibling</option>
+              <option value="Spouse">Spouse</option>
+              <option value="Friend">Friend</option>
+              <option value="Colleague">Colleague</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-submit-wrap" style="display: flex; gap: 8px; margin-top: 14px;">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.contacts.closeModal()" style="flex: 1;">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="contact-submit-btn" style="flex: 1;">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tips ────────────────────────────────────────────── -->
+  <div id="screen-tips" class="screen has-nav">
+    <div class="page-wrap">
+      <p class="page-title">Tips</p>
+    </div>
+  </div>
+
+  <!-- ── Profile ─────────────────────────────────────────── -->
+  <div id="screen-profile" class="screen has-nav">
+    <div class="page-wrap">
+      <p class="page-title">Profile</p>
+    </div>
+  </div>
+
+  <!-- ── Bottom Navigation ───────────────────────────────── -->
+  <nav id="bottom-nav" class="bottom-nav hidden" aria-label="Main navigation">
+    <button class="nav-item" data-screen="home"
+            onclick="SafeHer.router.go('home')">
+      <span class="material-symbols-rounded">home</span>
+      <span class="nav-label">Home</span>
+    </button>
+    <button class="nav-item" data-screen="contacts"
+            onclick="SafeHer.router.go('contacts')">
+      <span class="material-symbols-rounded">contacts</span>
+      <span class="nav-label">Contacts</span>
+    </button>
+    <button class="nav-item" data-screen="tips"
+            onclick="SafeHer.router.go('tips')">
+      <span class="material-symbols-rounded">lightbulb</span>
+      <span class="nav-label">Tips</span>
+    </button>
+    <button class="nav-item" data-screen="profile"
+            onclick="SafeHer.router.go('profile')">
+      <span class="material-symbols-rounded">person</span>
+      <span class="nav-label">Profile</span>
+    </button>
+  </nav>
+
+</div><!-- /#app -->
+
+<script src="./js/storage.js"></script>
+<script src="./js/api.js"></script>
+<script src="./js/app.js"></script>
+<script src="./js/onboarding.js"></script>
+<script src="./js/auth.js"></script>
+<script src="./js/home.js"></script>
+<script src="./js/contacts.js"></script>
+<script src="./js/sos.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 </body>
 </html>
