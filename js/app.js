@@ -8,18 +8,29 @@ SafeHer.router = (function() {
   var NO_NAV = [
     'splash', 'onboarding',
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
-    'fake-call', 'location', 'live-location', 'share-location',
-    'helplines', 'nearby-places', 'volunteers', 'safe-timer',
-    'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin'
+    'fake-call', 'location', 'live-location', 'share-location', 'map',
+    'helplines', 'nearby-places', 'police', 'volunteers', 'safe-timer',
+    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin'
   ];
 
   var current = null;
   var hooks   = {};   // onShow callbacks keyed by screen id
 
   function go(id) {
+    if (id === 'live-location' || id === 'share-location') {
+      id = 'map';
+    }
+    if (id === 'police') {
+      id = 'nearby-places';
+    }
+
     var prev = document.querySelector('.screen.active');
     var next = document.getElementById('screen-' + id);
     if (!next) { console.warn('SafeHer: no screen #screen-' + id); return; }
+
+    if (prev && prev.id === 'screen-map' && SafeHer.map && SafeHer.map.stopTracking) {
+      SafeHer.map.stopTracking();
+    }
 
     if (prev) prev.classList.remove('active');
     next.classList.add('active');
@@ -73,17 +84,27 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.tips.init();
   SafeHer.profile.init();
   SafeHer.sos.init();
+  SafeHer.map.init();
+  SafeHer.police.init();
+  SafeHer.volunteer.init();
+  SafeHer.timer.init();
+  SafeHer.fakecall.init();
+  SafeHer.i18n.init();
+  SafeHer.evidence.init();
 
   // Check for SOS shortcut launch (?sos=1)
   var urlParams = new URLSearchParams(window.location.search);
   var isSosShortcut = urlParams.get('sos') === '1';
 
+  if (isSosShortcut) {
+    SafeHer.router.go('home');
+    SafeHer.sos.startCountdown();
+    return;
+  }
+
   SafeHer.router.go('splash');
   setTimeout(function() {
-    if (isSosShortcut) {
-      SafeHer.router.go('home');
-      SafeHer.sos.startCountdown();
-    } else if (SafeHer.api.isLoggedIn()) {
+    if (SafeHer.api.isLoggedIn()) {
       SafeHer.router.go('home');
     } else if (SafeHer.api.hasSeenOnboarding()) {
       SafeHer.router.go('auth');

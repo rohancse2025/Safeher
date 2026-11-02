@@ -41,11 +41,11 @@ SafeHer.home = (function() {
   function fetchLocation(isRetry) {
     if (locFetched && !isRetry) return;
     if (!navigator.geolocation) {
-      setLocText('Location off', false);
+      setLocText('Location off', true);
       return;
     }
 
-    setLocText('Locating…', false);
+    setLocText('Locating...', false);
 
     var timedOut = false;
     var timer = setTimeout(function() {

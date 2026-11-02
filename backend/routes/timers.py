@@ -1,0 +1,266 @@
+# backend/routes/timers.py – Safe timer management and 10-second background expiration escalation
+import time
+import secrets
+import datetime
+import threading
+from flask import Blueprint, request, jsonify, g
+
+from db import get_db
+from routes.auth import login_required
+from email_service import send_alert_notifications_background
+
+timers_bp = Blueprint('timers', __name__)
+
+
+# ─── Route: POST /api/timers ─────────────────────────────────
+@timers_bp.route('/api/timers', methods=['POST'])
+@login_required
+def create_timer():
+    """
+    Start a new Safe Timer with duration in minutes and optional trusted contact.
+    Expects JSON: { minutes: int, contact_id: int (optional) }
+    """
+    user_id = g.current_user['id']
+    data = request.get_json(silent=True) or {}
+
+    try:
+        minutes = float(data.get('minutes'))
+        if minutes <= 0:
+            return jsonify({"ok": False, "error": "Minutes must be greater than zero"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Minutes is required and must be a valid number"}), 400
+
+    contact_id = data.get('contact_id')
+    if contact_id:
+        try:
+            contact_id = int(contact_id)
+        except (ValueError, TypeError):
+            return jsonify({"ok": False, "error": "Invalid contact_id"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Validate contact belongs to user if specified
+    if contact_id:
+        cursor.execute('SELECT id FROM contacts WHERE id = ? AND user_id = ?;', (contact_id, user_id))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"ok": False, "error": "Contact not found"}), 404
+
+    # Cancel any currently running timers for this user
+    cursor.execute("UPDATE timers SET status = 'cancelled' WHERE user_id = ? AND status = 'active';", (user_id,))
+
+    # Calculate deadline in UTC
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    deadline_utc = now_utc + datetime.timedelta(minutes=minutes)
+    deadline_str = deadline_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute('''
+        INSERT INTO timers (user_id, contact_id, deadline, status)
+        VALUES (?, ?, ?, 'active');
+    ''', (user_id, contact_id, deadline_str))
+    timer_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": timer_id,
+            "user_id": user_id,
+            "contact_id": contact_id,
+            "minutes": minutes,
+            "deadline": deadline_str,
+            "status": "active"
+        }
+    }), 201
+
+
+# ─── Route: POST /api/timers/<id>/safe ───────────────────────
+@timers_bp.route('/api/timers/<int:timer_id>/safe', methods=['POST'])
+@login_required
+def mark_timer_safe(timer_id):
+    """
+    Cancel / mark a running timer as safe. Owner only.
+    """
+    user_id = g.current_user['id']
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, status FROM timers WHERE id = ? AND user_id = ?;', (timer_id, user_id))
+    timer = cursor.fetchone()
+
+    if not timer:
+        conn.close()
+        return jsonify({"ok": False, "error": "Timer not found"}), 404
+
+    cursor.execute("UPDATE timers SET status = 'safe' WHERE id = ? AND user_id = ?;", (timer_id, user_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": timer_id,
+            "status": "safe",
+            "message": "Timer marked safe successfully"
+        }
+    }), 200
+
+
+# ─── Route: GET /api/timers/active ───────────────────────────
+@timers_bp.route('/api/timers/active', methods=['GET'])
+@login_required
+def get_active_timer():
+    """
+    Get the authenticated user's currently running timer, if any.
+    """
+    user_id = g.current_user['id']
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, user_id, contact_id, deadline, status
+        FROM timers
+        WHERE user_id = ? AND status = 'active'
+        ORDER BY id DESC LIMIT 1;
+    ''', (user_id,))
+    timer = cursor.fetchone()
+    conn.close()
+
+    if not timer:
+        return jsonify({
+            "ok": True,
+            "data": None
+        }), 200
+
+    timer_dict = dict(timer)
+    # Calculate seconds remaining
+    try:
+        deadline_dt = datetime.datetime.strptime(timer_dict['deadline'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        remaining_secs = max(0, int((deadline_dt - now_dt).total_seconds()))
+    except Exception:
+        remaining_secs = 0
+
+    timer_dict['remaining_seconds'] = remaining_secs
+    return jsonify({
+        "ok": True,
+        "data": timer_dict
+    }), 200
+
+
+# ─── Background Daemon: Check Expired Timers Every 10s ───────
+def check_expired_timers():
+    """
+    Checks for active timers that passed their deadline.
+    For each expired timer:
+      1. Marks timer as 'expired'
+      2. Creates an emergency alert with mode='timer'
+      3. Dispatches emails to emergency contacts
+    """
+    now_utc_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Find active timers that expired
+    cursor.execute('''
+        SELECT t.id, t.user_id, t.contact_id, t.deadline, u.name
+        FROM timers t
+        JOIN users u ON t.user_id = u.id
+        WHERE t.status = 'active' AND t.deadline <= ?;
+    ''', (now_utc_str,))
+    expired_timers = cursor.fetchall()
+
+    for item in expired_timers:
+        timer_id = item['id']
+        user_id = item['user_id']
+        user_name = item['name']
+
+        # 1. Mark timer as expired
+        cursor.execute("UPDATE timers SET status = 'expired' WHERE id = ?;", (timer_id,))
+
+        # 2. Find last known coordinates for user
+        # Check locations table first
+        cursor.execute('''
+            SELECT l.lat, l.lng
+            FROM locations l
+            JOIN alerts a ON l.alert_id = a.id
+            WHERE a.user_id = ?
+            ORDER BY l.id DESC LIMIT 1;
+        ''', (user_id,))
+        loc_row = cursor.fetchone()
+
+        if loc_row and loc_row['lat'] is not None and loc_row['lng'] is not None:
+            last_lat = loc_row['lat']
+            last_lng = loc_row['lng']
+        else:
+            # Fallback to volunteer location if available
+            cursor.execute('SELECT lat, lng FROM volunteers WHERE user_id = ?;', (user_id,))
+            vol_loc = cursor.fetchone()
+            if vol_loc and vol_loc['lat'] is not None and vol_loc['lng'] is not None:
+                last_lat = vol_loc['lat']
+                last_lng = vol_loc['lng']
+            else:
+                # Default Bengaluru fallback coordinates if none logged
+                last_lat = 12.9716
+                last_lng = 77.5946
+
+        # 3. Create alert with mode 'timer'
+        share_token = secrets.token_urlsafe(16)
+        cursor.execute('''
+            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress)
+            VALUES (?, 'timer', 'active', ?, ?, ?, 0, 0);
+        ''', (user_id, last_lat, last_lng, share_token))
+        alert_id = cursor.lastrowid
+
+        # Record location entry
+        cursor.execute('''
+            INSERT INTO locations (alert_id, lat, lng)
+            VALUES (?, ?, ?);
+        ''', (alert_id, last_lat, last_lng))
+
+        # 4. Get emergency contact emails
+        cursor.execute('''
+            SELECT email FROM contacts
+            WHERE user_id = ? AND email IS NOT NULL AND TRIM(email) != '';
+        ''', (user_id,))
+        contacts_emails = [r['email'].strip() for r in cursor.fetchall() if r['email']]
+
+        conn.commit()
+
+        # 5. Dispatch emergency emails to contacts
+        if contacts_emails:
+            send_alert_notifications_background(
+                alert_id=alert_id,
+                user_name=user_name,
+                mode="timer",
+                started_at_str=now_utc_str,
+                lat=last_lat,
+                lng=last_lng,
+                share_token=share_token,
+                recipient_emails=contacts_emails
+            )
+        print(f"[TimerMonitor] Expired timer {timer_id} escalated to SOS Alert {alert_id} for user {user_id}")
+
+    conn.close()
+
+
+def start_timer_monitor():
+    """
+    Launch background thread checking for expired timers every 10 seconds.
+    """
+    def loop():
+        while True:
+            try:
+                check_expired_timers()
+            except Exception as e:
+                print(f"[TimerMonitor Loop Error] {e}")
+            time.sleep(10)
+
+    monitor_thread = threading.Thread(target=loop, daemon=True)
+    monitor_thread.start()

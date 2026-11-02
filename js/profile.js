@@ -71,50 +71,57 @@ SafeHer.profile = (function() {
     var listEl = document.getElementById('profile-alert-history');
     if (!listEl) return;
 
-    var alerts = SafeHer.api.getAlerts();
+    function buildAlertsHtml(alerts) {
+      if (!alerts || alerts.length === 0) {
+        return '<div class="alert-empty-card">' +
+          '<span class="material-symbols-rounded alert-empty-icon">history</span>' +
+          '<p class="alert-empty-title">No alerts triggered yet</p>' +
+          '<p class="alert-empty-sub">Your emergency SOS alerts and mode history will appear here.</p>' +
+        '</div>';
+      }
 
-    if (!alerts || alerts.length === 0) {
-      listEl.innerHTML = '<div class="alert-empty-card">' +
-        '<span class="material-symbols-rounded alert-empty-icon">history</span>' +
-        '<p class="alert-empty-title">No alerts triggered yet</p>' +
-        '<p class="alert-empty-sub">Your emergency SOS alerts and mode history will appear here.</p>' +
-      '</div>';
-      return;
-    }
+      var html = '';
+      for (var i = 0; i < alerts.length; i++) {
+        var a = alerts[i];
+        var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : (a.mode === 'timer' ? 'Timer' : 'Normal'));
+        var modeClass = a.mode === 'emergency' ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : 'alert-mode-normal');
+        var statusLabel = a.status === 'active' ? 'Active' : 'Resolved';
+        var statusClass = a.status === 'active' ? 'alert-status-active' : 'alert-status-resolved';
 
-    var html = '';
-    for (var i = 0; i < alerts.length; i++) {
-      var a = alerts[i];
-      var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : 'Normal');
-      var modeClass = a.mode === 'emergency' ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : 'alert-mode-normal');
-      var statusLabel = a.status === 'active' ? 'Active' : 'Resolved';
-      var statusClass = a.status === 'active' ? 'alert-status-active' : 'alert-status-resolved';
+        var dateStr = a.timestamp ? new Date(a.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        var timeStr = a.time || '';
 
-      var dateStr = a.timestamp ? new Date(a.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-      var timeStr = a.time || '';
+        var mapsLink = (a.lat && a.lng)
+          ? '<a href="https://www.google.com/maps?q=' + a.lat + ',' + a.lng + '" target="_blank" rel="noopener noreferrer" class="alert-item-link"><span class="material-symbols-rounded">map</span>Map</a>'
+          : '';
 
-      var mapsLink = (a.lat && a.lng)
-        ? '<a href="https://www.google.com/maps?q=' + a.lat + ',' + a.lng + '" target="_blank" rel="noopener noreferrer" class="alert-item-link"><span class="material-symbols-rounded">map</span>Map</a>'
-        : '';
+        var endedStr = a.endTime ? '<span class="alert-item-ended">Ended ' + escapeHtml(a.endTime) + '</span>' : '';
 
-      var endedStr = a.endTime ? '<span class="alert-item-ended">Ended ' + escapeHtml(a.endTime) + '</span>' : '';
-
-      html += '<div class="alert-history-item">' +
-        '<div class="alert-item-top">' +
-          '<div style="display:flex;align-items:center;gap:6px;">' +
-            '<span class="alert-mode-badge ' + modeClass + '">' + escapeHtml(modeLabel) + '</span>' +
-            '<span class="alert-item-time">' + escapeHtml(timeStr) + (dateStr ? ' · ' + escapeHtml(dateStr) : '') + '</span>' +
+        html += '<div class="alert-history-item">' +
+          '<div class="alert-item-top">' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+              '<span class="alert-mode-badge ' + modeClass + '">' + escapeHtml(modeLabel) + '</span>' +
+              '<span class="alert-item-time">' + escapeHtml(timeStr) + (dateStr ? ' · ' + escapeHtml(dateStr) : '') + '</span>' +
+            '</div>' +
+            '<span class="alert-status-badge ' + statusClass + '">' + escapeHtml(statusLabel) + '</span>' +
           '</div>' +
-          '<span class="alert-status-badge ' + statusClass + '">' + escapeHtml(statusLabel) + '</span>' +
-        '</div>' +
-        '<div class="alert-item-bottom">' +
-          endedStr +
-          mapsLink +
-        '</div>' +
-      '</div>';
+          '<div class="alert-item-bottom">' +
+            endedStr +
+            mapsLink +
+          '</div>' +
+        '</div>';
+      }
+      return html;
     }
 
-    listEl.innerHTML = html;
+    listEl.innerHTML = buildAlertsHtml(SafeHer.api.getAlerts());
+    if (SafeHer.api && SafeHer.api.getAlerts) {
+      SafeHer.api.getAlerts(function(err, serverAlerts) {
+        if (!err && serverAlerts) {
+          listEl.innerHTML = buildAlertsHtml(serverAlerts);
+        }
+      });
+    }
   }
 
   // ─── Edit Profile Modal ───────────────────────────────────

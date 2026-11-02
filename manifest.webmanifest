@@ -5,18 +5,27 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#A80F3C",
+  "orientation": "portrait",
+  "background_color": "#FCEFF3",
   "theme_color": "#A80F3C",
   "icons": [
     {
-      "src": "./assets/logo.png",
+      "src": "./assets/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "./assets/logo.png",
+      "src": "./assets/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
@@ -27,7 +36,7 @@
       "url": "./?sos=1",
       "icons": [
         {
-          "src": "./assets/logo.png",
+          "src": "./assets/icon-192.png",
           "sizes": "192x192"
         }
       ]

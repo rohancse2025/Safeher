@@ -132,10 +132,15 @@ SafeHer.auth = (function() {
       return;
     }
 
-    SafeHer.api.registerUser(pendingUser);
-    pendingUser = null;
-    clearInterval(resendTimer);
-    SafeHer.router.go('signup-success');
+    SafeHer.api.registerUser(pendingUser, function(err, user) {
+      if (err) {
+        setErr('err-otp', err);
+        return;
+      }
+      pendingUser = null;
+      clearInterval(resendTimer);
+      SafeHer.router.go('signup-success');
+    });
   }
 
   // ─── Signup success ────────────────────────────────────────
@@ -165,13 +170,14 @@ SafeHer.auth = (function() {
     }
     if (!ok) return;
 
-    // POST /api/auth/login  →  backend returns JWT on success
-    var user = SafeHer.api.loginUser(phone, pass);
-    if (!user) {
-      setErr('err-login', 'Incorrect phone number or password');
-      return;
-    }
-    SafeHer.router.go('home');
+    // POST /api/login via backend, with callback and fallback
+    SafeHer.api.loginUser(phone, pass, function(err, user) {
+      if (err || !user) {
+        setErr('err-login', err || 'Incorrect phone number or password');
+        return;
+      }
+      SafeHer.router.go('home');
+    });
   }
 
   // ─── Logout ───────────────────────────────────────────────

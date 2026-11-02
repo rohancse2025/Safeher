@@ -83,9 +83,9 @@ SafeHer.sos = (function() {
   }
 
   // ─── Duration Counter (mm:ss) ───────────────────────────
-  function startDurationCounter() {
+  function startDurationCounter(startTime) {
     clearInterval(durationTimer);
-    alertStartTime = Date.now();
+    alertStartTime = startTime || Date.now();
     updateDurationDisplay();
 
     durationTimer = setInterval(function() {
@@ -98,7 +98,7 @@ SafeHer.sos = (function() {
     var emDurEl = document.getElementById('em-sos-duration');
     if (!alertStartTime) return;
 
-    var elapsedSecs = Math.floor((Date.now() - alertStartTime) / 1000);
+    var elapsedSecs = Math.max(0, Math.floor((Date.now() - alertStartTime) / 1000));
     var mins = Math.floor(elapsedSecs / 60);
     var secs = elapsedSecs % 60;
     var mm = (mins < 10 ? '0' : '') + mins;
@@ -216,8 +216,35 @@ SafeHer.sos = (function() {
       lng: currentLng,
       mode: currentMode,
       status: 'active'
+    }, function(err, created) {
+      if (!err && created && created.id) {
+        currentAlertId = created.id;
+        var active = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
+        if (active) {
+          active.id = created.id;
+          if (created.shareToken) active.shareToken = created.shareToken;
+          SafeHer.api.setActiveSos(active);
+        }
+      }
     });
     currentAlertId = newAlert ? newAlert.id : Date.now();
+
+    if (SafeHer.api && SafeHer.api.setActiveSos) {
+      SafeHer.api.setActiveSos({
+        id: currentAlertId,
+        time: currentAlertTime,
+        timestamp: Date.now(),
+        lat: currentLat,
+        lng: currentLng,
+        mode: currentMode,
+        status: 'active',
+        volunteersEnRoute: 0,
+        volunteerStatus: 'Waiting for volunteers...'
+      });
+    }
+
+    var volunteerSubEl = document.getElementById('sos-status-sub');
+    if (volunteerSubEl) volunteerSubEl.textContent = 'Waiting for volunteers...';
 
     startDurationCounter();
     startTrackingInterval();
@@ -227,11 +254,11 @@ SafeHer.sos = (function() {
       var timeEl = document.getElementById('sos-alert-time');
       if (timeEl) timeEl.textContent = currentAlertTime;
 
+      SafeHer.router.go('sos-active');
       updateMap(currentLat, currentLng);
       updateGmapsLink(currentLat, currentLng, 'sos-gmaps-link');
       renderNotifiedContacts('sos-notified-list');
 
-      SafeHer.router.go('sos-active');
       SafeHer.toast('SOS activated');
 
       if (mapInstance) {
@@ -258,6 +285,14 @@ SafeHer.sos = (function() {
               lat: currentLat,
               lng: currentLng
             });
+            if (SafeHer.api.getActiveSos) {
+              var activeSos = SafeHer.api.getActiveSos();
+              if (activeSos && activeSos.id === currentAlertId) {
+                activeSos.lat = currentLat;
+                activeSos.lng = currentLng;
+                SafeHer.api.setActiveSos(activeSos);
+              }
+            }
           }
 
           if (currentMode === 'normal') {
@@ -316,9 +351,9 @@ SafeHer.sos = (function() {
     if (silentTapTimes.length >= 3) {
       silentTapTimes = [];
       SafeHer.askPin(
-        function() {
+        function(enteredPin) {
           // Correct PIN -> end alert
-          endAlertSilently();
+          endAlertSilently(enteredPin);
         },
         function() {
           // Wrong PIN or cancelled -> return silently to black screen
@@ -328,7 +363,7 @@ SafeHer.sos = (function() {
     }
   }
 
-  function endAlertSilently() {
+  function endAlertSilently(enteredPin) {
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
@@ -342,11 +377,19 @@ SafeHer.sos = (function() {
     }
 
     if (currentAlertId) {
-      SafeHer.api.updateAlert(currentAlertId, {
-        status: 'resolved',
-        endTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      });
+      if (SafeHer.api && SafeHer.api.endAlert) {
+        SafeHer.api.endAlert(currentAlertId, enteredPin || '');
+      } else {
+        SafeHer.api.updateAlert(currentAlertId, {
+          status: 'resolved',
+          endTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+      }
       currentAlertId = null;
+    }
+
+    if (SafeHer.api && SafeHer.api.clearActiveSos) {
+      SafeHer.api.clearActiveSos();
     }
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
@@ -460,9 +503,13 @@ SafeHer.sos = (function() {
       } else {
         markerInstance = L.marker([lat, lng]).addTo(mapInstance);
       }
+    }
+
+    if (mapInstance) {
+      mapInstance.invalidateSize();
       setTimeout(function() {
         if (mapInstance) mapInstance.invalidateSize();
-      }, 200);
+      }, 300);
     }
   }
 
@@ -494,7 +541,7 @@ SafeHer.sos = (function() {
       var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
       var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMessage;
       var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMessage;
-      var telUrl = 'tel:' + rawPhone;
+      var telUrl = rawPhone ? 'tel:' + rawPhone : '#';
       var initial = (c.name || '?').charAt(0).toUpperCase();
 
       html += '<div class="sos-notified-item">' +
@@ -570,6 +617,14 @@ SafeHer.sos = (function() {
               lat: currentLat,
               lng: currentLng
             });
+            if (SafeHer.api.getActiveSos) {
+              var activeSos = SafeHer.api.getActiveSos();
+              if (activeSos && activeSos.id === currentAlertId) {
+                activeSos.lat = currentLat;
+                activeSos.lng = currentLng;
+                SafeHer.api.setActiveSos(activeSos);
+              }
+            }
           }
 
           if (currentMode === 'normal') {
@@ -600,12 +655,12 @@ SafeHer.sos = (function() {
 
   // ─── End Alert ("I'm Safe" & "Stop Alarm") protected by PIN ─
   function requestEndAlert() {
-    SafeHer.askPin(function() {
-      finishEndingAlert();
+    SafeHer.askPin(function(enteredPin) {
+      finishEndingAlert(enteredPin);
     });
   }
 
-  function finishEndingAlert() {
+  function finishEndingAlert(enteredPin) {
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
@@ -618,12 +673,23 @@ SafeHer.sos = (function() {
 
     var endTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (currentAlertId) {
-      SafeHer.api.updateAlert(currentAlertId, {
-        status: 'resolved',
-        endTime: endTimeStr
-      });
+      if (SafeHer.api && SafeHer.api.endAlert) {
+        SafeHer.api.endAlert(currentAlertId, enteredPin || '');
+      } else {
+        SafeHer.api.updateAlert(currentAlertId, {
+          status: 'resolved',
+          endTime: endTimeStr
+        });
+      }
       currentAlertId = null;
     }
+
+    if (SafeHer.api && SafeHer.api.clearActiveSos) {
+      SafeHer.api.clearActiveSos();
+    }
+
+    var volunteerSubEl = document.getElementById('sos-status-sub');
+    if (volunteerSubEl) volunteerSubEl.textContent = 'Waiting for volunteers...';
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
       SafeHer.home.setSOSActive(false);
@@ -633,13 +699,43 @@ SafeHer.sos = (function() {
     SafeHer.router.go('home');
   }
 
+  function updateVolunteerStatusDisplay() {
+    if (!SafeHer.api || !SafeHer.api.getActiveSos) return;
+    var activeSos = SafeHer.api.getActiveSos();
+    var subEl = document.getElementById('sos-status-sub');
+    if (!subEl) return;
+
+    if (activeSos && activeSos.volunteersEnRoute && activeSos.volunteersEnRoute > 0) {
+      var n = activeSos.volunteersEnRoute;
+      subEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way';
+    } else {
+      subEl.textContent = 'Waiting for volunteers...';
+    }
+  }
+
   function init() {
     SafeHer.router.onShow('sos-active', function() {
+      var activeSos = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
+      if (activeSos && activeSos.timestamp) {
+        if (!durationTimer || !alertStartTime) {
+          startDurationCounter(activeSos.timestamp);
+        }
+      } else if (!durationTimer && !alertStartTime) {
+        startDurationCounter();
+      }
+      updateDurationDisplay();
+      updateVolunteerStatusDisplay();
       if (mapInstance) {
         mapInstance.invalidateSize();
         setTimeout(function() {
           if (mapInstance) mapInstance.invalidateSize();
         }, 300);
+      }
+    });
+
+    window.addEventListener('storage', function(e) {
+      if (e.key === 'safeher_active_sos') {
+        updateVolunteerStatusDisplay();
       }
     });
 

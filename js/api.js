@@ -1,448 +1,948 @@
-// js/api.js – all data reads and writes go through here.
-// Each function notes the real backend endpoint it will replace.
-// Replace localStorage bodies with fetch() calls when the server is ready.
+// js/api.js – Unified API abstraction layer with Flask backend integration and offline localStorage fallback
+// Connects to Flask backend endpoints while preserving identical function signatures across all modules.
 
-SafeHer.api = {
+SafeHer.api = (function() {
 
-  // ─── Auth / Session ────────────────────────────────────────
+  // ─── Configuration & State ─────────────────────────────────
+  function getApiBase() {
+    return (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
+  }
 
-  // GET /api/auth/me  →  { id, name, phone, email } or null
-  isLoggedIn: function() {
-    return !!SafeHer.storage.get('user');
-  },
+  function useBackend() {
+    return !!(window.SafeHerConfig && window.SafeHerConfig.USE_BACKEND);
+  }
 
-  // GET /api/auth/me
-  getUser: function() {
-    return SafeHer.storage.get('user');
-  },
+  var offlineNotified = false;
 
-  // (internal) – persist session locally; JWT stored here in production
-  setUser: function(user) {
-    SafeHer.storage.set('user', user);
-  },
-
-  // POST /api/auth/logout
-  clearUser: function() {
-    SafeHer.storage.remove('user');
-  },
-
-  // PUT /api/auth/me  →  body: { name, phone }
-  updateUser: function(data) {
-    var user = this.getUser();
-    if (!user) return null;
-    user.name = data.name;
-    user.phone = data.phone;
-    this.setUser(user);
-
-    var users = SafeHer.storage.get('users') || [];
-    for (var i = 0; i < users.length; i++) {
-      if (users[i].id === user.id) {
-        users[i].name = data.name;
-        users[i].phone = data.phone;
-        break;
-      }
+  function showOfflineNotice(show) {
+    var badge = document.getElementById('offline-mode-badge');
+    if (!badge && show) {
+      badge = document.createElement('div');
+      badge.id = 'offline-mode-badge';
+      badge.className = 'offline-mode-badge';
+      badge.textContent = 'Offline mode';
+      document.body.appendChild(badge);
     }
-    SafeHer.storage.set('users', users);
-    return user;
-  },
-
-  // GET /api/user/notifications  →  { smsAlerts, soundAlarm, liveLocation }
-  getNotificationSettings: function() {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('notification_settings') || {};
-    var defaults = { smsAlerts: true, soundAlarm: true, liveLocation: true };
-    return all[userId] || defaults;
-  },
-
-  // PUT /api/user/notifications  →  body: { smsAlerts, soundAlarm, liveLocation }
-  setNotificationSettings: function(settings) {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('notification_settings') || {};
-    all[userId] = settings;
-    SafeHer.storage.set('notification_settings', all);
-    return settings;
-  },
-
-  // POST /api/user/reset  →  resets all local state
-  clearAllData: function() {
-    SafeHer.storage.clearAll();
-  },
-
-  // GET /api/users?phone=xxx  →  user object or null
-  findUserByPhone: function(phone) {
-    var users = SafeHer.storage.get('users') || [];
-    for (var i = 0; i < users.length; i++) {
-      if (users[i].phone === phone) return users[i];
+    if (badge) {
+      badge.style.display = show ? 'block' : 'none';
     }
-    return null;
-  },
-
-  // POST /api/auth/register  →  body: { name, phone, email, password }
-  // Note: backend will hash the password and return a JWT; plaintext here is demo only.
-  registerUser: function(data) {
-    var users = SafeHer.storage.get('users') || [];
-    var user = {
-      id:       Date.now(),
-      name:     data.name,
-      phone:    data.phone,
-      email:    data.email,
-      password: data.password   // demo only – backend hashes this
-    };
-    users.push(user);
-    SafeHer.storage.set('users', users);
-    SafeHer.api.setUser({ id: user.id, name: user.name, phone: user.phone, email: user.email });
-    return user;
-  },
-
-  // POST /api/auth/login  →  body: { phone, password }  →  returns { token, user }
-  loginUser: function(phone, password) {
-    var users = SafeHer.storage.get('users') || [];
-    var found = null;
-    for (var i = 0; i < users.length; i++) {
-      if (users[i].phone === phone && users[i].password === password) {
-        found = users[i]; break;
-      }
+    if (show && !offlineNotified) {
+      offlineNotified = true;
+      if (SafeHer.toast) SafeHer.toast('Offline mode: Using local storage');
+    } else if (!show) {
+      offlineNotified = false;
     }
-    if (!found) return null;
-    var session = { id: found.id, name: found.name, phone: found.phone, email: found.email };
-    SafeHer.api.setUser(session);
-    return session;
-  },
+  }
 
-  // POST /api/auth/send-otp  →  body: { phone }
-  sendOTP: function(phone) {
-    // Real OTP will be sent via SMS from the backend
-    return true;
-  },
-
-  // POST /api/auth/verify-otp  →  body: { phone, otp }
-  verifyOTP: function(phone, otp) {
-    // Real OTP check on the backend; demo accepts any 4 digits
-    return typeof otp === 'string' && /^\d{4}$/.test(otp);
-  },
-
-  // ─── Onboarding ────────────────────────────────────────────
-
-  // GET /api/onboarding/status  →  { done: true/false }
-  hasSeenOnboarding: function() {
-    return !!SafeHer.storage.get('onboarding_done');
-  },
-
-  // POST /api/onboarding/complete
-  markOnboardingDone: function() {
-    SafeHer.storage.set('onboarding_done', true);
-  },
-
-  // ─── Contacts ──────────────────────────────────────────────
-
-  // GET /api/contacts  →  [{ id, name, phone, email, relation, userId }]
-  getContacts: function() {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('contacts') || [];
-    return all.filter(function(c) {
-      return (c.userId || 'guest') === userId;
-    });
-  },
-
-  // POST /api/contacts  →  body: { name, phone, email, relation }
-  addContact: function(contact) {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('contacts') || [];
-    contact.id = Date.now();
-    contact.userId = userId;
-    all.push(contact);
-    SafeHer.storage.set('contacts', all);
-    return contact;
-  },
-
-  // PUT /api/contacts/:id  →  body: { name, phone, email, relation }
-  updateContact: function(id, data) {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('contacts') || [];
-    var updated = null;
-    for (var i = 0; i < all.length; i++) {
-      if (all[i].id === id && (all[i].userId || 'guest') === userId) {
-        all[i].name = data.name;
-        all[i].phone = data.phone;
-        all[i].email = data.email || '';
-        all[i].relation = data.relation || 'Other';
-        updated = all[i];
-        break;
-      }
+  function getToken() {
+    try {
+      var tok = SafeHer.storage.get('auth_token');
+      if (tok) return tok;
+    } catch(e) {}
+    try {
+      return localStorage.getItem('safeher_raw_jwt') || '';
+    } catch(e) {
+      return '';
     }
-    SafeHer.storage.set('contacts', all);
-    return updated;
-  },
+  }
 
-  // DELETE /api/contacts/:id
-  removeContact: function(id) {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('contacts') || [];
-    var filtered = all.filter(function(c) {
-      return !(c.id === id && (c.userId || 'guest') === userId);
-    });
-    SafeHer.storage.set('contacts', filtered);
-  },
-
-  // ─── Safety PIN ───────────────────────────────────────────
-
-  // Internal helper to create a random salt
-  _generateSalt: function() {
-    var arr = new Uint8Array(16);
-    if (window.crypto && window.crypto.getRandomValues) {
-      window.crypto.getRandomValues(arr);
+  function setToken(token) {
+    if (token) {
+      SafeHer.storage.set('auth_token', token);
+      try { localStorage.setItem('safeher_raw_jwt', token); } catch(e) {}
     } else {
-      for (var i = 0; i < 16; i++) arr[i] = Math.floor(Math.random() * 256);
+      SafeHer.storage.remove('auth_token');
+      try { localStorage.removeItem('safeher_raw_jwt'); } catch(e) {}
     }
-    return Array.from(arr).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-  },
+  }
 
-  // Compute SHA-256 with salt; fallback simple hash if crypto.subtle is unavailable
-  hashPin: function(pin, salt, callback) {
-    salt = salt || this._generateSalt();
-    var text = salt + ':' + pin;
+  // ─── Network Fetch Helper ──────────────────────────────────
+  function apiFetch(endpoint, options) {
+    if (!useBackend()) {
+      showOfflineNotice(true);
+      return Promise.reject(new Error('Backend disabled'));
+    }
 
-    if (window.crypto && window.crypto.subtle && window.TextEncoder) {
-      var enc = new TextEncoder().encode(text);
-      window.crypto.subtle.digest('SHA-256', enc).then(function(buf) {
-        var hashHex = Array.from(new Uint8Array(buf)).map(function(b) {
-          return ('0' + b.toString(16)).slice(-2);
-        }).join('');
-        callback({ salt: salt, hash: hashHex });
-      }).catch(function() {
-        var fallback = SafeHer.api._fallbackHash(text);
-        callback({ salt: salt, hash: fallback });
+    options = options || {};
+    var headers = options.headers || {};
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+
+    var token = getToken();
+    if (token) {
+      headers['Authorization'] = 'Bearer ' + token;
+    }
+    options.headers = headers;
+
+    var url = getApiBase().replace(/\/+$/, '') + endpoint;
+
+    return fetch(url, options)
+      .then(function(res) {
+        return res.json().then(function(json) {
+          if (!res.ok) {
+            var msg = json && json.error ? json.error : ('Request failed with status ' + res.status);
+            if (res.status === 401 && endpoint !== '/api/login' && endpoint !== '/api/register') {
+              // Token expired
+              setToken(null);
+            }
+            if (SafeHer.toast && res.status !== 404 && res.status !== 429) {
+              SafeHer.toast(msg);
+            }
+            var err = new Error(msg);
+            err.status = res.status;
+            err.data = json;
+            throw err;
+          }
+          showOfflineNotice(false);
+          return json;
+        });
+      })
+      .catch(function(err) {
+        // Network errors or offline failures
+        if (err.name === 'TypeError' || err.message === 'Failed to fetch' || err.message === 'NetworkError') {
+          showOfflineNotice(true);
+        }
+        throw err;
       });
-    } else {
-      var fallback = SafeHer.api._fallbackHash(text);
-      callback({ salt: salt, hash: fallback });
-    }
-  },
+  }
 
-  _fallbackHash: function(str) {
-    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-    for (var i = 0; i < str.length; i++) {
-      var ch = str.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
-  },
+  // ─── Public API Object ─────────────────────────────────────
+  return {
 
-  // GET /api/user/pin  →  { salt, hash } or null
-  getPinData: function() {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var pins = SafeHer.storage.get('user_pins') || {};
-    return pins[userId] || null;
-  },
+    // ─── Auth & Session ──────────────────────────────────────
+    isLoggedIn: function() {
+      return !!(getToken() && SafeHer.storage.get('user')) || !!SafeHer.storage.get('user');
+    },
 
-  hasPin: function() {
-    return !!this.getPinData();
-  },
+    getUser: function() {
+      return SafeHer.storage.get('user');
+    },
 
-  // POST /api/user/pin  →  body: { salt, hash }
-  setPin: function(pin, callback) {
-    var self = this;
-    this.hashPin(pin, null, function(res) {
-      var user = self.getUser();
+    setUser: function(user) {
+      SafeHer.storage.set('user', user);
+    },
+
+    clearUser: function() {
+      setToken(null);
+      SafeHer.storage.remove('user');
+    },
+
+    getToken: getToken,
+    setToken: setToken,
+
+    // POST /api/register
+    registerUser: function(data, callback) {
+      var self = this;
+      // Local fallback representation
+      var localUsers = SafeHer.storage.get('users') || [];
+      var fallbackUser = {
+        id: Date.now(),
+        name: data.name,
+        phone: data.phone,
+        email: data.email || null,
+        password: data.password
+      };
+
+      if (!useBackend()) {
+        localUsers.push(fallbackUser);
+        SafeHer.storage.set('users', localUsers);
+        self.setUser({ id: fallbackUser.id, name: fallbackUser.name, phone: fallbackUser.phone, email: fallbackUser.email });
+        if (callback) callback(null, fallbackUser);
+        return fallbackUser;
+      }
+
+      apiFetch('/api/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.phone,
+          email: data.email || '',
+          password: data.password
+        })
+      }).then(function(json) {
+        var resData = json.data || {};
+        var user = resData.user || fallbackUser;
+        var token = resData.token;
+        setToken(token);
+        self.setUser(user);
+
+        // Keep local users in sync
+        localUsers.push(user);
+        SafeHer.storage.set('users', localUsers);
+
+        if (callback) callback(null, user);
+      }).catch(function(err) {
+        // Fallback to local storage if network unreachable
+        if (err.message === 'Failed to fetch' || !err.status) {
+          localUsers.push(fallbackUser);
+          SafeHer.storage.set('users', localUsers);
+          self.setUser({ id: fallbackUser.id, name: fallbackUser.name, phone: fallbackUser.phone, email: fallbackUser.email });
+          if (callback) callback(null, fallbackUser);
+        } else {
+          if (callback) callback(err.message, null);
+        }
+      });
+
+      return fallbackUser;
+    },
+
+    // POST /api/login
+    loginUser: function(phone, password, callback) {
+      var self = this;
+      var users = SafeHer.storage.get('users') || [];
+      var localFound = null;
+      for (var i = 0; i < users.length; i++) {
+        if (users[i].phone === phone && users[i].password === password) {
+          localFound = users[i];
+          break;
+        }
+      }
+
+      if (!useBackend()) {
+        if (!localFound) {
+          if (callback) callback('Incorrect phone number or password', null);
+          return null;
+        }
+        var sess = { id: localFound.id, name: localFound.name, phone: localFound.phone, email: localFound.email };
+        self.setUser(sess);
+        if (callback) callback(null, sess);
+        return sess;
+      }
+
+      apiFetch('/api/login', {
+        method: 'POST',
+        body: JSON.stringify({ phone: phone, password: password })
+      }).then(function(json) {
+        var resData = json.data || {};
+        var user = resData.user;
+        var token = resData.token;
+        setToken(token);
+        self.setUser(user);
+        if (callback) callback(null, user);
+      }).catch(function(err) {
+        // Fallback to local user if offline and local password matches
+        if ((err.message === 'Failed to fetch' || !err.status) && localFound) {
+          var sess = { id: localFound.id, name: localFound.name, phone: localFound.phone, email: localFound.email };
+          self.setUser(sess);
+          if (callback) callback(null, sess);
+        } else {
+          var errMsg = err.message || 'Incorrect phone number or password';
+          if (callback) callback(errMsg, null);
+        }
+      });
+
+      // Synchronous return for legacy callers
+      if (localFound) {
+        self.setUser(localFound);
+        return localFound;
+      }
+      return null;
+    },
+
+    // GET /api/me & PUT /api/me
+    updateUser: function(data, callback) {
+      var user = this.getUser();
+      if (!user) return null;
+      user.name = data.name;
+      user.phone = data.phone;
+      this.setUser(user);
+
+      // Local storage sync
+      var users = SafeHer.storage.get('users') || [];
+      for (var i = 0; i < users.length; i++) {
+        if (users[i].id === user.id) {
+          users[i].name = data.name;
+          users[i].phone = data.phone;
+          break;
+        }
+      }
+      SafeHer.storage.set('users', users);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/me', {
+          method: 'PUT',
+          body: JSON.stringify({ name: data.name, phone: data.phone })
+        }).then(function(json) {
+          if (json.data) SafeHer.storage.set('user', json.data);
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, user);
+        });
+      } else {
+        if (callback) callback(null, user);
+      }
+      return user;
+    },
+
+    findUserByPhone: function(phone) {
+      var users = SafeHer.storage.get('users') || [];
+      for (var i = 0; i < users.length; i++) {
+        if (users[i].phone === phone) return users[i];
+      }
+      return null;
+    },
+
+    sendOTP: function(phone) {
+      return true;
+    },
+
+    verifyOTP: function(phone, otp) {
+      return typeof otp === 'string' && /^\d{4}$/.test(otp);
+    },
+
+    hasSeenOnboarding: function() {
+      return !!SafeHer.storage.get('onboarding_done');
+    },
+
+    markOnboardingDone: function() {
+      SafeHer.storage.set('onboarding_done', true);
+    },
+
+    getNotificationSettings: function() {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('notification_settings') || {};
+      var defaults = { smsAlerts: true, soundAlarm: true, liveLocation: true };
+      return all[userId] || defaults;
+    },
+
+    setNotificationSettings: function(settings) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('notification_settings') || {};
+      all[userId] = settings;
+      SafeHer.storage.set('notification_settings', all);
+      return settings;
+    },
+
+    clearAllData: function() {
+      setToken(null);
+      SafeHer.storage.clearAll();
+    },
+
+    // ─── Contacts CRUD ─────────────────────────────────────────
+    getContacts: function(callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('contacts') || [];
+      var localList = all.filter(function(c) {
+        return (c.userId || 'guest') === userId;
+      });
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/contacts', { method: 'GET' })
+          .then(function(json) {
+            var serverContacts = (json.data || []).map(function(c) {
+              return {
+                id: c.id,
+                userId: userId,
+                name: c.name,
+                phone: c.phone,
+                email: c.email || '',
+                relation: c.relationship || 'Other'
+              };
+            });
+            SafeHer.storage.set('contacts', serverContacts);
+            if (callback) callback(null, serverContacts);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, localList);
+          });
+      } else {
+        if (callback) callback(null, localList);
+      }
+      return localList;
+    },
+
+    addContact: function(contact, callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('contacts') || [];
+      contact.id = Date.now();
+      contact.userId = userId;
+      all.push(contact);
+      SafeHer.storage.set('contacts', all);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/contacts', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: contact.name,
+            phone: contact.phone,
+            email: contact.email || '',
+            relationship: contact.relation || contact.relationship || 'Other'
+          })
+        }).then(function(json) {
+          if (json.data && json.data.id) {
+            contact.id = json.data.id;
+            SafeHer.storage.set('contacts', all);
+          }
+          if (callback) callback(null, contact);
+        }).catch(function(err) {
+          if (callback) callback(err.message, contact);
+        });
+      } else {
+        if (callback) callback(null, contact);
+      }
+      return contact;
+    },
+
+    updateContact: function(id, data, callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('contacts') || [];
+      var updated = null;
+
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].id === id && (all[i].userId || 'guest') === userId) {
+          all[i].name = data.name;
+          all[i].phone = data.phone;
+          all[i].email = data.email || '';
+          all[i].relation = data.relation || data.relationship || 'Other';
+          updated = all[i];
+          break;
+        }
+      }
+      SafeHer.storage.set('contacts', all);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/contacts/' + id, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: data.name,
+            phone: data.phone,
+            email: data.email || '',
+            relationship: data.relation || data.relationship || 'Other'
+          })
+        }).then(function() {
+          if (callback) callback(null, updated);
+        }).catch(function(err) {
+          if (callback) callback(err.message, updated);
+        });
+      } else {
+        if (callback) callback(null, updated);
+      }
+      return updated;
+    },
+
+    removeContact: function(id, callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('contacts') || [];
+      var filtered = all.filter(function(c) {
+        return !(c.id === id && (c.userId || 'guest') === userId);
+      });
+      SafeHer.storage.set('contacts', filtered);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/contacts/' + id, { method: 'DELETE' })
+          .then(function() {
+            if (callback) callback(null, true);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, false);
+          });
+      } else {
+        if (callback) callback(null, true);
+      }
+    },
+
+    // ─── Safety PIN (Backend Verified) ─────────────────────────
+    getPinData: function() {
+      var user = this.getUser();
       var userId = user ? user.id : 'guest';
       var pins = SafeHer.storage.get('user_pins') || {};
-      pins[userId] = res;
-      SafeHer.storage.set('user_pins', pins);
-      if (callback) callback(true);
-    });
-  },
+      return pins[userId] || null;
+    },
 
-  // POST /api/user/pin/verify  →  body: { pin }
-  verifyPin: function(pin, callback) {
-    var pinData = this.getPinData();
-    if (!pinData) {
-      if (callback) callback(false);
-      return;
-    }
-    this.hashPin(pin, pinData.salt, function(res) {
-      var matches = res.hash === pinData.hash;
-      if (callback) callback(matches);
-    });
-  },
+    hasPin: function() {
+      var user = this.getUser();
+      if (user && user.has_pin !== undefined) return bool(user.has_pin);
+      return !!this.getPinData();
+    },
 
-  // ─── Alerts & History ──────────────────────────────────────
+    setPin: function(pin, callback, duressPin) {
+      var self = this;
+      var user = self.getUser();
+      var userId = user ? user.id : 'guest';
 
-  // GET /api/alerts  →  [{ id, time, timestamp, lat, lng, status, userId }]
-  getAlerts: function() {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('alerts') || [];
-    return all.filter(function(a) {
-      return (a.userId || 'guest') === userId;
-    });
-  },
+      // Save local fallback hash
+      self.hashPin(pin, null, function(res) {
+        var pins = SafeHer.storage.get('user_pins') || {};
+        pins[userId] = res;
+        SafeHer.storage.set('user_pins', pins);
+      });
 
-  // POST /api/alerts  →  body: { time, timestamp, lat, lng, status }
-  addAlert: function(alertData) {
-    var user = this.getUser();
-    var userId = user ? user.id : 'guest';
-    var all = SafeHer.storage.get('alerts') || [];
-    alertData.id = Date.now();
-    alertData.userId = userId;
-    all.unshift(alertData);
-    SafeHer.storage.set('alerts', all);
-    return alertData;
-  },
-
-  // PUT /api/alerts/:id  →  body: { status, lat, lng, endTime, mode }
-  updateAlert: function(id, data) {
-    var all = SafeHer.storage.get('alerts') || [];
-    for (var i = 0; i < all.length; i++) {
-      if (all[i].id === id) {
-        if (data.status !== undefined) all[i].status = data.status;
-        if (data.lat !== undefined) all[i].lat = data.lat;
-        if (data.lng !== undefined) all[i].lng = data.lng;
-        if (data.mode !== undefined) all[i].mode = data.mode;
-        if (data.endTime !== undefined) all[i].endTime = data.endTime;
-        break;
+      if (useBackend() && getToken()) {
+        apiFetch('/api/pin/set', {
+          method: 'POST',
+          body: JSON.stringify({ pin: pin, duress_pin: duressPin || '' })
+        }).then(function() {
+          if (user) {
+            user.has_pin = true;
+            self.setUser(user);
+          }
+          if (callback) callback(true);
+        }).catch(function(err) {
+          // If offline, fallback was stored
+          if (err.message === 'Failed to fetch' || !err.status) {
+            if (callback) callback(true);
+          } else {
+            if (callback) callback(false);
+          }
+        });
+      } else {
+        if (callback) callback(true);
       }
-    }
-    SafeHer.storage.set('alerts', all);
-  },
+    },
 
-  // ─── Safety Tips & Self-Defense ───────────────────────────
-
-  // GET /api/tips?category=xxx  →  [{ id, category, icon, title, lines: [] }]
-  getTips: function(category) {
-    var defaultTips = [
-      // General Safety Tips
-      {
-        id: 1,
-        category: 'tips',
-        icon: 'commute',
-        title: 'Travelling',
-        lines: [
-          'Share your trip details with someone you trust.',
-          'Stay on well-lit and familiar public routes.',
-          'Keep your phone charged and easily accessible.'
-        ]
-      },
-      {
-        id: 2,
-        category: 'tips',
-        icon: 'shopping_bag',
-        title: 'Shopping',
-        lines: [
-          'Keep your handbag closed and close to your body.',
-          'Stay mindful of crowded areas and emergency exits.',
-          'Avoid displaying or counting large amounts of cash.'
-        ]
-      },
-      {
-        id: 3,
-        category: 'tips',
-        icon: 'home',
-        title: 'At Home',
-        lines: [
-          'Lock all doors and windows, especially at night.',
-          'Verify visitors before opening the main entrance.',
-          'Keep an emergency light and phone near your bed.'
-        ]
-      },
-      {
-        id: 4,
-        category: 'tips',
-        icon: 'public',
-        title: 'Online',
-        lines: [
-          'Do not share your real-time location publicly.',
-          'Use strong passwords and two-step verification.',
-          'Never share daily routines or personal addresses.'
-        ]
-      },
-      {
-        id: 5,
-        category: 'tips',
-        icon: 'local_taxi',
-        title: 'Cab and Auto Rides',
-        lines: [
-          'Confirm the vehicle registration number before entering.',
-          'Share your live ride status with a friend.',
-          'Avoid entering vehicles with extra unknown passengers.'
-        ]
-      },
-      // Self-Defense Advice
-      {
-        id: 6,
-        category: 'defense',
-        icon: 'visibility',
-        title: 'Stay aware of your surroundings',
-        lines: [
-          'Keep your head up and scan the area around you.',
-          'Avoid looking down at your phone while walking alone.',
-          'Remove earphones in quiet or poorly lit places.'
-        ]
-      },
-      {
-        id: 7,
-        category: 'defense',
-        icon: 'psychology',
-        title: 'Trust your instincts',
-        lines: [
-          'If a situation or person makes you feel uncomfortable, leave.',
-          'Do not hesitate to cross the street or change direction.',
-          'Your personal safety is always more important than politeness.'
-        ]
-      },
-      {
-        id: 8,
-        category: 'defense',
-        icon: 'battery_charging_full',
-        title: 'Keep your phone charged',
-        lines: [
-          'Carry a compact power bank when heading out for the day.',
-          'Maintain your phone battery above twenty percent.',
-          'Ensure emergency contacts are saved and easy to dial.'
-        ]
-      },
-      {
-        id: 9,
-        category: 'defense',
-        icon: 'call',
-        title: 'Know your emergency numbers',
-        lines: [
-          'Remember 112 for national emergency services.',
-          'Keep 181 for the women helpline saved on your phone.',
-          'Have a quick plan for who to contact first in distress.'
-        ]
-      },
-      {
-        id: 10,
-        category: 'defense',
-        icon: 'storefront',
-        title: 'Move to a crowded, lit place',
-        lines: [
-          'Head toward open stores, pharmacies, or lit transit stops.',
-          'Approach security personnel or staff if you feel followed.',
-          'Call out loudly for assistance if anyone approaches aggressively.'
-        ]
+    changePin: function(oldPin, newPin, callback, duressPin) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/pin/change', {
+          method: 'POST',
+          body: JSON.stringify({ old_pin: oldPin, new_pin: newPin, duress_pin: duressPin || '' })
+        }).then(function() {
+          if (callback) callback(true);
+        }).catch(function() {
+          if (callback) callback(false);
+        });
+      } else {
+        this.setPin(newPin, callback, duressPin);
       }
-    ];
+    },
 
-    var stored = SafeHer.storage.get('tips_list');
-    if (!stored || stored.length === 0) {
-      stored = defaultTips;
-      SafeHer.storage.set('tips_list', stored);
-    }
+    verifyPin: function(pin, callback) {
+      var self = this;
 
-    if (category) {
-      return stored.filter(function(t) { return t.category === category; });
+      if (useBackend() && getToken()) {
+        apiFetch('/api/pin/verify', {
+          method: 'POST',
+          body: JSON.stringify({ pin: pin })
+        }).then(function(json) {
+          var res = json.data && json.data.result;
+          if (res === 'ok' || res === 'duress') {
+            if (callback) callback(true, res);
+          } else {
+            if (json.data && json.data.locked) {
+              if (SafeHer.toast) SafeHer.toast('Too many wrong attempts. Locked for 30s.');
+            }
+            if (callback) callback(false, 'wrong');
+          }
+        }).catch(function(err) {
+          if (err.status === 429) {
+            if (SafeHer.toast) SafeHer.toast('Too many wrong attempts. Locked for 30s.');
+            if (callback) callback(false, 'locked');
+            return;
+          }
+          // Fallback to local storage verification if offline
+          self._verifyPinLocal(pin, callback);
+        });
+      } else {
+        self._verifyPinLocal(pin, callback);
+      }
+    },
+
+    _verifyPinLocal: function(pin, callback) {
+      var pinData = this.getPinData();
+      if (!pinData) {
+        if (callback) callback(false);
+        return;
+      }
+      this.hashPin(pin, pinData.salt, function(res) {
+        var matches = res.hash === pinData.hash;
+        if (callback) callback(matches, matches ? 'ok' : 'wrong');
+      });
+    },
+
+    hashPin: function(pin, salt, callback) {
+      salt = salt || this._generateSalt();
+      var text = salt + ':' + pin;
+
+      if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+        var enc = new TextEncoder().encode(text);
+        window.crypto.subtle.digest('SHA-256', enc).then(function(buf) {
+          var hashHex = Array.from(new Uint8Array(buf)).map(function(b) {
+            return ('0' + b.toString(16)).slice(-2);
+          }).join('');
+          callback({ salt: salt, hash: hashHex });
+        }).catch(function() {
+          callback({ salt: salt, hash: SafeHer.api._fallbackHash(text) });
+        });
+      } else {
+        callback({ salt: salt, hash: SafeHer.api._fallbackHash(text) });
+      }
+    },
+
+    _generateSalt: function() {
+      var arr = new Uint8Array(16);
+      if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(arr);
+      } else {
+        for (var i = 0; i < 16; i++) arr[i] = Math.floor(Math.random() * 256);
+      }
+      return Array.from(arr).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    },
+
+    _fallbackHash: function(str) {
+      var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (var i = 0; i < str.length; i++) {
+        var ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+    },
+
+    // ─── Alerts & History ──────────────────────────────────────
+    getAlerts: function(callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('alerts') || [];
+      var localList = all.filter(function(a) {
+        return (a.userId || 'guest') === userId;
+      });
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts', { method: 'GET' })
+          .then(function(json) {
+            var serverAlerts = (json.data || []).map(function(a) {
+              return {
+                id: a.id,
+                userId: userId,
+                mode: a.mode,
+                status: a.status,
+                lat: a.lat,
+                lng: a.lng,
+                time: a.started_at,
+                timestamp: new Date(a.started_at).getTime() || Date.now(),
+                shareToken: a.share_token,
+                notifiedCount: a.notified_count,
+                duress: a.duress
+              };
+            });
+            SafeHer.storage.set('alerts', serverAlerts);
+            if (callback) callback(null, serverAlerts);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, localList);
+          });
+      } else {
+        if (callback) callback(null, localList);
+      }
+      return localList;
+    },
+
+    addAlert: function(alertData, callback) {
+      var user = this.getUser();
+      var userId = user ? user.id : 'guest';
+      var all = SafeHer.storage.get('alerts') || [];
+      alertData.id = Date.now();
+      alertData.userId = userId;
+      all.unshift(alertData);
+      SafeHer.storage.set('alerts', all);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: alertData.mode || 'normal',
+            lat: alertData.lat || 12.9716,
+            lng: alertData.lng || 77.5946
+          })
+        }).then(function(json) {
+          if (json.data && json.data.id) {
+            alertData.id = json.data.id;
+            alertData.shareToken = json.data.share_token;
+            alertData.notifiedCount = json.data.notified_count;
+            SafeHer.storage.set('alerts', all);
+          }
+          if (callback) callback(null, alertData);
+        }).catch(function(err) {
+          if (callback) callback(err.message, alertData);
+        });
+      } else {
+        if (callback) callback(null, alertData);
+      }
+      return alertData;
+    },
+
+    updateAlert: function(id, data, callback) {
+      var all = SafeHer.storage.get('alerts') || [];
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].id === id) {
+          if (data.status !== undefined) all[i].status = data.status;
+          if (data.lat !== undefined) all[i].lat = data.lat;
+          if (data.lng !== undefined) all[i].lng = data.lng;
+          if (data.mode !== undefined) all[i].mode = data.mode;
+          if (data.endTime !== undefined) all[i].endTime = data.endTime;
+          break;
+        }
+      }
+      SafeHer.storage.set('alerts', all);
+
+      if (useBackend() && getToken() && data.lat !== undefined && data.lng !== undefined) {
+        apiFetch('/api/alerts/' + id + '/location', {
+          method: 'POST',
+          body: JSON.stringify({ lat: data.lat, lng: data.lng })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, null);
+      }
+    },
+
+    endAlert: function(id, pin, callback) {
+      var self = this;
+      var all = SafeHer.storage.get('alerts') || [];
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].id === id) {
+          all[i].status = 'resolved';
+          all[i].endTime = new Date().toLocaleTimeString();
+          break;
+        }
+      }
+      SafeHer.storage.set('alerts', all);
+      self.clearActiveSos();
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts/' + id + '/end', {
+          method: 'POST',
+          body: JSON.stringify({ pin: pin })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { status: 'resolved' });
+      }
+    },
+
+    getActiveSos: function() {
+      return SafeHer.storage.get('active_sos') || null;
+    },
+
+    setActiveSos: function(data) {
+      SafeHer.storage.set('active_sos', data);
+      return data;
+    },
+
+    clearActiveSos: function() {
+      SafeHer.storage.remove('active_sos');
+    },
+
+    // ─── Volunteer Network ────────────────────────────────────
+    getVolunteerProfile: function() {
+      return SafeHer.storage.get('volunteer_profile') || { isAvailable: false, lat: null, lng: null };
+    },
+
+    setVolunteerProfile: function(profile, callback) {
+      SafeHer.storage.set('volunteer_profile', profile);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/volunteers/status', {
+          method: 'POST',
+          body: JSON.stringify({
+            available: !!profile.isAvailable,
+            lat: profile.lat || null,
+            lng: profile.lng || null
+          })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, profile);
+        });
+      } else {
+        if (callback) callback(null, profile);
+      }
+      return profile;
+    },
+
+    getNearbyAlerts: function(callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/volunteers/nearby-alerts', { method: 'GET' })
+          .then(function(json) {
+            if (callback) callback(null, json.data || []);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, []);
+          });
+      } else {
+        if (callback) callback(null, []);
+      }
+    },
+
+    respondToAlert: function(alertId, status, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts/' + alertId + '/respond', {
+          method: 'POST',
+          body: JSON.stringify({ status: status })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { status: status });
+      }
+    },
+
+    getAlertVolunteerStatus: function(alertId, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts/' + alertId + '/status', { method: 'GET' })
+          .then(function(json) {
+            if (callback) callback(null, json.data);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, null);
+          });
+      } else {
+        if (callback) callback(null, null);
+      }
+    },
+
+    getAvailableVolunteersCount: function(callback) {
+      if (useBackend()) {
+        apiFetch('/api/volunteers/count', { method: 'GET' })
+          .then(function(json) {
+            var count = json.data && json.data.available_volunteers !== undefined ? json.data.available_volunteers : 0;
+            if (callback) callback(null, count);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, 0);
+          });
+      } else {
+        if (callback) callback(null, 0);
+      }
+    },
+
+    // ─── Safe Timers ──────────────────────────────────────────
+    getSafeTimer: function() {
+      return SafeHer.storage.get('safe_timer') || null;
+    },
+
+    setSafeTimer: function(data, callback) {
+      SafeHer.storage.set('safe_timer', data);
+
+      if (useBackend() && getToken()) {
+        apiFetch('/api/timers', {
+          method: 'POST',
+          body: JSON.stringify({
+            minutes: data.minutes || (data.totalSeconds ? (data.totalSeconds / 60) : 5),
+            contact_id: data.contactId || null
+          })
+        }).then(function(json) {
+          if (json.data && json.data.id) {
+            data.backendTimerId = json.data.id;
+            SafeHer.storage.set('safe_timer', data);
+          }
+          if (callback) callback(null, data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, data);
+        });
+      } else {
+        if (callback) callback(null, data);
+      }
+      return data;
+    },
+
+    clearSafeTimer: function(callback) {
+      var current = this.getSafeTimer();
+      var backendId = current ? current.backendTimerId : null;
+      SafeHer.storage.remove('safe_timer');
+
+      if (useBackend() && getToken() && backendId) {
+        apiFetch('/api/timers/' + backendId + '/safe', { method: 'POST' })
+          .then(function(json) {
+            if (callback) callback(null, json.data);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, null);
+          });
+      } else {
+        if (callback) callback(null, true);
+      }
+    },
+
+    getActiveTimer: function(callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/timers/active', { method: 'GET' })
+          .then(function(json) {
+            if (callback) callback(null, json.data);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, null);
+          });
+      } else {
+        var local = this.getSafeTimer();
+        if (callback) callback(null, local);
+      }
+    },
+
+    // ─── Auxiliary Features (Tips, Location & I18n) ───────────
+    getTips: function(category) {
+      var defaultTips = [
+        { id: 1, category: 'tips', icon: 'commute', title: 'Travelling', lines: ['Share your trip details with someone you trust.', 'Stay on well-lit and familiar public routes.', 'Keep your phone charged and easily accessible.'] },
+        { id: 2, category: 'tips', icon: 'shopping_bag', title: 'Shopping', lines: ['Keep your handbag closed and close to your body.', 'Stay mindful of crowded areas and emergency exits.', 'Avoid displaying or counting large amounts of cash.'] },
+        { id: 3, category: 'tips', icon: 'home', title: 'At Home', lines: ['Lock all doors and windows, especially at night.', 'Verify visitors before opening the main entrance.', 'Keep an emergency light and phone near your bed.'] },
+        { id: 4, category: 'tips', icon: 'public', title: 'Online', lines: ['Do not share your real-time location publicly.', 'Use strong passwords and two-step verification.', 'Never share daily routines or personal addresses.'] },
+        { id: 5, category: 'tips', icon: 'local_taxi', title: 'Cab and Auto Rides', lines: ['Confirm the vehicle registration number before entering.', 'Share your live ride status with a friend.', 'Avoid entering vehicles with extra unknown passengers.'] },
+        { id: 6, category: 'defense', icon: 'visibility', title: 'Stay aware of your surroundings', lines: ['Keep your head up and scan the area around you.', 'Avoid looking down at your phone while walking alone.', 'Remove earphones in quiet or poorly lit places.'] },
+        { id: 7, category: 'defense', icon: 'psychology', title: 'Trust your instincts', lines: ['If a situation or person makes you feel uncomfortable, leave.', 'Do not hesitate to cross the street or change direction.', 'Your personal safety is always more important than politeness.'] },
+        { id: 8, category: 'defense', icon: 'battery_charging_full', title: 'Keep your phone charged', lines: ['Carry a compact power bank when heading out for the day.', 'Maintain your phone battery above twenty percent.', 'Ensure emergency contacts are saved and easy to dial.'] },
+        { id: 9, category: 'defense', icon: 'call', title: 'Know your emergency numbers', lines: ['Remember 112 for national emergency services.', 'Keep 181 for the women helpline saved on your phone.', 'Have a quick plan for who to contact first in distress.'] },
+        { id: 10, category: 'defense', icon: 'storefront', title: 'Move to a crowded, lit place', lines: ['Head toward open stores, pharmacies, or lit transit stops.', 'Approach security personnel or staff if you feel followed.', 'Call out loudly for assistance if anyone approaches aggressively.'] }
+      ];
+
+      var stored = SafeHer.storage.get('tips_list');
+      if (!stored || stored.length === 0) {
+        stored = defaultTips;
+        SafeHer.storage.set('tips_list', stored);
+      }
+
+      if (category) {
+        return stored.filter(function(t) { return t.category === category; });
+      }
+      return stored;
+    },
+
+    saveLiveLocation: function(coords) {
+      SafeHer.storage.set('live_location', coords);
+      return coords;
+    },
+
+    getLiveLocation: function() {
+      return SafeHer.storage.get('live_location') || null;
+    },
+
+    getNearbyPlacesCache: function() {
+      return SafeHer.storage.get('nearby_places_cache') || null;
+    },
+
+    setNearbyPlacesCache: function(cacheData) {
+      SafeHer.storage.set('nearby_places_cache', cacheData);
+      return cacheData;
+    },
+
+    getLanguage: function() {
+      return SafeHer.storage.get('app_lang') || 'en';
+    },
+
+    setLanguage: function(lang) {
+      SafeHer.storage.set('app_lang', lang);
+      return lang;
+    },
+
+    isOfflineMode: function() {
+      return !useBackend() || !!offlineNotified;
+    },
+
+    useBackend: function() {
+      return useBackend();
     }
-    return stored;
-  }
-};
+  };
+})();

@@ -185,6 +185,11 @@ SafeHer.contacts = (function() {
   function init() {
     SafeHer.router.onShow('contacts', function() {
       render();
+      if (SafeHer.api && SafeHer.api.getContacts) {
+        SafeHer.api.getContacts(function(err, contacts) {
+          if (!err && contacts) render();
+        });
+      }
     });
   }
 

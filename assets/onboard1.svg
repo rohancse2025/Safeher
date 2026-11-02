@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" width="200" height="160">
+  <rect width="200" height="160" fill="#FCEFF3" rx="12"/>
+  <circle cx="100" cy="80" r="48" fill="#FCEFF3" stroke="#EAD3DA" stroke-width="2"/>
+  <circle cx="100" cy="80" r="36" fill="#A80F3C"/>
+  <text x="100" y="86" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="16" fill="#FFFFFF">SOS</text>
+  <circle cx="100" cy="80" r="44" fill="none" stroke="#A80F3C" stroke-width="1.5" stroke-dasharray="4,4"/>
+</svg>

@@ -83,11 +83,11 @@ SafeHer.pin = (function() {
 
   function validateEnteredPin() {
     var entered = currentInput;
-    SafeHer.api.verifyPin(entered, function(isValid) {
+    SafeHer.api.verifyPin(entered, function(isValid, pinResult) {
       if (isValid) {
         wrongAttempts = 0;
         closePad();
-        if (activeSuccessCb) activeSuccessCb();
+        if (activeSuccessCb) activeSuccessCb(entered, pinResult);
       } else {
         wrongAttempts++;
         triggerShake();
@@ -213,7 +213,7 @@ SafeHer.pin = (function() {
         return;
       }
 
-      SafeHer.api.setPin(newPin, function() {
+      SafeHer.api.changePin(oldPin, newPin, function() {
         SafeHer.toast('Safety PIN updated');
         SafeHer.router.go('profile');
       });

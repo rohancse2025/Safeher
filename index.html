@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#A80F3C" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="SafeHer" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
   <title>SafeHer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -225,8 +230,8 @@
         <p class="home-hello">Hello, <span id="home-name">there</span></p>
         <div class="home-location-row">
           <span class="material-symbols-rounded home-loc-icon">location_on</span>
-          <span id="home-location">Locating…</span>
-          <button id="home-loc-enable" class="home-loc-enable" onclick="SafeHer.home.retryLocation()" style="display: none;">Enable</button>
+          <span id="home-location">Locating...</span>
+          <a href="#" id="home-loc-enable" class="home-loc-enable" onclick="SafeHer.home.retryLocation(); return false;" style="display: none;">Enable</a>
         </div>
       </div>
       <button class="home-avatar" onclick="SafeHer.router.go('profile')"
@@ -240,8 +245,8 @@
 
       <!-- SOS section -->
       <div class="sos-section">
-        <p class="sos-heading">Are you in emergency?</p>
-        <p class="sos-sub">Press the SOS button and your contacts will be alerted</p>
+        <p class="sos-heading" data-i18n="homeEmergencyTitle">Are you in emergency?</p>
+        <p class="sos-sub" data-i18n="homeEmergencySub">Press the SOS button and your contacts will be alerted</p>
 
         <div class="sos-wrap">
           <div class="sos-ring2">
@@ -254,44 +259,47 @@
 
         <div class="sos-status">
           <span class="status-dot status-safe" id="status-dot"></span>
-          <span id="sos-status-text">You are safe</span>
+          <span id="sos-status-text" data-i18n="homeYouAreSafe">You are safe</span>
         </div>
 
         <div class="chip-row">
           <button class="chip" onclick="SafeHer.router.go('fake-call')">
-            <span class="material-symbols-rounded">phone</span>Fake Call
+            <span class="material-symbols-rounded">phone</span><span data-i18n="homeFakeCall">Fake Call</span>
           </button>
           <button class="chip" onclick="SafeHer.router.go('tips')">
-            <span class="material-symbols-rounded">lightbulb</span>Tips
+            <span class="material-symbols-rounded">lightbulb</span><span data-i18n="homeTips">Tips</span>
+          </button>
+          <button class="chip" onclick="SafeHer.router.go('evidence')">
+            <span class="material-symbols-rounded">mic</span><span data-i18n="homeEvidence">Evidence</span>
           </button>
         </div>
       </div>
 
       <!-- Tile grid -->
       <div class="tile-grid">
-        <button class="tile" onclick="SafeHer.router.go('live-location')">
+        <button class="tile" onclick="SafeHer.router.go('map')">
           <span class="material-symbols-rounded">map</span>
-          <span class="tile-label">Live Location</span>
+          <span class="tile-label" data-i18n="homeLiveLocation">Live Location</span>
         </button>
-        <button class="tile" onclick="SafeHer.router.go('share-location')">
+        <button class="tile" onclick="SafeHer.router.go('map')">
           <span class="material-symbols-rounded">share</span>
-          <span class="tile-label">Share Location</span>
+          <span class="tile-label" data-i18n="homeShareLocation">Share Location</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('helplines')">
           <span class="material-symbols-rounded">local_police</span>
-          <span class="tile-label">Call Police</span>
+          <span class="tile-label" data-i18n="homeCallPolice">Call Police</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('nearby-places')">
           <span class="material-symbols-rounded">pin_drop</span>
-          <span class="tile-label">Nearby Places</span>
+          <span class="tile-label" data-i18n="homeNearbyPlaces">Nearby Places</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('volunteers')">
           <span class="material-symbols-rounded">groups</span>
-          <span class="tile-label">Volunteers</span>
+          <span class="tile-label" data-i18n="homeVolunteers">Volunteers</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('safe-timer')">
           <span class="material-symbols-rounded">timer</span>
-          <span class="tile-label">Safe Timer</span>
+          <span class="tile-label" data-i18n="homeSafeTimer">Safe Timer</span>
         </button>
       </div>
 
@@ -322,14 +330,14 @@
   <!-- ── SOS Active / Sent Screen ──────────────────────────── -->
   <div id="screen-sos-active" class="screen">
     <div class="topbar">
-      <span class="topbar-title" style="color: var(--crimson);">SOS Alert Active</span>
+      <span class="topbar-title" data-i18n="sosActivated" style="color: var(--crimson);">SOS Activated</span>
     </div>
     <div class="page-wrap" style="padding-bottom: 24px;">
       <div class="sos-sent-banner">
         <div class="sos-pulse-indicator"></div>
         <div style="flex: 1; display: flex; align-items: center; justify-content: space-between;">
           <div>
-            <p class="sos-sent-heading">SOS Activated</p>
+            <p class="sos-sent-heading" data-i18n="sosActivated">SOS Activated</p>
             <p class="sos-sent-time" id="sos-alert-time">Just now</p>
           </div>
           <div class="sos-duration-badge" id="sos-duration">00:00</div>
@@ -337,14 +345,14 @@
       </div>
 
       <!-- Leaflet Map Container -->
-      <div class="sos-map-wrap">
-        <div id="sos-map" class="sos-map"></div>
+      <div class="sos-map-wrap" style="height: 220px;">
+        <div id="sos-map" class="sos-map" style="height: 220px;"></div>
       </div>
 
       <!-- Google Maps Link -->
       <div class="sos-link-row">
-        <a id="sos-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 13px; padding: 10px 14px;">
-          <span class="material-symbols-rounded">map</span>Open in Google Maps
+        <a id="sos-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 13px; padding: 10px 14px; text-decoration: none;">
+          <span class="material-symbols-rounded" style="text-decoration: none; display: inline-block; vertical-align: middle;">map</span>Open in Google Maps
         </a>
       </div>
 
@@ -355,8 +363,8 @@
       </div>
 
       <!-- Call 112 Button -->
-      <div style="margin-bottom: 14px;">
-        <a href="tel:112" class="btn btn-primary" style="background: var(--crimson); gap: 8px; font-weight: 600;">
+      <div class="sos-call-112-row" style="margin-bottom: 14px;">
+        <a href="tel:112" class="btn btn-primary btn-crimson" style="background: var(--crimson); color: var(--white); gap: 8px; font-weight: 600; text-decoration: none;">
           <span class="material-symbols-rounded">call</span>Call 112
         </a>
       </div>
@@ -384,17 +392,108 @@
     </div>
   </div>
 
-  <!-- ── Fake Call ────────────────────────────────────────── -->
+  <!-- ── Fake Call Screen ──────────────────────────────────── -->
   <div id="screen-fake-call" class="screen">
-    <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
-        <span class="material-symbols-rounded">arrow_back</span>
-      </button>
-      <span class="topbar-title">Fake Call</span>
+    <!-- Setup View -->
+    <div id="fakecall-setup-view" class="fakecall-setup-view">
+      <div class="topbar">
+        <button class="topbar-back" onclick="SafeHer.router.go('home')">
+          <span class="material-symbols-rounded">arrow_back</span>
+        </button>
+        <span class="topbar-title" data-i18n="homeFakeCall">Fake Call</span>
+      </div>
+      <div class="page-wrap fakecall-page-wrap">
+        <div class="fakecall-card">
+          <p class="fakecall-card-title">Schedule an Incoming Call</p>
+          <p class="fakecall-card-desc">Simulate a realistic incoming phone call to excuse yourself from uncomfortable situations.</p>
+
+          <label class="fakecall-field-label">Caller Name</label>
+          <div class="fakecall-chips-row">
+            <button type="button" class="fakecall-caller-chip active" onclick="SafeHer.fakecall.setPresetCaller('Mom')">Mom</button>
+            <button type="button" class="fakecall-caller-chip" onclick="SafeHer.fakecall.setPresetCaller('Police')">Police</button>
+            <button type="button" class="fakecall-caller-chip" onclick="SafeHer.fakecall.setPresetCaller('Boss')">Boss</button>
+            <button type="button" class="fakecall-caller-chip" onclick="SafeHer.fakecall.setPresetCaller('Brother')">Brother</button>
+            <button type="button" class="fakecall-caller-chip" onclick="SafeHer.fakecall.setPresetCaller('Friend')">Friend</button>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="fakecall-name-input" class="form-label">Custom Name</label>
+            <input type="text" id="fakecall-name-input" class="form-input" value="Mom" placeholder="Enter caller name" />
+          </div>
+
+          <label class="fakecall-field-label">Trigger Delay</label>
+          <div class="fakecall-chips-row">
+            <button type="button" class="fakecall-delay-chip active" data-delay="0" onclick="SafeHer.fakecall.setDelay(0)">Now</button>
+            <button type="button" class="fakecall-delay-chip" data-delay="10" onclick="SafeHer.fakecall.setDelay(10)">10 s</button>
+            <button type="button" class="fakecall-delay-chip" data-delay="30" onclick="SafeHer.fakecall.setDelay(30)">30 s</button>
+          </div>
+
+          <button class="btn btn-crimson" style="width: 100%; padding: 12px; font-weight: 600; margin-top: 10px;" onclick="SafeHer.fakecall.scheduleCall()">
+            <span class="material-symbols-rounded">phone_in_talk</span>Start Fake Call
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">phone</span>
-      <p class="placeholder-text">Fake Call coming soon</p>
+
+    <!-- Incoming Call Fullscreen View -->
+    <div id="fakecall-incoming-view" class="fakecall-fullscreen" style="display:none;">
+      <div class="fakecall-incoming-header">
+        <span class="fakecall-badge">INCOMING CALL</span>
+      </div>
+      <div class="fakecall-avatar-circle">
+        <span id="fakecall-avatar-letter">M</span>
+      </div>
+      <p class="fakecall-caller-display fakecall-caller-name">Mom</p>
+      <p class="fakecall-status-subtitle">Mobile · Calling...</p>
+
+      <div class="fakecall-actions-row">
+        <div class="fakecall-action-col">
+          <button class="fakecall-btn fakecall-decline-btn" onclick="SafeHer.fakecall.declineCall()" aria-label="Decline call">
+            <span class="material-symbols-rounded">call_end</span>
+          </button>
+          <span class="fakecall-btn-label">Decline</span>
+        </div>
+        <div class="fakecall-action-col">
+          <button class="fakecall-btn fakecall-accept-btn" onclick="SafeHer.fakecall.acceptCall()" aria-label="Accept call">
+            <span class="material-symbols-rounded">call</span>
+          </button>
+          <span class="fakecall-btn-label">Accept</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connected Call Fullscreen View -->
+    <div id="fakecall-connected-view" class="fakecall-fullscreen" style="display:none;">
+      <div class="fakecall-incoming-header">
+        <span class="fakecall-badge connected">CONNECTED</span>
+      </div>
+      <div class="fakecall-avatar-circle small">
+        <span class="material-symbols-rounded" style="font-size:36px;color:#fff;">person</span>
+      </div>
+      <p class="fakecall-caller-display fakecall-caller-name">Mom</p>
+      <p class="fakecall-duration-text" id="fakecall-duration-text">00:00</p>
+
+      <div class="fakecall-in-call-grid">
+        <div class="fakecall-grid-item" onclick="SafeHer.toast('Mute toggled')">
+          <span class="material-symbols-rounded">mic_off</span>
+          <span>Mute</span>
+        </div>
+        <div class="fakecall-grid-item" onclick="SafeHer.toast('Keypad opened')">
+          <span class="material-symbols-rounded">dialpad</span>
+          <span>Keypad</span>
+        </div>
+        <div class="fakecall-grid-item" onclick="SafeHer.toast('Speaker toggled')">
+          <span class="material-symbols-rounded">volume_up</span>
+          <span>Speaker</span>
+        </div>
+      </div>
+
+      <div class="fakecall-end-wrap">
+        <button class="fakecall-btn fakecall-decline-btn" onclick="SafeHer.fakecall.endCall()" aria-label="End call">
+          <span class="material-symbols-rounded">call_end</span>
+        </button>
+        <span class="fakecall-btn-label">End Call</span>
+      </div>
     </div>
   </div>
 
@@ -412,33 +511,83 @@
     </div>
   </div>
 
-  <!-- ── Live Location ────────────────────────────────────── -->
-  <div id="screen-live-location" class="screen">
+  <!-- ── Map / Live Location Screen ───────────────────────── -->
+  <div id="screen-map" class="screen">
     <div class="topbar">
       <button class="topbar-back" onclick="SafeHer.router.go('home')">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Live Location</span>
     </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">my_location</span>
-      <p class="placeholder-text">Live Location coming soon</p>
+    <div class="page-wrap map-page-wrap">
+      <!-- Loading state -->
+      <div id="map-loading" class="map-loading-box">
+        <span class="material-symbols-rounded map-loading-icon">my_location</span>
+        <p class="map-loading-text">Locating your position...</p>
+      </div>
+
+      <!-- Denied / Error card -->
+      <div id="map-error-card" class="map-error-card" style="display:none;">
+        <span class="material-symbols-rounded map-error-icon">location_off</span>
+        <p class="map-error-title">Location access denied</p>
+        <p class="map-error-desc" id="map-error-msg">Please allow location permissions to view and track your live location on the map.</p>
+        <button class="btn btn-crimson map-retry-btn" onclick="SafeHer.map.retry()">
+          <span class="material-symbols-rounded">refresh</span>Retry
+        </button>
+      </div>
+
+      <!-- Active map content -->
+      <div id="map-content" class="map-content" style="display:none;">
+        <!-- Leaflet Map Container -->
+        <div class="live-map-wrap">
+          <div id="live-map" class="live-map-view"></div>
+        </div>
+
+        <!-- Safety Legend -->
+        <div class="map-legend-card">
+          <div class="map-legend-row">
+            <div class="map-legend-item">
+              <span class="legend-badge-dot dot-safe"></span>
+              <span class="legend-label">Safe</span>
+            </div>
+            <div class="map-legend-item">
+              <span class="legend-badge-dot dot-moderate"></span>
+              <span class="legend-label">Moderate</span>
+            </div>
+            <div class="map-legend-item">
+              <span class="legend-badge-dot dot-danger"></span>
+              <span class="legend-label">Be careful</span>
+            </div>
+          </div>
+          <span class="legend-tag">Sample data</span>
+        </div>
+
+        <!-- Location details & Action Card -->
+        <div class="map-details-card">
+          <div class="map-info-row">
+            <div class="map-pulse-dot"></div>
+            <div class="map-info-text">
+              <p class="map-coords" id="map-coords-text">Fetching coordinates...</p>
+              <p class="map-accuracy" id="map-accuracy-text">Live GPS tracking active</p>
+            </div>
+          </div>
+
+          <div class="map-actions-group">
+            <button class="btn btn-crimson map-action-btn" id="btn-share-location" onclick="SafeHer.map.shareLiveLocation()">
+              <span class="material-symbols-rounded">share</span>Share live location
+            </button>
+            <button class="btn btn-outline map-action-btn" id="btn-copy-location" onclick="SafeHer.map.copyLocationLink()">
+              <span class="material-symbols-rounded">content_copy</span>Copy location link
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Share Location ───────────────────────────────────── -->
-  <div id="screen-share-location" class="screen">
-    <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
-        <span class="material-symbols-rounded">arrow_back</span>
-      </button>
-      <span class="topbar-title">Share Location</span>
-    </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">share_location</span>
-      <p class="placeholder-text">Share Location coming soon</p>
-    </div>
-  </div>
+  <!-- Fallback aliases for live-location and share-location -->
+  <div id="screen-live-location" class="screen" style="display:none;"></div>
+  <div id="screen-share-location" class="screen" style="display:none;"></div>
 
   <!-- ── Helplines ─────────────────────────────────────────── -->
   <div id="screen-helplines" class="screen">
@@ -483,7 +632,7 @@
     </div>
   </div>
 
-  <!-- ── Nearby Places ────────────────────────────────────── -->
+  <!-- ── Nearby Places (Police & Hospitals) ────────────────── -->
   <div id="screen-nearby-places" class="screen">
     <div class="topbar">
       <button class="topbar-back" onclick="SafeHer.router.go('home')">
@@ -491,11 +640,46 @@
       </button>
       <span class="topbar-title">Nearby Places</span>
     </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">location_searching</span>
-      <p class="placeholder-text">Nearby Places coming soon</p>
+
+    <div class="page-wrap places-page-wrap">
+      <!-- Tabs: Police and Hospitals -->
+      <div class="places-tabs">
+        <button class="places-tab-btn active" id="tab-btn-police" onclick="SafeHer.police.switchTab('police')">
+          <span class="material-symbols-rounded">local_police</span>Police
+        </button>
+        <button class="places-tab-btn" id="tab-btn-hospital" onclick="SafeHer.police.switchTab('hospital')">
+          <span class="material-symbols-rounded">local_hospital</span>Hospitals
+        </button>
+      </div>
+
+      <!-- Map display -->
+      <div class="places-map-wrap">
+        <div id="places-map" class="places-map"></div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="places-loading" class="places-loading-box">
+        <span class="material-symbols-rounded places-loading-icon">location_searching</span>
+        <p class="places-loading-text">Searching nearby places within 3 km...</p>
+      </div>
+
+      <!-- Failure / Error State -->
+      <div id="places-error" class="places-error-card" style="display:none;">
+        <span class="material-symbols-rounded places-error-icon">error_outline</span>
+        <p class="places-error-title">Unable to load nearby places</p>
+        <p class="places-error-desc">Could not connect to the places service. Please check your internet connection or GPS.</p>
+        <button class="btn btn-crimson places-retry-btn" onclick="SafeHer.police.retry()">
+          <span class="material-symbols-rounded">refresh</span>Retry
+        </button>
+      </div>
+
+      <!-- Places List Container -->
+      <div id="places-list" class="places-list" style="display:none;"></div>
     </div>
   </div>
+
+  <!-- Fallback alias for screen-police -->
+  <div id="screen-police" class="screen" style="display:none;"></div>
 
   <!-- ── Volunteers ───────────────────────────────────────── -->
   <div id="screen-volunteers" class="screen">
@@ -503,11 +687,79 @@
       <button class="topbar-back" onclick="SafeHer.router.go('home')">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Volunteers</span>
+      <span class="topbar-title">Community Volunteers</span>
     </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">groups</span>
-      <p class="placeholder-text">Volunteers coming soon</p>
+    <div class="page-wrap volunteer-page-wrap">
+      <!-- Volunteer Status Card with Toggle -->
+      <div class="volunteer-status-card">
+        <div class="volunteer-toggle-row">
+          <div class="volunteer-toggle-info">
+            <span class="volunteer-card-title">Available to help</span>
+            <p class="volunteer-card-desc" id="volunteer-status-desc">Turn on to receive emergency alerts near you.</p>
+          </div>
+          <label class="switch" for="volunteer-available-toggle">
+            <input type="checkbox" id="volunteer-available-toggle" onchange="SafeHer.volunteer.toggleAvailable(this.checked)" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="volunteer-pos-row" id="volunteer-pos-row" style="display:none;">
+          <span class="material-symbols-rounded volunteer-pos-icon">my_location</span>
+          <span id="volunteer-pos-text">GPS location active</span>
+        </div>
+      </div>
+
+      <!-- Active SOS Alert Card (Shown only when an SOS is active within 2 km) -->
+      <div id="volunteer-alert-card" class="volunteer-alert-card" style="display:none;">
+        <div class="volunteer-alert-header">
+          <div class="volunteer-alert-badge">EMERGENCY SOS</div>
+          <span class="volunteer-alert-time" id="volunteer-alert-time">Just now</span>
+        </div>
+
+        <div class="volunteer-alert-body">
+          <div class="volunteer-alert-info">
+            <p class="volunteer-alert-title">User needs emergency help nearby</p>
+            <p class="volunteer-alert-distance">
+              <span class="material-symbols-rounded" style="font-size:16px;">near_me</span>
+              <span id="volunteer-alert-dist-text">Calculating distance...</span>
+            </p>
+          </div>
+
+          <!-- Google Maps Link -->
+          <a id="volunteer-alert-map-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline volunteer-map-btn">
+            <span class="material-symbols-rounded">map</span>Open Location on Map
+          </a>
+
+          <!-- Safety Guidance -->
+          <div class="volunteer-safety-box">
+            <span class="material-symbols-rounded volunteer-safety-icon">warning</span>
+            <p class="volunteer-safety-text">Call 112. Do not confront anyone.</p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="volunteer-alert-actions" id="volunteer-alert-actions">
+          <button class="btn btn-crimson volunteer-btn" onclick="SafeHer.volunteer.respondComing()">
+            <span class="material-symbols-rounded">directions_run</span>I’m coming
+          </button>
+          <button class="btn btn-outline volunteer-btn" onclick="SafeHer.volunteer.respondCantHelp()">
+            Can’t help
+          </button>
+        </div>
+
+        <!-- Responded Status -->
+        <div id="volunteer-responded-status" class="volunteer-responded-box" style="display:none;">
+          <span class="material-symbols-rounded" style="color: var(--crimson);">check_circle</span>
+          <span>You responded to this alert. Follow safety instructions.</span>
+        </div>
+      </div>
+
+      <!-- Standing Info Card -->
+      <div class="volunteer-info-card">
+        <p class="volunteer-info-title">How volunteer alerts work</p>
+        <p class="volunteer-info-p">When you are available, SafeHer notifies you if an emergency SOS is triggered within 2 km of your location.</p>
+        <p class="volunteer-info-p">Always prioritize your safety: call police (112), alert people nearby, and do not put yourself in danger.</p>
+        <p class="volunteer-info-note">Note: Real-time alerting across different mobile phones requires backend cloud services (Web Push / WebSockets).</p>
+      </div>
     </div>
   </div>
 
@@ -519,9 +771,123 @@
       </button>
       <span class="topbar-title">Safe Timer</span>
     </div>
-    <div class="page-wrap placeholder-wrap">
-      <span class="material-symbols-rounded placeholder-icon">timer</span>
-      <p class="placeholder-text">Safe Timer coming soon</p>
+
+    <div class="page-wrap timer-page-wrap">
+      <!-- Setup View -->
+      <div id="timer-setup-view" class="timer-setup-view">
+        <div class="timer-card">
+          <p class="timer-card-title">Set Safety Countdown</p>
+          <p class="timer-card-desc">If you don't cancel this timer before it reaches zero, SafeHer will automatically trigger your emergency SOS countdown.</p>
+
+          <!-- Duration Presets -->
+          <label class="timer-field-label">Duration</label>
+          <div class="timer-chips-row">
+            <button type="button" class="timer-chip" data-mins="5" onclick="SafeHer.timer.setPresetMinutes(5)">5m</button>
+            <button type="button" class="timer-chip" data-mins="10" onclick="SafeHer.timer.setPresetMinutes(10)">10m</button>
+            <button type="button" class="timer-chip active" data-mins="15" onclick="SafeHer.timer.setPresetMinutes(15)">15m</button>
+            <button type="button" class="timer-chip" data-mins="30" onclick="SafeHer.timer.setPresetMinutes(30)">30m</button>
+            <button type="button" class="timer-chip" data-mins="60" onclick="SafeHer.timer.setPresetMinutes(60)">60m</button>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="timer-custom-minutes" class="form-label">Custom Minutes</label>
+            <input type="number" id="timer-custom-minutes" class="form-input" min="1" max="180" value="15" />
+          </div>
+
+          <!-- Contact Picker -->
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label for="timer-contact-select" class="form-label">Alert Trusted Contact</label>
+            <select id="timer-contact-select" class="form-input"></select>
+          </div>
+
+          <!-- Start Button -->
+          <button class="btn btn-crimson" style="width: 100%; padding: 12px; font-weight: 600;" onclick="SafeHer.timer.start()">
+            <span class="material-symbols-rounded">timer</span>Start Safe Timer
+          </button>
+        </div>
+
+        <p class="prototype-note" style="margin-top: 14px;">Note: Mobile browsers may pause countdowns when minimized. Full background server monitoring requires a backend.</p>
+      </div>
+
+      <!-- Running View -->
+      <div id="timer-running-view" class="timer-running-view" style="display:none;">
+        <div class="timer-card" style="text-align: center;">
+          <p class="timer-card-title">Safe Timer Running</p>
+          <p class="timer-card-desc" id="timer-running-contact">Alerting your emergency contacts</p>
+
+          <!-- Circular Countdown Ring -->
+          <div class="timer-ring-wrap">
+            <svg class="timer-ring-svg" viewBox="0 0 200 200">
+              <circle class="timer-ring-bg" cx="100" cy="100" r="88" />
+              <circle id="timer-ring-progress" class="timer-ring-progress" cx="100" cy="100" r="88" />
+            </svg>
+            <div class="timer-ring-center">
+              <p class="timer-time-display" id="timer-countdown-display">15:00</p>
+              <p class="timer-ring-sub">remaining</p>
+            </div>
+          </div>
+
+          <p class="timer-expiry-sub" id="timer-running-expiry">SOS activates when timer reaches zero</p>
+
+          <!-- I'm Safe Button -->
+          <div style="margin-top: 18px;">
+            <button class="btn timer-safe-btn" onclick="SafeHer.timer.cancel()">
+              <span class="material-symbols-rounded">check</span>I’m safe
+            </button>
+          </div>
+        </div>
+
+        <p class="prototype-note" style="margin-top: 14px;">Note: Background timer tracking across closed tabs or locked phones requires a backend.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Audio Evidence Screen ─────────────────────────────── -->
+  <div id="screen-evidence" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title" data-i18n="homeEvidence">Audio Evidence</span>
+    </div>
+
+    <div class="page-wrap evidence-page-wrap">
+      <!-- Recorder Box -->
+      <div class="evidence-record-card">
+        <div class="evidence-header-row">
+          <span class="evidence-card-title">Record Voice Evidence</span>
+          <span id="evidence-recording-pulse" class="evidence-pulse-dot" style="display:none;"></span>
+        </div>
+        <p class="evidence-card-sub" id="evidence-status-label">Tap to record audio evidence</p>
+
+        <p class="evidence-timer-display" id="evidence-timer-display">00:00</p>
+
+        <!-- Mic Denied Alert -->
+        <div id="evidence-mic-denied" class="evidence-denied-box" style="display:none;">
+          <span class="material-symbols-rounded" style="color:var(--crimson);font-size:24px;">mic_off</span>
+          <p id="evidence-denied-msg" class="evidence-denied-text">Microphone permission was denied. Please allow microphone access in your browser or device settings to record safety evidence.</p>
+          <button class="btn btn-outline" style="padding:6px 14px;font-size:12px;" onclick="SafeHer.evidence.startRecording()">Retry</button>
+        </div>
+
+        <button id="btn-record-evidence" class="btn btn-crimson evidence-record-btn" onclick="SafeHer.evidence.toggleRecord()">
+          <span class="material-symbols-rounded">mic</span>Start Recording
+        </button>
+
+        <p class="evidence-note">Recordings are saved securely inside your browser's local database (IndexedDB).</p>
+      </div>
+
+      <!-- Saved Recordings List Section -->
+      <div class="evidence-list-section">
+        <p class="evidence-section-title">Saved Recordings</p>
+
+        <div id="evidence-records-empty" class="evidence-empty-box">
+          <span class="material-symbols-rounded evidence-empty-icon">mic_none</span>
+          <p class="evidence-empty-title">No recordings yet</p>
+          <p class="evidence-empty-sub">Your recorded audio evidence files will appear here.</p>
+        </div>
+
+        <div id="evidence-records-list" class="evidence-records-list"></div>
+      </div>
     </div>
   </div>
 
@@ -629,12 +995,12 @@
 
       <!-- Security Settings -->
       <div class="settings-section">
-        <p class="settings-section-title">Security</p>
+        <p class="settings-section-title" data-i18n="securitySection">Security</p>
         <div class="settings-tile" onclick="SafeHer.pin.openChangePin()">
           <div class="settings-tile-left">
             <span class="material-symbols-rounded settings-tile-icon">pin</span>
             <div>
-              <p class="settings-tile-title">Change Safety PIN</p>
+              <p class="settings-tile-title" data-i18n="changePin">Change Safety PIN</p>
               <p class="settings-tile-sub">Required to cancel an SOS alert</p>
             </div>
           </div>
@@ -642,9 +1008,30 @@
         </div>
       </div>
 
+      <!-- Language Preferences -->
+      <div class="settings-section">
+        <p class="settings-section-title" data-i18n="languageSection">Language</p>
+        <div class="settings-card">
+          <div class="setting-toggle-row" style="border-bottom: none;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="material-symbols-rounded" style="color:var(--crimson);font-size:22px;">translate</span>
+              <div>
+                <p class="setting-toggle-title" data-i18n="selectLanguage">App Language</p>
+                <p class="setting-toggle-sub">English, ಕನ್ನಡ, हिंदी</p>
+              </div>
+            </div>
+            <select id="profile-language-select" class="form-input form-select" style="width: auto; padding: 6px 12px; font-size: 13px; font-weight: 500;" onchange="SafeHer.i18n.setLanguage(this.value)">
+              <option value="en">English</option>
+              <option value="kn">ಕನ್ನಡ</option>
+              <option value="hi">हिंदी</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <!-- Notifications Settings -->
       <div class="settings-section">
-        <p class="settings-section-title">Notifications</p>
+        <p class="settings-section-title" data-i18n="notificationsSection">Notifications</p>
         <div class="settings-card">
           <div class="setting-toggle-row">
             <div>
@@ -880,27 +1267,29 @@
     <button class="nav-item" data-screen="home"
             onclick="SafeHer.router.go('home')">
       <span class="material-symbols-rounded">home</span>
-      <span class="nav-label">Home</span>
+      <span class="nav-label" data-i18n="navHome">Home</span>
     </button>
     <button class="nav-item" data-screen="contacts"
             onclick="SafeHer.router.go('contacts')">
       <span class="material-symbols-rounded">contacts</span>
-      <span class="nav-label">Contacts</span>
+      <span class="nav-label" data-i18n="navContacts">Contacts</span>
     </button>
     <button class="nav-item" data-screen="tips"
             onclick="SafeHer.router.go('tips')">
       <span class="material-symbols-rounded">lightbulb</span>
-      <span class="nav-label">Tips</span>
+      <span class="nav-label" data-i18n="navTips">Tips</span>
     </button>
     <button class="nav-item" data-screen="profile"
             onclick="SafeHer.router.go('profile')">
       <span class="material-symbols-rounded">person</span>
-      <span class="nav-label">Profile</span>
+      <span class="nav-label" data-i18n="navProfile">Profile</span>
     </button>
   </nav>
 
 </div><!-- /#app -->
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./js/config.js"></script>
 <script src="./js/storage.js"></script>
 <script src="./js/api.js"></script>
 <script src="./js/app.js"></script>
@@ -912,6 +1301,12 @@
 <script src="./js/tips.js"></script>
 <script src="./js/profile.js"></script>
 <script src="./js/sos.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="./js/map.js"></script>
+<script src="./js/police.js"></script>
+<script src="./js/volunteer.js"></script>
+<script src="./js/timer.js"></script>
+<script src="./js/fakecall.js"></script>
+<script src="./js/i18n.js"></script>
+<script src="./js/evidence.js"></script>
 </body>
 </html>
