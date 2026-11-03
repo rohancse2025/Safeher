@@ -312,7 +312,9 @@ def delete_current_user():
         conn.close()
         return jsonify({"ok": False, "error": "Invalid safety PIN"}), 400
 
-    # Delete all associated rows
+    # Delete all associated rows in dependency order
+    cursor.execute('DELETE FROM timers WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM contacts WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM locations WHERE alert_id IN (SELECT id FROM alerts WHERE user_id = ?);', (user_id,))
     cursor.execute('''
         DELETE FROM responses 
@@ -320,9 +322,7 @@ def delete_current_user():
            OR volunteer_id IN (SELECT id FROM volunteers WHERE user_id = ?);
     ''', (user_id, user_id))
     cursor.execute('DELETE FROM alerts WHERE user_id = ?;', (user_id,))
-    cursor.execute('DELETE FROM contacts WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM volunteers WHERE user_id = ?;', (user_id,))
-    cursor.execute('DELETE FROM timers WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM push_subscriptions WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM users WHERE id = ?;', (user_id,))
 
