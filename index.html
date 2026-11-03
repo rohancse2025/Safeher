@@ -22,6 +22,9 @@
 
 <div id="app">
 
+  <!-- Global Request Loading Indicator -->
+  <div id="global-loading-bar" class="global-loading-bar" role="progressbar" aria-label="Loading" aria-hidden="true"></div>
+
   <!-- Toast -->
   <div id="toast" role="status" aria-live="polite"></div>
 
@@ -99,7 +102,7 @@
   <!-- ── Register ────────────────────────────────────────── -->
   <div id="screen-register" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('auth')">
+      <button class="topbar-back" onclick="SafeHer.router.go('auth')" aria-label="Back">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Create Account</span>
@@ -137,6 +140,13 @@
                  placeholder="Repeat password" autocomplete="new-password" />
           <span class="form-error" id="err-confirm"></span>
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text-dark);cursor:pointer;">
+            <input type="checkbox" id="reg-privacy" style="margin-top:2px;accent-color:var(--crimson);" required />
+            <span>I agree to the <a href="./privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--crimson);font-weight:600;text-decoration:underline;">Privacy Policy</a></span>
+          </label>
+          <span class="form-error" id="err-privacy"></span>
+        </div>
         <div class="form-submit-wrap">
           <button type="submit" class="btn btn-primary">Create Account</button>
         </div>
@@ -147,7 +157,7 @@
   <!-- ── Verify OTP ──────────────────────────────────────── -->
   <div id="screen-verify-otp" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('register')">
+      <button class="topbar-back" onclick="SafeHer.router.go('register')" aria-label="Back">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Verify Phone</span>
@@ -190,7 +200,7 @@
   <!-- ── Login ───────────────────────────────────────────── -->
   <div id="screen-login" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('auth')">
+      <button class="topbar-back" onclick="SafeHer.router.go('auth')" aria-label="Back">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Login</span>
@@ -243,6 +253,15 @@
     <!-- Scrollable body -->
     <div class="home-body">
 
+      <!-- Active Location Sharing Banner (shown when sharing is active) -->
+      <div id="home-sharing-banner" class="home-sharing-banner" style="display: none;" onclick="SafeHer.router.go('share-location')">
+        <div class="sharing-banner-left">
+          <span class="material-symbols-rounded sharing-banner-icon">share_location</span>
+          <span id="home-sharing-banner-text" class="sharing-banner-text">Sharing location until 10:30 PM</span>
+        </div>
+        <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">chevron_right</span>
+      </div>
+
       <!-- SOS section -->
       <div class="sos-section">
         <p class="sos-heading" data-i18n="homeEmergencyTitle">Are you in emergency?</p>
@@ -277,13 +296,13 @@
 
       <!-- Tile grid -->
       <div class="tile-grid">
-        <button class="tile" onclick="SafeHer.router.go('map')">
-          <span class="material-symbols-rounded">map</span>
-          <span class="tile-label" data-i18n="homeLiveLocation">Live Location</span>
-        </button>
-        <button class="tile" onclick="SafeHer.router.go('map')">
+        <button class="tile" onclick="SafeHer.router.go('share-location')">
           <span class="material-symbols-rounded">share</span>
           <span class="tile-label" data-i18n="homeShareLocation">Share Location</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('history')">
+          <span class="material-symbols-rounded">history</span>
+          <span class="tile-label" data-i18n="homeHistory">History</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('helplines')">
           <span class="material-symbols-rounded">local_police</span>
@@ -356,6 +375,30 @@
         </a>
       </div>
 
+      <!-- Offline Fallback Card (shown if network request fails after 3 retries) -->
+      <div id="sos-offline-fallback-card" class="sos-offline-fallback-card" style="display: none;">
+        <div class="offline-fallback-header">
+          <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">wifi_off</span>
+          <div>
+            <p class="offline-fallback-title">Offline Emergency Fallback</p>
+            <p class="offline-fallback-desc">SOS server unreachable after 3 attempts. Use offline emergency channels immediately:</p>
+          </div>
+        </div>
+        <div class="offline-fallback-actions">
+          <a href="tel:112" class="btn btn-primary btn-crimson" style="width: 100%; text-decoration: none; margin-bottom: 8px;">
+            <span class="material-symbols-rounded">call</span>Call 112
+          </a>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="SafeHer.sos.sendOfflineSmsAll()">
+              <span class="material-symbols-rounded" style="font-size: 16px;">sms</span>Offline SMS
+            </button>
+            <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="SafeHer.sos.sendOfflineWhatsAppAll()">
+              <span class="material-symbols-rounded" style="font-size: 16px;">chat</span>WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Live Volunteers Status -->
       <div class="sos-status-box">
         <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">hourglass_top</span>
@@ -397,7 +440,7 @@
     <!-- Setup View -->
     <div id="fakecall-setup-view" class="fakecall-setup-view">
       <div class="topbar">
-        <button class="topbar-back" onclick="SafeHer.router.go('home')">
+        <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
           <span class="material-symbols-rounded">arrow_back</span>
         </button>
         <span class="topbar-title" data-i18n="homeFakeCall">Fake Call</span>
@@ -500,7 +543,7 @@
   <!-- ── Location ─────────────────────────────────────────── -->
   <div id="screen-location" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Location</span>
@@ -514,7 +557,7 @@
   <!-- ── Map / Live Location Screen ───────────────────────── -->
   <div id="screen-map" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Live Location</span>
@@ -585,14 +628,126 @@
     </div>
   </div>
 
-  <!-- Fallback aliases for live-location and share-location -->
+  <!-- Fallback alias for live-location -->
   <div id="screen-live-location" class="screen" style="display:none;"></div>
-  <div id="screen-share-location" class="screen" style="display:none;"></div>
+
+  <!-- ── Share Location Screen ──────────────────────────────── -->
+  <div id="screen-share-location" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Share Location</span>
+    </div>
+
+    <div class="page-wrap" style="padding-bottom: 30px;">
+      
+      <!-- 1. Active Sharing View (shown when sharing session is active) -->
+      <div id="share-active-view" style="display: none;">
+        <!-- Status Card -->
+        <div class="share-status-card">
+          <div class="share-status-header">
+            <div class="share-pulse-dot"></div>
+            <div>
+              <p class="share-status-title">Live Location Sharing Active</p>
+              <p class="share-status-time" id="share-time-left">Sharing until --:--</p>
+            </div>
+          </div>
+          <div class="share-coords-row">
+            <span class="material-symbols-rounded" style="font-size: 16px; color: var(--crimson);">location_on</span>
+            <span id="share-active-coords" style="font-size: 12px; color: var(--text-gray);">Tracking location...</span>
+          </div>
+        </div>
+
+        <!-- Live Leaflet Map -->
+        <div class="share-map-wrap" style="height: 220px; border-radius: 8px; overflow: hidden; border: 1px solid #EAD3DA; margin-bottom: 14px;">
+          <div id="share-live-map" style="height: 220px; width: 100%;"></div>
+        </div>
+
+        <!-- Stop Sharing Button -->
+        <div style="margin-bottom: 16px;">
+          <button type="button" class="btn btn-primary" onclick="SafeHer.shareLocation.stopSharing()" style="background: var(--crimson); width: 100%;">
+            <span class="material-symbols-rounded">stop_circle</span>Stop Sharing
+          </button>
+        </div>
+
+        <!-- Shared With Contacts List -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <p class="settings-section-title" style="margin-bottom: 0;">Shared With</p>
+            <button type="button" class="btn-share-all" onclick="SafeHer.shareLocation.shareViaWebShare()" aria-label="Share location link">
+              <span class="material-symbols-rounded" style="font-size: 16px;">share</span>Share Link
+            </button>
+          </div>
+          <div id="share-active-contacts-list" class="share-active-contacts-list"></div>
+        </div>
+      </div>
+
+      <!-- 2. Setup View (shown when inactive) -->
+      <div id="share-setup-view">
+        <div class="share-intro-card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 36px; height: 36px; background: #FCEFF3; border: 1px solid #EAD3DA; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--crimson);">
+              <span class="material-symbols-rounded" style="font-size: 20px;">share_location</span>
+            </div>
+            <div>
+              <h3 style="font-size: 15px; font-weight: 700; color: var(--text-dark); margin: 0;">Share Live Location</h3>
+              <p style="font-size: 12px; color: var(--text-gray); margin: 0;">Keep trusted people updated with your location</p>
+            </div>
+          </div>
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0; line-height: 1.4;">
+            Choose trusted contacts and how long you want to share your location. You can stop sharing at any time.
+          </p>
+        </div>
+
+        <!-- Duration Picker -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <p class="settings-section-title">Share Duration</p>
+          <div class="share-duration-grid">
+            <button type="button" class="share-duration-chip active" data-duration="15m" onclick="SafeHer.shareLocation.selectDuration('15m')">15 min</button>
+            <button type="button" class="share-duration-chip" data-duration="1h" onclick="SafeHer.shareLocation.selectDuration('1h')">1 hour</button>
+            <button type="button" class="share-duration-chip" data-duration="4h" onclick="SafeHer.shareLocation.selectDuration('4h')">4 hours</button>
+            <button type="button" class="share-duration-chip" data-duration="stop" onclick="SafeHer.shareLocation.selectDuration('stop')">Until I stop</button>
+          </div>
+        </div>
+
+        <!-- Select Contacts Checkboxes -->
+        <div class="settings-card" style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <p class="settings-section-title" style="margin-bottom: 0;">Choose Contacts</p>
+            <button type="button" class="btn-text-link" id="btn-toggle-all-contacts" onclick="SafeHer.shareLocation.toggleAllContacts()">Select All</button>
+          </div>
+          <div id="share-setup-contacts-list" class="share-setup-contacts-list">
+            <!-- Dynamic contact checkboxes -->
+          </div>
+        </div>
+
+        <!-- Start Sharing Button -->
+        <button type="button" id="btn-start-sharing" class="btn btn-primary btn-crimson" onclick="SafeHer.shareLocation.startSharing()" style="width: 100%; font-size: 15px; font-weight: 600;">
+          <span class="material-symbols-rounded">share_location</span>Start Sharing
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Alert History Screen ────────────────────────────────── -->
+  <div id="screen-history" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Alert History</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 24px;">
+      <div id="history-screen-list" class="alert-history-list"></div>
+    </div>
+  </div>
 
   <!-- ── Helplines ─────────────────────────────────────────── -->
   <div id="screen-helplines" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Helplines</span>
@@ -635,7 +790,7 @@
   <!-- ── Nearby Places (Police & Hospitals) ────────────────── -->
   <div id="screen-nearby-places" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Nearby Places</span>
@@ -684,7 +839,7 @@
   <!-- ── Volunteers ───────────────────────────────────────── -->
   <div id="screen-volunteers" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Community Volunteers</span>
@@ -705,6 +860,15 @@
         <div class="volunteer-pos-row" id="volunteer-pos-row" style="display:none;">
           <span class="material-symbols-rounded volunteer-pos-icon">my_location</span>
           <span id="volunteer-pos-text">GPS location active</span>
+        </div>
+        <div id="volunteer-verification-badge" class="volunteer-badge-pending" style="display:none;">
+          <span class="material-symbols-rounded" style="font-size:14px;">hourglass_top</span>
+          <span id="volunteer-verification-text">Pending approval</span>
+        </div>
+        <div id="volunteer-note-box" style="margin-top:10px; display:none;">
+          <label for="volunteer-note-input" style="font-size:12px; color:var(--text-gray); display:block; margin-bottom:4px;">Volunteer verification note:</label>
+          <input type="text" id="volunteer-note-input" class="form-input" placeholder="e.g. First aid trained, local resident..." style="font-size:13px; padding:8px 10px;" />
+          <button type="button" class="btn btn-outline" onclick="SafeHer.volunteer.saveNote()" style="margin-top:6px; padding:6px 12px; font-size:12px;">Submit Note</button>
         </div>
       </div>
 
@@ -766,7 +930,7 @@
   <!-- ── Safe Timer ───────────────────────────────────────── -->
   <div id="screen-safe-timer" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Safe Timer</span>
@@ -845,7 +1009,7 @@
   <!-- ── Audio Evidence Screen ─────────────────────────────── -->
   <div id="screen-evidence" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title" data-i18n="homeEvidence">Audio Evidence</span>
@@ -917,7 +1081,7 @@
       <div class="modal-sheet">
         <div class="modal-header">
           <span class="modal-title" id="contact-modal-title">Add Contact</span>
-          <button class="modal-close-btn" onclick="SafeHer.contacts.closeModal()">
+          <button class="modal-close-btn" onclick="SafeHer.contacts.closeModal()" aria-label="Close contact dialog">
             <span class="material-symbols-rounded">close</span>
           </button>
         </div>
@@ -1017,13 +1181,13 @@
               <span class="material-symbols-rounded" style="color:var(--crimson);font-size:22px;">translate</span>
               <div>
                 <p class="setting-toggle-title" data-i18n="selectLanguage">App Language</p>
-                <p class="setting-toggle-sub">English, ಕನ್ನಡ, हिंदी</p>
+                <p class="setting-toggle-sub">English, <span lang="kn">ಕನ್ನಡ</span>, <span lang="hi">हिंदी</span></p>
               </div>
             </div>
-            <select id="profile-language-select" class="form-input form-select" style="width: auto; padding: 6px 12px; font-size: 13px; font-weight: 500;" onchange="SafeHer.i18n.setLanguage(this.value)">
-              <option value="en">English</option>
-              <option value="kn">ಕನ್ನಡ</option>
-              <option value="hi">हिंदी</option>
+            <select id="profile-language-select" class="form-input form-select" style="width: auto; padding: 6px 12px; font-size: 13px; font-weight: 500;" onchange="SafeHer.i18n.setLanguage(this.value)" aria-label="Select App Language">
+              <option value="en" lang="en">English</option>
+              <option value="kn" lang="kn">ಕನ್ನಡ</option>
+              <option value="hi" lang="hi">हिंदी</option>
             </select>
           </div>
         </div>
@@ -1033,6 +1197,16 @@
       <div class="settings-section">
         <p class="settings-section-title" data-i18n="notificationsSection">Notifications</p>
         <div class="settings-card">
+          <div class="setting-toggle-row">
+            <div>
+              <p class="setting-toggle-title">Push Notifications</p>
+              <p class="setting-toggle-sub">Live alerts for nearby emergencies, volunteer updates and timer expiry</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="notif-push" onchange="SafeHer.profile.togglePushNotifications(this.checked)" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <div class="setting-toggle-row">
             <div>
               <p class="setting-toggle-title">SMS Alerts</p>
@@ -1063,6 +1237,19 @@
               <span class="slider"></span>
             </label>
           </div>
+
+          <!-- Location Privacy Note -->
+          <div style="background: var(--light-pink); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 18px;">lock</span>
+            <span style="font-size: 12px; color: var(--crimson); font-weight: 500;">Your location is only shared during an active SOS</span>
+          </div>
+
+          <!-- Browser support note -->
+          <div style="padding-top: 10px; border-top: 1px solid var(--border-color); margin-top: 6px;">
+            <p style="font-size: 11px; color: var(--text-gray); margin: 0; line-height: 1.4;">
+              * Web Push notifications require browser permission and HTTPS (or localhost). Supported on Chrome, Edge, Firefox, and Safari (iOS 16.4+ / macOS 13+ when added to Home Screen).
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1090,8 +1277,8 @@
         <button class="btn btn-secondary" onclick="SafeHer.auth.logout()" style="color: var(--text-dark);">
           <span class="material-symbols-rounded">logout</span>Logout
         </button>
-        <button class="btn btn-secondary btn-clear-data" onclick="SafeHer.profile.confirmClearAllData()">
-          <span class="material-symbols-rounded">delete_forever</span>Clear All Data
+        <button class="btn btn-secondary btn-clear-data" onclick="SafeHer.profile.deleteAccountAndData()" style="color: var(--crimson); border-color: var(--crimson);">
+          <span class="material-symbols-rounded">delete_forever</span>Delete my account and data
         </button>
       </div>
     </div>
@@ -1101,7 +1288,7 @@
       <div class="modal-sheet">
         <div class="modal-header">
           <span class="modal-title">Edit Profile</span>
-          <button class="modal-close-btn" onclick="SafeHer.profile.closeEditModal()">
+          <button class="modal-close-btn" onclick="SafeHer.profile.closeEditModal()" aria-label="Close edit profile dialog">
             <span class="material-symbols-rounded">close</span>
           </button>
         </div>
@@ -1121,6 +1308,83 @@
             <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Alert History Details Screen ──────────────────────── -->
+  <div id="screen-alert-details" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.profile.backFromDetails()" aria-label="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Alert Details</span>
+    </div>
+    <div class="page-wrap" style="padding-bottom: 30px;">
+      <!-- Alert Overview Card -->
+      <div class="profile-card" style="text-align: left; padding: 16px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="detail-alert-badge" class="alert-mode-badge alert-mode-normal">Normal SOS</span>
+            <span id="detail-alert-id" style="font-size: 12px; color: var(--text-gray); font-weight: 600;">#0</span>
+          </div>
+          <span id="detail-alert-status" class="alert-status-badge alert-status-resolved">Resolved</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+          <div>
+            <span style="font-size: 11px; color: var(--text-gray); display: block;">Started</span>
+            <strong id="detail-alert-started" style="font-size: 13px; color: var(--text-dark);">-</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: var(--text-gray); display: block;">Ended</span>
+            <strong id="detail-alert-ended" style="font-size: 13px; color: var(--text-dark);">-</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: var(--text-gray); display: block;">Duration</span>
+            <strong id="detail-alert-duration" style="font-size: 13px; color: var(--text-dark);">-</strong>
+          </div>
+          <div>
+            <span style="font-size: 11px; color: var(--text-gray); display: block;">Contacts Emailed</span>
+            <strong id="detail-alert-contacts" style="font-size: 13px; color: var(--text-dark);">-</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Route Tracking Map Card -->
+      <div class="settings-section">
+        <p class="settings-section-title">Recorded Location Trail</p>
+        <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+          <div id="alert-details-map" style="height: 220px; width: 100%; border-radius: 6px; background: #EEE; border: 1px solid var(--border-color); margin-bottom: 10px;"></div>
+          <p id="detail-map-hint" style="font-size: 11px; color: var(--text-gray); margin: 0; line-height: 1.4;">
+            Polyline route drawn from recorded location points with start and end markers.
+          </p>
+        </div>
+      </div>
+
+      <!-- Volunteers Responded Card -->
+      <div class="settings-section">
+        <p class="settings-section-title">Volunteers Who Responded</p>
+        <div id="detail-volunteers-list" class="settings-card" style="padding: 12px;">
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0;">Loading responses...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Too Many Alerts Abuse Limit Modal -->
+    <div id="too-many-alerts-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
+      <div class="modal-sheet" style="text-align: center; padding: 24px 20px; border-radius: 8px;">
+        <span class="material-symbols-rounded" style="font-size: 44px; color: var(--crimson); margin-bottom: 8px;">warning</span>
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">Too many alerts, call 112 directly</h3>
+        <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 18px; line-height: 1.4;">
+          You have reached the limit of 5 alerts this hour. For immediate help, please call emergency services.
+        </p>
+        <a href="tel:112" class="btn btn-primary btn-crimson" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; margin-bottom: 10px;">
+          <span class="material-symbols-rounded">call</span>Call 112
+        </a>
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('too-many-alerts-modal').style.display='none'" style="width: 100%;">
+          Dismiss
+        </button>
       </div>
     </div>
   </div>
@@ -1151,6 +1415,27 @@
         </a>
       </div>
 
+      <!-- Emergency Offline Fallback Card (shown if network request fails after 3 retries) -->
+      <div id="em-offline-fallback-card" class="sos-offline-fallback-card" style="display: none; margin-top: 14px;">
+        <div class="offline-fallback-header">
+          <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">wifi_off</span>
+          <div>
+            <p class="offline-fallback-title">Offline Emergency Fallback</p>
+            <p class="offline-fallback-desc">SOS server unreachable after 3 attempts. Use offline channels:</p>
+          </div>
+        </div>
+        <div class="offline-fallback-actions">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="SafeHer.sos.sendOfflineSmsAll()">
+              <span class="material-symbols-rounded" style="font-size: 16px;">sms</span>Offline SMS
+            </button>
+            <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="SafeHer.sos.sendOfflineWhatsAppAll()">
+              <span class="material-symbols-rounded" style="font-size: 16px;">chat</span>WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Contacts Notified -->
       <div class="sos-contacts-section" style="margin-top: 16px;">
         <p class="sos-section-title">Contacts Notified</p>
@@ -1169,7 +1454,7 @@
   <!-- ── Set Safety PIN Screen ────────────────────────────── -->
   <div id="screen-set-pin" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('home')">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Set Safety PIN</span>
@@ -1198,7 +1483,7 @@
   <!-- ── Change Safety PIN Screen ──────────────────────────── -->
   <div id="screen-change-pin" class="screen">
     <div class="topbar">
-      <button class="topbar-back" onclick="SafeHer.router.go('profile')">
+      <button class="topbar-back" onclick="SafeHer.router.go('profile')" aria-label="Back to Profile">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
       <span class="topbar-title">Change Safety PIN</span>
@@ -1220,6 +1505,30 @@
         <span class="form-error" id="err-change-pin" style="display: block; margin-bottom: 12px; text-align: center;"></span>
         <button type="submit" class="btn btn-primary">Update PIN</button>
       </form>
+    </div>
+  </div>
+
+  <!-- ── 404 Screen ─────────────────────────────────────────── -->
+  <div id="screen-404" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Page Not Found</span>
+    </div>
+    <div class="page-wrap" style="text-align: center; padding-top: 36px; padding-bottom: 30px;">
+      <div style="width: 60px; height: 60px; background: #FCEFF3; border: 1px solid #EAD3DA; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; color: var(--crimson);">
+        <span class="material-symbols-rounded" style="font-size: 34px;">error_outline</span>
+      </div>
+      <p style="font-size: 12px; font-weight: 700; color: var(--crimson); text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px;">Error 404</p>
+      <h2 style="font-size: 20px; font-weight: 700; color: var(--text-dark); margin: 0 0 10px;">Page Not Found</h2>
+      <p style="font-size: 14px; color: var(--text-gray); margin: 0 0 24px; line-height: 1.5;">The requested screen or feature could not be found.</p>
+      <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.router.go('home')" style="width: 100%; margin-bottom: 10px;">
+        <span class="material-symbols-rounded">home</span>Return to Home
+      </button>
+      <a href="tel:112" class="btn btn-secondary" style="width: 100%; text-decoration: none; box-sizing: border-box;">
+        <span class="material-symbols-rounded">call</span>Emergency Call 112
+      </a>
     </div>
   </div>
 
@@ -1251,11 +1560,11 @@
         <button class="pin-key" onclick="SafeHer.pin.handleDigit('7')">7</button>
         <button class="pin-key" onclick="SafeHer.pin.handleDigit('8')">8</button>
         <button class="pin-key" onclick="SafeHer.pin.handleDigit('9')">9</button>
-        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleCancel()">
+        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleCancel()" aria-label="Cancel PIN entry">
           <span class="material-symbols-rounded">close</span>
         </button>
         <button class="pin-key" onclick="SafeHer.pin.handleDigit('0')">0</button>
-        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleDelete()">
+        <button class="pin-key pin-key-action" onclick="SafeHer.pin.handleDelete()" aria-label="Backspace">
           <span class="material-symbols-rounded">backspace</span>
         </button>
       </div>
@@ -1302,6 +1611,7 @@
 <script src="./js/profile.js"></script>
 <script src="./js/sos.js"></script>
 <script src="./js/map.js"></script>
+<script src="./js/share_location.js"></script>
 <script src="./js/police.js"></script>
 <script src="./js/volunteer.js"></script>
 <script src="./js/timer.js"></script>

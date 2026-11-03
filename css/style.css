@@ -207,6 +207,94 @@ body {
 
 #toast.show { opacity: 1; }
 
+#toast.has-action {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+.toast-msg {
+  flex: 1;
+}
+.toast-retry-btn {
+  background: var(--crimson);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  min-height: 32px;
+}
+.toast-retry-btn:hover {
+  background: #870b30;
+}
+
+/* ─── Global Loading Bar ────────────────────────────────────── */
+.global-loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: var(--crimson);
+  z-index: 999999;
+  opacity: 0;
+  transition: width 0.25s ease, opacity 0.25s ease;
+  pointer-events: none;
+}
+.global-loading-bar.active {
+  opacity: 1;
+  width: 70%;
+  animation: globalLoadingPulse 1.4s ease-in-out infinite;
+}
+.global-loading-bar.done {
+  width: 100%;
+  opacity: 0;
+}
+@keyframes globalLoadingPulse {
+  0%   { width: 15%; left: 0%; }
+  50%  { width: 70%; left: 15%; }
+  100% { width: 95%; left: 5%; }
+}
+
+/* ─── SOS Offline Fallback Card ────────────────────────────── */
+.sos-offline-fallback-card {
+  background: #FFFFFF;
+  border: 1px solid #EAD3DA;
+  border-radius: var(--radius-card);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.offline-fallback-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.offline-fallback-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin: 0 0 2px;
+}
+.offline-fallback-desc {
+  font-size: 12px;
+  color: var(--text-gray);
+  margin: 0;
+  line-height: 1.4;
+}
+.offline-fallback-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ─── Buttons (shared) ──────────────────────────────────────── */
 .btn {
   display: inline-flex;
@@ -3341,4 +3429,277 @@ input:checked + .slider:before {
   border-radius: 12px;
   z-index: 250;
   pointer-events: none;
+}
+
+/* ─── Home Sharing Banner ────────────────────────────────────── */
+.home-sharing-banner {
+  background: var(--pink-bg, #FCEFF3);
+  border: 1px solid #EAD3DA;
+  border-radius: var(--radius-card, 8px);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.home-sharing-banner:hover {
+  background: #f8e4eb;
+}
+.sharing-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sharing-banner-icon {
+  color: var(--crimson);
+  font-size: 22px;
+}
+.sharing-banner-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crimson);
+}
+
+/* ─── Share Location Screen Styles ──────────────────────────── */
+.share-status-card {
+  background: #FFFFFF;
+  border: 1px solid #EAD3DA;
+  border-radius: var(--radius-card, 8px);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.share-status-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.share-pulse-dot {
+  width: 10px;
+  height: 10px;
+  background: #27AE60;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.25);
+  animation: sharePulse 1.8s infinite;
+}
+@keyframes sharePulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.5); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(39, 174, 96, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
+}
+.share-status-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin: 0;
+}
+.share-status-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--crimson);
+  margin: 0;
+}
+.share-coords-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.share-intro-card {
+  background: #FFFFFF;
+  border: 1px solid #EAD3DA;
+  border-radius: var(--radius-card, 8px);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.share-duration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.share-duration-chip {
+  padding: 10px 12px;
+  background: #FFFFFF;
+  border: 1px solid #EAD3DA;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dark);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.share-duration-chip.active {
+  background: var(--pink-bg, #FCEFF3);
+  border-color: var(--crimson);
+  color: var(--crimson);
+  font-weight: 700;
+}
+
+.share-setup-contact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #F5E8ED;
+}
+.share-setup-contact-item:last-child {
+  border-bottom: none;
+}
+.share-contact-check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex: 1;
+  min-height: 44px;
+}
+.share-contact-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--crimson);
+  cursor: pointer;
+}
+.share-contact-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--pink-bg, #FCEFF3);
+  color: var(--crimson);
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.share-contact-info {
+  display: flex;
+  flex-direction: column;
+}
+.share-contact-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+.share-contact-phone {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+
+.share-active-contact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #F5E8ED;
+}
+.share-active-contact-item:last-child {
+  border-bottom: none;
+}
+.share-contact-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn-share-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  font-family: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  min-height: 34px;
+}
+.btn-share-wa {
+  background: #25D366;
+  color: #FFFFFF;
+}
+.btn-share-sms {
+  background: #FFFFFF;
+  color: #333333;
+  border-color: #CCCCCC;
+}
+.btn-share-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #FFFFFF;
+  border: 1px solid #EAD3DA;
+  color: var(--crimson);
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 34px;
+}
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--crimson);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+  font-family: inherit;
+}
+
+/* ─── Accessibility & Responsive Column Styles ──────────────── */
+:focus-visible {
+  outline: 2px solid var(--crimson);
+  outline-offset: 2px;
+}
+
+button, a, input[type="button"], input[type="submit"] {
+  min-height: 44px;
+}
+
+.tile, .nav-item, .chip, .btn, .topbar-back, .home-avatar {
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-pulse-indicator,
+  .sos-ring1,
+  .sos-ring2,
+  .global-loading-bar.active,
+  .share-pulse-dot {
+    animation: none !important;
+  }
+}
+
+@media (min-width: 601px) {
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #FCEFF3;
+  }
+  #app {
+    width: 100%;
+    max-width: 440px;
+    height: 100vh;
+    max-height: 920px;
+    margin: auto;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
 }

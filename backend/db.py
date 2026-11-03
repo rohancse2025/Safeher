@@ -4,6 +4,7 @@ import sqlite3
 from dotenv import load_dotenv
 
 # Load settings from .env file
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 load_dotenv()
 
 # Database path: resolves relative paths relative to backend directory
@@ -97,10 +98,20 @@ def init_db():
             available INTEGER DEFAULT 0,
             lat REAL,
             lng REAL,
+            status TEXT DEFAULT 'pending',
+            note TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
+
+    # Add columns if migrating existing database
+    cursor.execute("PRAGMA table_info(volunteers);")
+    vol_cols = [col['name'] for col in cursor.fetchall()]
+    if 'status' not in vol_cols:
+        cursor.execute("ALTER TABLE volunteers ADD COLUMN status TEXT DEFAULT 'pending';")
+    if 'note' not in vol_cols:
+        cursor.execute("ALTER TABLE volunteers ADD COLUMN note TEXT;")
 
     # 6. Responses table
     cursor.execute('''
@@ -128,6 +139,19 @@ def init_db():
         );
     ''')
 
+    # 8. Push subscriptions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            endpoint TEXT UNIQUE NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ''')
+
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
@@ -135,6 +159,8 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_token ON alerts(share_token);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_locations_alert ON locations(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_endpoint ON push_subscriptions(endpoint);')
 
     conn.commit()
     conn.close()

@@ -101,6 +101,10 @@ SafeHer.home = (function() {
 
     var cEl = document.getElementById('home-contacts-count');
     if (cEl) cEl.textContent = SafeHer.api.getContacts().length;
+
+    if (SafeHer.shareLocation && SafeHer.shareLocation.updateHomeBanner) {
+      SafeHer.shareLocation.updateHomeBanner();
+    }
   }
 
   // ── Init (called once at DOMContentLoaded) ─────────────

@@ -17,6 +17,7 @@ SafeHer.i18n = (function() {
       homeYouAreSafe: 'You are safe',
       homeLiveLocation: 'Live Location',
       homeShareLocation: 'Share Location',
+      homeHistory: 'History',
       homeCallPolice: 'Call Police',
       homeNearbyPlaces: 'Nearby Places',
       homeVolunteers: 'Volunteers',
@@ -78,6 +79,7 @@ SafeHer.i18n = (function() {
       homeYouAreSafe: 'ನೀವು ಸುರಕ್ಷಿತವಾಗಿದ್ದೀರಿ',
       homeLiveLocation: 'ಲೈವ್ ಸ್ಥಳ',
       homeShareLocation: 'ಸ್ಥಳ ಹಂಚಿಕೊಳ್ಳಿ',
+      homeHistory: 'ಇತಿಹಾಸ',
       homeCallPolice: 'ಪೊಲೀಸರಿಗೆ ಕರೆ',
       homeNearbyPlaces: 'ಹತ್ತಿರದ ಸ್ಥಳಗಳು',
       homeVolunteers: 'ಸ್ವಯಂಸೇವಕರು',
@@ -139,6 +141,7 @@ SafeHer.i18n = (function() {
       homeYouAreSafe: 'आप सुरक्षित हैं',
       homeLiveLocation: 'लाइव लोकेशन',
       homeShareLocation: 'लोकेशन शेयर करें',
+      homeHistory: 'इतिहास',
       homeCallPolice: 'पुलिस को कॉल करें',
       homeNearbyPlaces: 'नजदीकी स्थान',
       homeVolunteers: 'स्वयंसेवक',
@@ -196,12 +199,21 @@ SafeHer.i18n = (function() {
   }
 
   function applyTranslations() {
+    if (document.documentElement) {
+      document.documentElement.lang = currentLang || 'en';
+    }
+
     var elements = document.querySelectorAll('[data-i18n]');
     elements.forEach(function(el) {
       var key = el.getAttribute('data-i18n');
       var translated = t(key);
       if (translated) {
         el.textContent = translated;
+        if (currentLang && currentLang !== 'en') {
+          el.setAttribute('lang', currentLang);
+        } else {
+          el.removeAttribute('lang');
+        }
       }
     });
 

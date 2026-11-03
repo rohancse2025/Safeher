@@ -16,12 +16,13 @@ SafeHer.evidence = (function() {
   var playingId = null;
 
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function formatDuration(sec) {
@@ -353,10 +354,10 @@ SafeHer.evidence = (function() {
             '</div>' +
           '</div>' +
           '<div class="evidence-item-actions">' +
-            '<button class="evidence-play-btn" data-id="' + rec.id + '" onclick="SafeHer.evidence.playRecording(' + rec.id + ')" aria-label="Play recording">' +
+            '<button class="evidence-play-btn" data-id="' + Number(rec.id) + '" onclick="SafeHer.evidence.playRecording(' + Number(rec.id) + ')" aria-label="Play recording">' +
               '<span class="material-symbols-rounded">' + playIcon + '</span>' +
             '</button>' +
-            '<button class="evidence-delete-btn" onclick="SafeHer.evidence.deleteRecord(' + rec.id + ')" aria-label="Delete recording">' +
+            '<button class="evidence-delete-btn" onclick="SafeHer.evidence.deleteRecord(' + Number(rec.id) + ')" aria-label="Delete recording">' +
               '<span class="material-symbols-rounded">delete</span>' +
             '</button>' +
           '</div>' +

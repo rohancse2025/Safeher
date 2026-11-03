@@ -27,8 +27,8 @@ def health_check():
             }
         }), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({
             "ok": False,
-            "error": f"Database check failed: {str(e)}"
+            "error": "Database check failed"
         }), 500

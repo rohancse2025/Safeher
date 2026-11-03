@@ -1,24 +1,23 @@
-// js/volunteer.js – Community Volunteers, availability toggle, cross-tab SOS alerting, and response tracking
-//
-// Note: In production across different devices/phones, real-time volunteer alerting
-// requires a backend server with WebSocket, Server-Sent Events (SSE), or Web Push
-// notifications. The localStorage 'storage' event provides real-time cross-tab
-// communication within the same browser for local testing and demonstration.
+// js/volunteer.js – Community Volunteers, verification state, 5s polling, and response dispatch
 
 SafeHer.volunteer = (function() {
   var dismissedAlertId = null;
   var respondedAlertId = null;
+  var currentAlertId = null;
+  var pollingTimer = null;
 
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // ─── Haversine Distance (in km) ───────────────────────────
+  // Note: Kept on the front end for offline/local scenarios; server provides pre-calculated distance_km.
   function haversineDistance(lat1, lon1, lat2, lon2) {
     var R = 6371; // Earth radius in km
     var dLat = (lat2 - lat1) * Math.PI / 180;
@@ -37,22 +36,70 @@ SafeHer.volunteer = (function() {
     return distKm.toFixed(1) + ' km away';
   }
 
+  // ─── 5-Second Real-Time Polling ───────────────────────────
+  function startPolling() {
+    stopPolling();
+    pollNearbyAlerts();
+    pollingTimer = setInterval(pollNearbyAlerts, 5000);
+  }
+
+  function stopPolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  }
+
+  function pollNearbyAlerts() {
+    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
+    if (!profile || !profile.isAvailable) {
+      hideAlertCard();
+      stopPolling();
+      return;
+    }
+
+    if (!SafeHer.api || !SafeHer.api.getNearbyAlerts) return;
+
+    SafeHer.api.getNearbyAlerts(function(err, alerts) {
+      if (!err && alerts && alerts.length > 0) {
+        var firstAlert = alerts[0];
+        var id = firstAlert.alert_id || firstAlert.id;
+        currentAlertId = id;
+
+        if (dismissedAlertId && dismissedAlertId === id) {
+          hideAlertCard();
+          return;
+        }
+
+        // Use precalculated distance_km returned from the server
+        showAlertCardData(id, firstAlert.time || firstAlert.started_at, firstAlert.distance_km, firstAlert.maps_link);
+      } else {
+        hideAlertCard();
+      }
+    });
+  }
+
   // ─── Save & Toggle Availability ───────────────────────────
   function toggleAvailable(isAvailable) {
     var descEl = document.getElementById('volunteer-status-desc');
     var posRow = document.getElementById('volunteer-pos-row');
     var posText = document.getElementById('volunteer-pos-text');
+    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
 
     if (isAvailable) {
       function saveWithCoords(lat, lng) {
-        var profile = {
-          isAvailable: true,
-          lat: lat,
-          lng: lng,
-          updatedAt: Date.now()
-        };
+        profile.isAvailable = true;
+        profile.lat = lat;
+        profile.lng = lng;
+        profile.updatedAt = Date.now();
+
         if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
-          SafeHer.api.setVolunteerProfile(profile);
+          SafeHer.api.setVolunteerProfile(profile, function(err, saved) {
+            if (saved && saved.status) {
+              profile.status = saved.status;
+              renderVerificationBadge(saved.status);
+            }
+          });
         }
 
         if (descEl) descEl.textContent = 'You are available to help nearby users in distress.';
@@ -61,10 +108,11 @@ SafeHer.volunteer = (function() {
 
         updateHomeVolunteerCount();
         SafeHer.toast('Available to help enabled');
-        checkActiveAlert();
+
+        // Start 5-second polling for active alerts
+        startPolling();
       }
 
-      // Try current GPS location
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           function(pos) {
@@ -82,12 +130,9 @@ SafeHer.volunteer = (function() {
         saveWithCoords(12.9716, 77.5946);
       }
     } else {
-      var profile = {
-        isAvailable: false,
-        lat: null,
-        lng: null,
-        updatedAt: Date.now()
-      };
+      profile.isAvailable = false;
+      profile.updatedAt = Date.now();
+
       if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
         SafeHer.api.setVolunteerProfile(profile);
       }
@@ -95,6 +140,7 @@ SafeHer.volunteer = (function() {
       if (descEl) descEl.textContent = 'Turn on to receive emergency alerts near you.';
       if (posRow) posRow.style.display = 'none';
 
+      stopPolling();
       hideAlertCard();
       updateHomeVolunteerCount();
       SafeHer.toast('Availability turned off');
@@ -115,7 +161,7 @@ SafeHer.volunteer = (function() {
     var respondedBox = document.getElementById('volunteer-responded-status');
 
     if (timeEl) timeEl.textContent = timeStr || 'Active now';
-    if (distEl) distEl.textContent = formatDistance(distKm || 0);
+    if (distEl) distEl.textContent = formatDistance(distKm !== undefined ? distKm : 0);
     if (mapLink && mapsUrl) mapLink.href = mapsUrl;
 
     if (respondedAlertId === alertId) {
@@ -129,100 +175,26 @@ SafeHer.volunteer = (function() {
     if (card) card.style.display = 'block';
   }
 
-  // ─── Cross-Tab Active SOS Detection & Check ───────────────
-  function checkLocalActiveAlert(profile) {
-    var activeSos = SafeHer.api ? SafeHer.api.getActiveSos() : null;
-    if (!activeSos || activeSos.status !== 'active') {
-      hideAlertCard();
-      return;
-    }
-
-    // If volunteer already dismissed this specific alert
-    if (dismissedAlertId && dismissedAlertId === activeSos.id) {
-      hideAlertCard();
-      return;
-    }
-
-    var vLat = profile.lat || 12.9716;
-    var vLng = profile.lng || 77.5946;
-    var sLat = activeSos.lat || 12.9716;
-    var sLng = activeSos.lng || 77.5946;
-
-    var distKm = haversineDistance(vLat, vLng, sLat, sLng);
-
-    // Only show if within 2 km
-    if (distKm <= 2.0) {
-      var mapsUrl = 'https://www.google.com/maps?q=' + sLat + ',' + sLng;
-      showAlertCardData(activeSos.id, activeSos.time ? activeSos.time : 'Active now', distKm, mapsUrl);
-    } else {
-      hideAlertCard();
-    }
-  }
-
-  function checkActiveAlert() {
-    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : { isAvailable: false };
-    if (!profile || !profile.isAvailable) {
-      hideAlertCard();
-      return;
-    }
-
-    if (SafeHer.api && SafeHer.api.getNearbyAlerts) {
-      SafeHer.api.getNearbyAlerts(function(err, alerts) {
-        if (!err && alerts && alerts.length > 0) {
-          var firstAlert = alerts[0];
-          if (dismissedAlertId && dismissedAlertId === firstAlert.id) {
-            hideAlertCard();
-            return;
-          }
-          showAlertCardData(firstAlert.id, firstAlert.started_at, firstAlert.distance_km, firstAlert.maps_url);
-          return;
-        }
-        checkLocalActiveAlert(profile);
-      });
-      return;
-    }
-
-    checkLocalActiveAlert(profile);
-  }
-
   // ─── Volunteer Response: "I'm coming" ─────────────────────
   function respondComing() {
-    var activeSos = SafeHer.api ? SafeHer.api.getActiveSos() : null;
-    var alertId = (activeSos && activeSos.id) ? activeSos.id : 1;
+    var alertId = currentAlertId;
+    if (!alertId) {
+      SafeHer.toast('No active alert selected');
+      return;
+    }
+
     respondedAlertId = alertId;
 
-    if (activeSos && activeSos.status === 'active') {
-      // Increment volunteers on the way
-      var currentCount = activeSos.volunteersEnRoute || 0;
-      activeSos.volunteersEnRoute = currentCount + 1;
-      activeSos.volunteerStatus = activeSos.volunteersEnRoute + ' volunteer' +
-        (activeSos.volunteersEnRoute > 1 ? 's are' : ' is') + ' on the way';
-
-      if (SafeHer.api && SafeHer.api.setActiveSos) {
-        SafeHer.api.setActiveSos(activeSos);
-      }
-
-      // Also update history alert if present
-      if (SafeHer.api && SafeHer.api.updateAlert) {
-        SafeHer.api.updateAlert(activeSos.id, {
-          volunteersEnRoute: activeSos.volunteersEnRoute,
-          volunteerStatus: activeSos.volunteerStatus
-        });
-      }
-
-      // If SOS screen is open in the same tab, update it directly too
-      var sosSubEl = document.getElementById('sos-status-sub');
-      if (sosSubEl) {
-        var n = activeSos.volunteersEnRoute;
-        sosSubEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way';
-      }
-    }
-
     if (SafeHer.api && SafeHer.api.respondToAlert) {
-      SafeHer.api.respondToAlert(alertId, 'coming');
+      SafeHer.api.respondToAlert(alertId, 'coming', function(err) {
+        if (err) {
+          SafeHer.toast(err);
+          return;
+        }
+      });
     }
 
-    // Update volunteer UI
+    // Update volunteer UI immediately
     var actionsGroup = document.getElementById('volunteer-alert-actions');
     var respondedBox = document.getElementById('volunteer-responded-status');
     if (actionsGroup) actionsGroup.style.display = 'none';
@@ -233,29 +205,73 @@ SafeHer.volunteer = (function() {
 
   // ─── Volunteer Response: "Can't help" ──────────────────────
   function respondCantHelp() {
-    var activeSos = SafeHer.api ? SafeHer.api.getActiveSos() : null;
-    var alertId = (activeSos && activeSos.id) ? activeSos.id : 1;
-    dismissedAlertId = alertId;
-
-    if (SafeHer.api && SafeHer.api.respondToAlert) {
-      SafeHer.api.respondToAlert(alertId, 'cannot');
+    if (currentAlertId) {
+      dismissedAlertId = currentAlertId;
+      if (SafeHer.api && SafeHer.api.respondToAlert) {
+        SafeHer.api.respondToAlert(currentAlertId, 'cannot');
+      }
     }
-
     hideAlertCard();
     SafeHer.toast('Alert dismissed');
   }
 
   function updateHomeVolunteerCount() {
-    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
     var countEl = document.getElementById('home-volunteers-count');
-    if (countEl) {
-      countEl.textContent = (profile && profile.isAvailable) ? '1' : '0';
-    }
+    if (!countEl) return;
 
     if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
       SafeHer.api.getAvailableVolunteersCount(function(err, count) {
         if (!err && count !== undefined && countEl) {
           countEl.textContent = String(count);
+        }
+      });
+    }
+  }
+
+  function renderVerificationBadge(status) {
+    var badge = document.getElementById('volunteer-verification-badge');
+    var textEl = document.getElementById('volunteer-verification-text');
+    var noteBox = document.getElementById('volunteer-note-box');
+    var noteInput = document.getElementById('volunteer-note-input');
+    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
+
+    if (!badge || !textEl) return;
+
+    if (status === 'approved') {
+      badge.style.display = 'inline-flex';
+      badge.className = 'volunteer-badge-approved';
+      badge.innerHTML = '<span class="material-symbols-rounded" style="font-size:14px;">verified</span> Approved Volunteer';
+      if (noteBox) noteBox.style.display = 'none';
+    } else {
+      // Default: Pending approval
+      badge.style.display = 'inline-flex';
+      badge.className = 'volunteer-badge-pending';
+      badge.innerHTML = '<span class="material-symbols-rounded" style="font-size:14px;">hourglass_top</span> Pending approval';
+      if (noteBox) {
+        noteBox.style.display = 'block';
+        if (noteInput && profile.note) noteInput.value = profile.note;
+      }
+    }
+  }
+
+  function saveNote() {
+    var noteInput = document.getElementById('volunteer-note-input');
+    var note = noteInput ? noteInput.value.trim() : '';
+    if (!note) {
+      SafeHer.toast('Please enter a note for verification');
+      return;
+    }
+
+    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
+    profile.note = note;
+
+    if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
+      SafeHer.api.setVolunteerProfile(profile, function(err, saved) {
+        if (!err) {
+          SafeHer.toast('Note submitted. Status: Pending approval');
+          renderVerificationBadge((saved && saved.status) || 'pending');
+        } else {
+          SafeHer.toast('Failed to save note');
         }
       });
     }
@@ -277,27 +293,34 @@ SafeHer.volunteer = (function() {
       if (posText && profile.lat && profile.lng) {
         posText.textContent = 'GPS active: ' + profile.lat.toFixed(4) + ', ' + profile.lng.toFixed(4);
       }
+      startPolling();
     } else {
       if (descEl) descEl.textContent = 'Turn on to receive emergency alerts near you.';
       if (posRow) posRow.style.display = 'none';
+      stopPolling();
+      hideAlertCard();
     }
 
-    checkActiveAlert();
+    // Render verification state
+    renderVerificationBadge(profile.status || 'pending');
+
+    // Query backend for latest profile status
+    if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
+      SafeHer.api.getVolunteerServerProfile(function(err, serverProf) {
+        if (!err && serverProf) {
+          renderVerificationBadge(serverProf.status || 'pending');
+        }
+      });
+    }
   }
 
   function init() {
-    // Listen for cross-tab localStorage updates
-    window.addEventListener('storage', function(e) {
-      if (e.key === 'safeher_active_sos') {
-        checkActiveAlert();
-      }
-    });
-
     SafeHer.router.onShow('volunteers', function() {
       render();
     });
 
     SafeHer.router.onShow('home', function() {
+      stopPolling();
       updateHomeVolunteerCount();
     });
   }
@@ -308,6 +331,8 @@ SafeHer.volunteer = (function() {
     toggleAvailable: toggleAvailable,
     respondComing: respondComing,
     respondCantHelp: respondCantHelp,
-    checkActiveAlert: checkActiveAlert
+    saveNote: saveNote,
+    startPolling: startPolling,
+    stopPolling: stopPolling
   };
 })();

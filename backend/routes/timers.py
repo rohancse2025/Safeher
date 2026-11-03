@@ -6,6 +6,7 @@ import threading
 from flask import Blueprint, request, jsonify, g
 
 from db import get_db
+from logger import app_logger
 from routes.auth import login_required
 from email_service import send_alert_notifications_background
 
@@ -167,6 +168,22 @@ def check_expired_timers():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Auto-expire active alerts running for more than 6 hours and mark as 'expired'
+    cursor.execute('''
+        UPDATE alerts
+        SET status = 'expired', ended_at = CURRENT_TIMESTAMP
+        WHERE status = 'active'
+          AND started_at <= datetime('now', '-6 hours');
+    ''')
+    conn.commit()
+
+    # Privacy retention: Automatically delete location rows older than 30 days
+    cursor.execute('''
+        DELETE FROM locations
+        WHERE time <= datetime('now', '-30 days');
+    ''')
+    conn.commit()
+
     # Find active timers that expired
     cursor.execute('''
         SELECT t.id, t.user_id, t.contact_id, t.deadline, u.name
@@ -217,6 +234,7 @@ def check_expired_timers():
             VALUES (?, 'timer', 'active', ?, ?, ?, 0, 0);
         ''', (user_id, last_lat, last_lng, share_token))
         alert_id = cursor.lastrowid
+        app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode=timer, lat={last_lat}, lng={last_lng}")
 
         # Record location entry
         cursor.execute('''
@@ -245,6 +263,14 @@ def check_expired_timers():
                 share_token=share_token,
                 recipient_emails=contacts_emails
             )
+
+        # 6. Dispatch Web Push notification to user
+        try:
+            from routes.push import notify_user_timer_expired
+            notify_user_timer_expired(user_id=user_id, timer_id=timer_id)
+        except Exception as push_err:
+            pass
+
         print(f"[TimerMonitor] Expired timer {timer_id} escalated to SOS Alert {alert_id} for user {user_id}")
 
     conn.close()

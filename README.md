@@ -85,8 +85,10 @@ SafeHer is configured with relative paths (`./`) and runs seamlessly in any GitH
 Safeher/
 ├── index.html              # Main single-page application entry point
 ├── offline.html            # PWA offline fallback screen
+├── track.html              # Public emergency tracking page with live Leaflet map
+├── admin.html              # Admin verification dashboard protected by ADMIN_KEY
 ├── manifest.webmanifest    # PWA configuration, icons, and SOS shortcut
-├── sw.js                   # Service worker for offline asset caching
+├── sw.js                   # Service worker with offline asset caching and Web Push handlers
 ├── README.md               # Project documentation and specifications
 ├── RULES.md                # Architecture, design rules, and constraints
 ├── css/
@@ -125,15 +127,14 @@ Safeher/
 
 ## Working Now / Needs Backend
 
-| Feature | Working Now (Client-Side) | Needs Backend |
+| Feature | Working Now (Integrated with Flask Backend) | Next Production Enhancements |
 |---|---|---|
-| **SOS Alerts** | Triggers countdown, generates Google Maps link, opens WhatsApp and SMS draft messages to contacts with coordinates. | Automated background SMS gateway (Twilio/Fast2SMS) and server-side push notifications to contacts without user interaction. |
-| **Silent SOS** | Displays black screen disguise, maintains live geolocation tracking, requires PIN to dismiss. | Background telemetry streaming to cloud backend even when browser is minimized or phone screen is locked. |
-| **Emergency Siren** | Generates synthesized dual-tone siren audio and vibration patterns via Web Audio API. | Cloud dispatch to local authorities and emergency services dispatch center. |
-| **GPS Tracking & Maps** | Live position tracking via Geolocation API, rendered on interactive Leaflet maps with safety zones. | Multi-user crowdsourced safety reports aggregated into server-side zone danger ratings. |
-| **Nearby Services** | Live queries to Overpass API for police stations and hospitals within 3 km with distance calculation. | Centralized high-performance proxy cache with verified local emergency contact directories. |
-| **Volunteer Network** | Proximity detection across browser tabs via `localStorage` and `storage` events within 2 km. | Cross-device WebSocket / WebPush network connecting nearby volunteers across different phones. |
-| **Safe Timer** | Local countdown timer persisting across browser refreshes; triggers SOS when reaching zero. | Server-side countdown daemon that escalates to emergency contacts even if the phone powers off or loses connection. |
-| **Evidence Vault** | Audio recording via MediaRecorder API stored securely in browser's IndexedDB. | Encrypted cloud sync protecting evidence against device loss or damage. |
-| **User & Contact Data** | Stored locally in `localStorage` via unified `api.js` interface. | Secure PostgreSQL / MongoDB database with JWT authentication and multi-device account sync. |
-| **Authentication & OTP** | Client-side validation and simulated 4-digit OTP verification. | Production SMS gateway for one-time passcodes and bcrypt password hashing. |
+| **SOS Alerts** | Triggers countdown, saves alert, generates public token, emails contacts via Gmail SMTP, dispatches Web Push notifications. | Automated SMS gateway (e.g. Twilio/Fast2SMS) for cellular fallback. |
+| **Silent SOS** | Black screen disguise, background location streaming, notifies verified volunteers within range with no sound. | Native background location streaming while device screen is locked. |
+| **Emergency Siren** | Synthesized dual-tone siren audio and vibration patterns via Web Audio API. | Direct computerized dispatch integration with local police authorities. |
+| **Public Live Tracking** | Standalone `track.html` polling every 5s with Leaflet live map, status, and en-route volunteers. | Crowdsourced historical heatmaps and danger zone ratings. |
+| **Volunteer Network** | Verification with notes, admin approval via `admin.html`, 5s cross-phone polling, Web Push nearby alerts. | Volunteer navigation route optimization and turn-by-turn routing. |
+| **Web Push Notifications** | VAPID keypair in `.env`, pywebpush dispatch, service worker event handling, 404/410 auto-pruning. | Push notification grouping and rich action buttons. |
+| **Safe Timer** | Countdown timer with active escalation daemon; auto-triggers SOS alert and emails contacts after deadline. | Contact acknowledgement confirmation tokens. |
+| **Admin Dashboard** | Standalone `admin.html` with ADMIN_KEY header auth, live platform stats, and volunteer approve/reject actions. | Multi-role administrator hierarchy with audit logs. |
+| **User & Contact Data** | SQLite database with JWT authentication, password hashing, and user-scoped contact CRUD. | Production PostgreSQL replication and Redis caching. |

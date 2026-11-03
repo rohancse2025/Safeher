@@ -27,7 +27,7 @@ SafeHer.auth = (function() {
     var pass    = document.getElementById('reg-pass').value;
     var confirm = document.getElementById('reg-confirm').value;
 
-    clearErrs(['err-name','err-phone','err-email','err-pass','err-confirm']);
+    clearErrs(['err-name','err-phone','err-email','err-pass','err-confirm','err-privacy']);
     var ok = true;
 
     if (!name) {
@@ -52,6 +52,10 @@ SafeHer.auth = (function() {
       setErr('err-confirm', 'Please confirm your password'); ok = false;
     } else if (pass !== confirm) {
       setErr('err-confirm', 'Passwords do not match'); ok = false;
+    }
+    var privacyCheckbox = document.getElementById('reg-privacy');
+    if (privacyCheckbox && !privacyCheckbox.checked) {
+      setErr('err-privacy', 'You must agree to the Privacy Policy'); ok = false;
     }
     if (!ok) return;
 

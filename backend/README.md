@@ -50,6 +50,10 @@ Edit `.env` to configure your settings:
 - `FRONTEND_URL`: URL of the hosted frontend (e.g. `https://<username>.github.io/Safeher`).
 - `DATABASE_PATH`: SQLite database file path (defaults to `safeher.db`).
 - `PORT`: Server port (defaults to `5000`).
+- `ADMIN_KEY`: Admin secret key for volunteer approvals and platform metrics.
+- `VAPID_PUBLIC_KEY`: Base64url VAPID public key for Web Push.
+- `VAPID_PRIVATE_KEY`: Base64url raw 32-byte VAPID private key.
+- `VAPID_CLAIMS_SUB`: Contact email/subject for VAPID claims (e.g. `mailto:admin@safeher.local`).
 
 ---
 
@@ -111,6 +115,23 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`GET /api/timers/active`** *(Auth required)* – Returns user's currently running timer with remaining seconds.
 - **Background Daemon**: Checks every 10 seconds for expired timers. Automatically generates an active SOS alert with mode `"timer"` using last known coordinates, dispatches emergency emails to contacts, and marks the timer `"expired"`.
 
+### 10. Web Push Notifications
+- **`GET /api/push/vapid-public-key`** – Returns public VAPID key for client subscriptions.
+- **`POST /api/push/subscribe`** *(Auth required)* – Registers a Web Push subscription (`endpoint`, `p256dh`, `auth`).
+- **`POST /api/push/unsubscribe`** *(Auth required)* – Removes a subscription (`endpoint`).
+- **Automatic Triggers:**
+  1. Nearby available approved volunteers within 2 km receive "Someone nearby needs help" (distance only, no name) when a normal or emergency alert starts.
+  2. Silent alerts notify nearby volunteers only, with `silent: true` (no sound).
+  3. Victim receives a push when a volunteer taps "I'm coming".
+  4. User receives a push when their safe-arrival timer expires.
+  5. Expired 404/410 subscriptions are automatically pruned.
+
+### 11. Admin Management (Protected by ADMIN_KEY)
+- **`GET /api/admin/stats`** – Platform metrics: total users, active alerts, alerts today, approved volunteers.
+- **`GET /api/admin/volunteers/pending`** – Lists pending volunteer applications.
+- **`POST /api/admin/volunteers/<id>/approve`** – Approves a volunteer for alert matching.
+- **`POST /api/admin/volunteers/<id>/reject`** – Rejects a volunteer application.
+
 ---
 
 ## Response Convention
@@ -132,3 +153,4 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`volunteers`**: Nearby volunteer coordinates and availability status.
 - **`responses`**: Volunteer dispatch responses to active alerts.
 - **`timers`**: Safe Timer records and automatic escalation deadlines.
+- **`push_subscriptions`**: Web Push subscription endpoints and crypto keys per user (`endpoint`, `p256dh`, `auth`).

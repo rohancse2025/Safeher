@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SafeHer – Live Emergency Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    body {
+      background: #FCEFF3;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .track-container {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    .track-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #EAD3DA;
+    }
+    .track-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .track-brand-icon {
+      width: 32px;
+      height: 32px;
+      background: #A80F3C;
+      color: #FFFFFF;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .track-brand-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #A80F3C;
+      margin: 0;
+    }
+    .track-badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #A80F3C;
+      color: #FFFFFF;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .track-card {
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .track-person-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .track-person-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .track-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #FCEFF3;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .track-person-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #333333;
+      margin: 0;
+    }
+    .track-person-sub {
+      font-size: 12px;
+      color: #777777;
+      margin: 2px 0 0;
+    }
+    .track-status-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .status-active {
+      background: #FCEFF3;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+    }
+    .status-ended {
+      background: #EEEEEE;
+      color: #777777;
+      border: 1px solid #CCCCCC;
+    }
+    .track-stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #EAD3DA;
+    }
+    .track-stat-box {
+      background: #FCEFF3;
+      border-radius: 6px;
+      padding: 8px 10px;
+      border: 1px solid #EAD3DA;
+    }
+    .track-stat-label {
+      font-size: 11px;
+      color: #777777;
+      margin: 0 0 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .track-stat-val {
+      font-size: 13px;
+      font-weight: 600;
+      color: #333333;
+      margin: 0;
+    }
+    #track-map {
+      height: 260px;
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #EAD3DA;
+      margin-bottom: 14px;
+      background: #EEEEEE;
+    }
+    .track-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-track {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      box-sizing: border-box;
+      border: none;
+      font-family: inherit;
+    }
+    .btn-track-primary {
+      background: #A80F3C;
+      color: #FFFFFF;
+    }
+    .btn-track-call {
+      background: #D32F2F;
+      color: #FFFFFF;
+    }
+    .btn-track-outline {
+      background: #FFFFFF;
+      color: #A80F3C;
+      border: 1px solid #A80F3C;
+    }
+    .track-notice {
+      font-size: 11px;
+      color: #777777;
+      text-align: center;
+      margin-top: 12px;
+    }
+    .track-error-card {
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+    }
+    .track-error-icon {
+      font-size: 40px;
+      color: #A80F3C;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="track-container">
+    <div class="track-header">
+      <div class="track-brand">
+        <div class="track-brand-icon">
+          <span class="material-symbols-rounded">shield_person</span>
+        </div>
+        <h1 class="track-brand-title">SafeHer Tracker</h1>
+      </div>
+      <div class="track-badge-live">
+        <span class="material-symbols-rounded" style="font-size:14px;">cell_tower</span>
+        Live
+      </div>
+    </div>
+
+    <!-- Error container -->
+    <div id="track-error-view" class="track-error-card" style="display: none;">
+      <span class="material-symbols-rounded track-error-icon">warning</span>
+      <h2 style="font-size:16px;margin:0 0 8px;color:#333;">Unable to Load Tracking</h2>
+      <p id="track-error-msg" style="font-size:13px;color:#777;margin:0 0 16px;line-height:1.4;">
+        No tracking token provided. Please open the link sent in the emergency alert.
+      </p>
+      <a href="tel:112" class="btn-track btn-track-call">
+        <span class="material-symbols-rounded">call</span>Call Police (112)
+      </a>
+    </div>
+
+    <!-- Active content view -->
+    <div id="track-content-view">
+      <div class="track-card">
+        <div class="track-person-row">
+          <div class="track-person-info">
+            <div id="track-avatar" class="track-avatar">?</div>
+            <div>
+              <h2 id="track-name" class="track-person-title">Tracking Alert</h2>
+              <p id="track-mode" class="track-person-sub">Emergency Alert</p>
+            </div>
+          </div>
+          <span id="track-status" class="track-status-pill status-active">Active</span>
+        </div>
+
+        <div class="track-stats-row">
+          <div class="track-stat-box">
+            <p class="track-stat-label">
+              <span class="material-symbols-rounded" style="font-size:13px;">groups</span>
+              Volunteers
+            </p>
+            <p id="track-volunteers" class="track-stat-val">0 on the way</p>
+          </div>
+          <div class="track-stat-box">
+            <p class="track-stat-label">
+              <span class="material-symbols-rounded" style="font-size:13px;">schedule</span>
+              Last Update
+            </p>
+            <p id="track-updated" class="track-stat-val">Just now</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leaflet Live Map -->
+      <div id="track-map"></div>
+
+      <!-- Action Buttons -->
+      <div class="track-actions">
+        <a id="track-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-track btn-track-outline">
+          <span class="material-symbols-rounded">navigation</span>Open in Google Maps
+        </a>
+        <a href="tel:112" class="btn-track btn-track-call">
+          <span class="material-symbols-rounded">call</span>Emergency Call (112)
+        </a>
+      </div>
+
+      <p class="track-notice">
+        Tracking updates automatically every 5 seconds.<br>
+        If you believe someone is in immediate danger, call 112 directly.
+      </p>
+    </div>
+  </div>
+
+  <!-- Config and Leaflet JS -->
+  <script src="./js/config.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    (function() {
+      var mapInstance = null;
+      var markerInstance = null;
+      var circleInstance = null;
+      var pollTimer = null;
+      var lastLat = null;
+      var lastLng = null;
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getApiBase() {
+        if (window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
+          return window.SafeHerConfig.API_BASE.replace(/\/+$/, '');
+        }
+        return 'http://localhost:5000';
+      }
+
+      function getToken() {
+        var params = new URLSearchParams(window.location.search);
+        return (params.get('t') || params.get('token') || '').trim();
+      }
+
+      function showError(msg) {
+        var errView = document.getElementById('track-error-view');
+        var contentView = document.getElementById('track-content-view');
+        var msgEl = document.getElementById('track-error-msg');
+        if (errView) errView.style.display = 'block';
+        if (contentView) contentView.style.display = 'none';
+        if (msgEl) msgEl.textContent = msg;
+      }
+
+      function initMap(lat, lng) {
+        var mapEl = document.getElementById('track-map');
+        if (!mapEl || typeof L === 'undefined') return;
+
+        if (!mapInstance) {
+          mapInstance = L.map('track-map', {
+            center: [lat, lng],
+            zoom: 16,
+            zoomControl: false,
+            attributionControl: false
+          });
+
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+          }).addTo(mapInstance);
+
+          markerInstance = L.marker([lat, lng]).addTo(mapInstance);
+          circleInstance = L.circle([lat, lng], {
+            radius: 40,
+            color: '#A80F3C',
+            fillColor: '#FCEFF3',
+            fillOpacity: 0.4,
+            weight: 2
+          }).addTo(mapInstance);
+
+          setTimeout(function() {
+            if (mapInstance) mapInstance.invalidateSize();
+          }, 300);
+        } else {
+          mapInstance.setView([lat, lng]);
+          if (markerInstance) markerInstance.setLatLng([lat, lng]);
+          if (circleInstance) circleInstance.setLatLng([lat, lng]);
+        }
+      }
+
+      function renderData(data) {
+        var nameEl = document.getElementById('track-name');
+        var avatarEl = document.getElementById('track-avatar');
+        var statusEl = document.getElementById('track-status');
+        var modeEl = document.getElementById('track-mode');
+        var volEl = document.getElementById('track-volunteers');
+        var updEl = document.getElementById('track-updated');
+        var gmapsLink = document.getElementById('track-gmaps-link');
+
+        var firstName = data.first_name || 'User';
+        var isEnded = (data.status !== 'active');
+        var statusLabel = isEnded ? 'Ended' : 'Active';
+
+        if (nameEl) nameEl.textContent = firstName + "'s Alert";
+        if (avatarEl) avatarEl.textContent = firstName.charAt(0).toUpperCase();
+
+        if (statusEl) {
+          statusEl.textContent = statusLabel;
+          statusEl.className = 'track-status-pill ' + (isEnded ? 'status-ended' : 'status-active');
+        }
+
+        if (modeEl) {
+          var modeMap = {
+            'normal': 'Normal SOS Mode',
+            'silent': 'Silent SOS Mode',
+            'emergency': 'Emergency Alarm Mode',
+            'timer': 'Safe Timer Expired'
+          };
+          modeEl.textContent = modeMap[data.mode] || 'Emergency SOS';
+        }
+
+        var vCount = data.volunteers_en_route || 0;
+        if (volEl) {
+          volEl.textContent = vCount + (vCount === 1 ? ' volunteer on the way' : ' volunteers on the way');
+        }
+
+        if (updEl) {
+          updEl.textContent = data.last_update_time ? data.last_update_time : 'Just now';
+        }
+
+        var lat = parseFloat(data.latest_lat);
+        var lng = parseFloat(data.latest_lng);
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+          lastLat = lat;
+          lastLng = lng;
+          initMap(lat, lng);
+          if (gmapsLink) {
+            gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+          }
+        }
+      }
+
+      function fetchTrackData(token) {
+        var url = getApiBase() + '/api/track/' + encodeURIComponent(token);
+        fetch(url)
+          .then(function(res) {
+            return res.json().then(function(json) {
+              return { ok: res.ok, status: res.status, json: json };
+            });
+          })
+          .then(function(res) {
+            if (!res.ok || !res.json.ok) {
+              showError((res.json && res.json.error) || 'Alert tracking link is invalid or expired.');
+              if (pollTimer) clearInterval(pollTimer);
+              return;
+            }
+            renderData(res.json.data);
+          })
+          .catch(function() {
+            // Retain existing view on transient network drops
+          });
+      }
+
+      var token = getToken();
+      if (!token) {
+        showError('No tracking token provided in the URL. Please tap the tracking link from the alert message.');
+        return;
+      }
+
+      // Initial fetch
+      fetchTrackData(token);
+
+      // Poll every 5 seconds
+      pollTimer = setInterval(function() {
+        fetchTrackData(token);
+      }, 5000);
+    })();
+  </script>
+</body>
+</html>

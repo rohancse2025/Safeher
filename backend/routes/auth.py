@@ -1,6 +1,7 @@
 # backend/routes/auth.py – User registration, login (JWT), profile, and auth decorator
 import os
 import re
+import time
 import datetime
 from functools import wraps
 from flask import Blueprint, request, jsonify, g
@@ -10,10 +11,16 @@ from dotenv import load_dotenv
 
 from db import get_db
 
+basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(os.path.join(basedir, '.env'))
 load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY', 'default-safeher-secret-key')
 
 auth_bp = Blueprint('auth', __name__)
+
+# In-memory store for login rate limiting: max 10 attempts per 15 minutes per phone
+# { phone: [timestamp1, timestamp2, ...] }
+login_attempts = {}
 
 
 # ─── Auth Helper: Login Required Decorator ────────────────────
@@ -112,13 +119,13 @@ def register():
         )
         user_id = cursor.lastrowid
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.close()
-        return jsonify({"ok": False, "error": f"Registration failed: {str(e)}"}), 500
+        return jsonify({"ok": False, "error": "Registration failed. Please try again."}), 500
 
     conn.close()
 
-    # Generate JWT token
+    # Generate JWT token valid for 7 days
     token = jwt.encode({
         "user_id": user_id,
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
@@ -144,6 +151,7 @@ def register():
 def login():
     """
     Log in an existing user with phone and password. Returns JWT token.
+    Rate limited to 10 attempts per 15 minutes per phone number.
     Expects JSON: { phone, password }
     """
     data = request.get_json(silent=True) or {}
@@ -153,6 +161,18 @@ def login():
     if not phone or not password:
         return jsonify({"ok": False, "error": "Phone and password are required"}), 400
 
+    now = time.time()
+    # Rate limit: max 10 attempts per 15 minutes (900 seconds) per phone number
+    recent_attempts = [t for t in login_attempts.get(phone, []) if now - t < 900]
+    if len(recent_attempts) >= 10:
+        oldest = recent_attempts[0]
+        retry_seconds = max(1, int(900 - (now - oldest)))
+        retry_minutes = max(1, (retry_seconds + 59) // 60)
+        return jsonify({
+            "ok": False,
+            "error": f"Too many login attempts. Please try again in {retry_minutes} minute{'s' if retry_minutes > 1 else ''}."
+        }), 429
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT id, name, phone, email, password_hash, pin_hash FROM users WHERE phone = ?;', (phone,))
@@ -160,7 +180,13 @@ def login():
     conn.close()
 
     if not user or not check_password_hash(user['password_hash'], password):
+        recent_attempts.append(now)
+        login_attempts[phone] = recent_attempts
         return jsonify({"ok": False, "error": "Invalid phone number or password"}), 401
+
+    # Successful login resets failed attempts for this phone number
+    if phone in login_attempts:
+        del login_attempts[phone]
 
     # Generate JWT token valid for 7 days
     token = jwt.encode({
@@ -249,5 +275,63 @@ def update_current_user():
             "has_pin": bool(updated['pin_hash']),
             "has_duress_pin": bool(updated['duress_pin_hash']),
             "created_at": updated['created_at']
+        }
+    }), 200
+
+
+# ─── Route: DELETE /api/me ─────────────────────────────────────
+@auth_bp.route('/api/me', methods=['DELETE'])
+@auth_bp.route('/api/me/delete', methods=['POST'])
+@login_required
+def delete_current_user():
+    """
+    Permanently delete the authenticated user and all related rows:
+    contacts, alerts, locations, responses, volunteers, timers, push_subscriptions.
+    Requires validation of the user's 4-digit safety PIN.
+    Expects JSON: { pin: "1234" }
+    """
+    user_id = g.current_user['id']
+    data = request.get_json(silent=True) or {}
+    pin = (data.get('pin') or '').strip()
+
+    if not pin:
+        return jsonify({"ok": False, "error": "Safety PIN is required to delete your account"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, pin_hash FROM users WHERE id = ?;', (user_id,))
+    user_row = cursor.fetchone()
+    if not user_row:
+        conn.close()
+        return jsonify({"ok": False, "error": "User not found"}), 404
+
+    # Verify PIN hash if user has set a PIN
+    pin_hash = user_row['pin_hash']
+    if pin_hash and not check_password_hash(pin_hash, pin):
+        conn.close()
+        return jsonify({"ok": False, "error": "Invalid safety PIN"}), 400
+
+    # Delete all associated rows
+    cursor.execute('DELETE FROM locations WHERE alert_id IN (SELECT id FROM alerts WHERE user_id = ?);', (user_id,))
+    cursor.execute('''
+        DELETE FROM responses 
+        WHERE alert_id IN (SELECT id FROM alerts WHERE user_id = ?)
+           OR volunteer_id IN (SELECT id FROM volunteers WHERE user_id = ?);
+    ''', (user_id, user_id))
+    cursor.execute('DELETE FROM alerts WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM contacts WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM volunteers WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM timers WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM push_subscriptions WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM users WHERE id = ?;', (user_id,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "message": "User account and all associated data deleted successfully"
         }
     }), 200

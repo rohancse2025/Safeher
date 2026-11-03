@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import check_password_hash
 
 from db import get_db
+from logger import app_logger
 from routes.auth import login_required
 from email_service import send_email, send_alert_notifications_background
 
@@ -54,6 +55,24 @@ def create_alert():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Abuse limit: normal and silent SOS alerts are limited to 5 per user per hour (emergency mode is never limited)
+    if mode in ('normal', 'silent'):
+        cursor.execute('''
+            SELECT COUNT(*) AS alert_count
+            FROM alerts
+            WHERE user_id = ?
+              AND mode IN ('normal', 'silent')
+              AND started_at >= datetime('now', '-1 hour');
+        ''', (user_id,))
+        count_row = cursor.fetchone()
+        if count_row and count_row['alert_count'] >= 5:
+            conn.close()
+            return jsonify({
+                "ok": False,
+                "error": "Too many alerts, call 112 directly",
+                "call_112": True
+            }), 429
+
     try:
         # 1. Insert alert record
         cursor.execute('''
@@ -77,9 +96,9 @@ def create_alert():
         recipient_emails = [r['email'].strip() for r in email_rows if r['email']]
 
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.close()
-        return jsonify({"ok": False, "error": f"Failed to create alert: {str(e)}"}), 500
+        return jsonify({"ok": False, "error": "Failed to create alert"}), 500
 
     conn.close()
 
@@ -95,6 +114,22 @@ def create_alert():
             share_token=share_token,
             recipient_emails=recipient_emails
         )
+
+    # Log alert creation event (without tokens or raw phone numbers)
+    app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode={mode}, lat={lat}, lng={lng}")
+
+    # 5. Trigger Web Push notification to available approved volunteers within 2 km
+    try:
+        from routes.push import notify_nearby_volunteers_on_alert
+        notify_nearby_volunteers_on_alert(
+            alert_id=alert_id,
+            alert_mode=mode,
+            alert_lat=lat,
+            alert_lng=lng,
+            exclude_user_id=user_id
+        )
+    except Exception as push_err:
+        app_logger.error(f"[Alert] Volunteer push trigger error: {push_err}")
 
     return jsonify({
         "ok": True,
@@ -154,9 +189,9 @@ def add_alert_location(alert_id):
         # Update latest lat/lng on alerts table
         cursor.execute('UPDATE alerts SET lat = ?, lng = ? WHERE id = ?;', (lat, lng, alert_id))
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.close()
-        return jsonify({"ok": False, "error": f"Failed to record location: {str(e)}"}), 500
+        return jsonify({"ok": False, "error": "Failed to record location"}), 500
 
     conn.close()
 
@@ -216,6 +251,7 @@ def end_alert(alert_id):
         ''', (alert_id,))
         conn.commit()
         conn.close()
+        app_logger.info(f"[ALERT ENDED] alert_id={alert_id}, status=resolved")
         return jsonify({
             "ok": True,
             "data": {
@@ -230,6 +266,7 @@ def end_alert(alert_id):
         cursor.execute('UPDATE alerts SET duress = 1 WHERE id = ?;', (alert_id,))
         conn.commit()
         conn.close()
+        app_logger.info(f"[ALERT ENDED] alert_id={alert_id}, status=duress")
         return jsonify({
             "ok": True,
             "data": {
@@ -271,6 +308,102 @@ def get_alert_history():
     }), 200
 
 
+# ─── Route: GET /api/alerts/<id>/details ─────────────────────
+@alerts_bp.route('/api/alerts/<int:alert_id>/details', methods=['GET'])
+@login_required
+def get_alert_details(alert_id):
+    """
+    Get detailed breakdown of a specific alert for the owner:
+    mode, start & end time, duration, number of contacts emailed,
+    volunteers who responded, and recorded location trail.
+    """
+    user_id = g.current_user['id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Owner-only check
+    cursor.execute('SELECT * FROM alerts WHERE id = ? AND user_id = ?;', (alert_id, user_id))
+    alert = cursor.fetchone()
+    if not alert:
+        conn.close()
+        return jsonify({"ok": False, "error": "Alert not found"}), 404
+
+    # Calculate duration
+    duration_str = "In progress" if alert['status'] == 'active' else "N/A"
+    if alert['started_at'] and alert['ended_at']:
+        try:
+            from datetime import datetime
+            fmt = "%Y-%m-%d %H:%M:%S"
+            start_dt = datetime.strptime(str(alert['started_at'])[:19], fmt)
+            end_dt = datetime.strptime(str(alert['ended_at'])[:19], fmt)
+            diff_secs = max(0, int((end_dt - start_dt).total_seconds()))
+            mins = diff_secs // 60
+            secs = diff_secs % 60
+            if mins >= 60:
+                hours = mins // 60
+                mins = mins % 60
+                duration_str = f"{hours:02d}:{mins:02d}:{secs:02d}"
+            else:
+                duration_str = f"{mins:02d}:{secs:02d}"
+        except Exception:
+            duration_str = "Completed"
+
+    # Fetch volunteers who responded
+    cursor.execute('''
+        SELECT r.id, r.status, r.time, u.name
+        FROM responses r
+        JOIN volunteers v ON r.volunteer_id = v.id
+        JOIN users u ON v.user_id = u.id
+        WHERE r.alert_id = ?
+        ORDER BY r.id ASC;
+    ''', (alert_id,))
+    volunteers = [
+        {
+            "id": row['id'],
+            "status": row['status'],
+            "time": row['time'],
+            "name": row['name']
+        }
+        for row in cursor.fetchall()
+    ]
+
+    # Fetch recorded location trail
+    cursor.execute('''
+        SELECT id, lat, lng, time
+        FROM locations
+        WHERE alert_id = ?
+        ORDER BY id ASC;
+    ''', (alert_id,))
+    route_points = [
+        {
+            "lat": row['lat'],
+            "lng": row['lng'],
+            "time": row['time']
+        }
+        for row in cursor.fetchall()
+    ]
+
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": alert['id'],
+            "mode": alert['mode'],
+            "status": alert['status'],
+            "started_at": alert['started_at'],
+            "ended_at": alert['ended_at'],
+            "duration": duration_str,
+            "contacts_notified": alert['notified_count'],
+            "volunteers_responded": volunteers,
+            "route": route_points,
+            "lat": alert['lat'],
+            "lng": alert['lng'],
+            "share_token": alert['share_token']
+        }
+    }), 200
+
+
 # ─── Public Route: GET /api/track/<share_token> ──────────────
 @alerts_bp.route('/api/track/<share_token>', methods=['GET'])
 def get_public_track(share_token):
@@ -305,6 +438,18 @@ def get_public_track(share_token):
         return jsonify({"ok": False, "error": "Tracking link not found or expired"}), 404
 
     alert_id = alert['id']
+    status = alert['status']
+
+    # Auto-expire active alerts running for more than 6 hours
+    if status == 'active' and alert['started_at']:
+        try:
+            started_dt = datetime.datetime.strptime(alert['started_at'], "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.now() - started_dt > datetime.timedelta(hours=6):
+                cursor.execute("UPDATE alerts SET status = 'expired', ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (alert_id,))
+                conn.commit()
+                status = 'expired'
+        except Exception:
+            pass
 
     # Get latest recorded location (fallback to alert coordinates if no locations logged)
     cursor.execute('''
@@ -337,7 +482,7 @@ def get_public_track(share_token):
         "data": {
             "first_name": first_name,
             "mode": alert['mode'],
-            "status": alert['status'],
+            "status": status,
             "latest_lat": latest_lat,
             "latest_lng": latest_lng,
             "last_update_time": last_update_time,
@@ -369,7 +514,7 @@ def test_email():
 
     success, error_msg = send_email(user_email, subject, body)
     if not success:
-        return jsonify({"ok": False, "error": f"Failed to send email: {error_msg}"}), 500
+        return jsonify({"ok": False, "error": "Failed to send email notification"}), 500
 
     return jsonify({
         "ok": True,

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SafeHer – Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    body {
+      background: #FCEFF3;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Poppins', sans-serif;
+      min-height: 100vh;
+      box-sizing: border-box;
+      color: #333333;
+    }
+    .admin-container {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #EAD3DA;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .admin-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .admin-brand-icon {
+      width: 36px;
+      height: 36px;
+      background: #A80F3C;
+      color: #FFFFFF;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .admin-brand-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #A80F3C;
+      margin: 0;
+    }
+    .admin-card {
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .admin-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 14px;
+      color: #333333;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* Stats Grid */
+    .admin-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .admin-stat-card {
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .admin-stat-label {
+      font-size: 12px;
+      color: #777777;
+      margin: 0;
+      font-weight: 500;
+    }
+    .admin-stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #A80F3C;
+      margin: 0;
+    }
+    /* Plain Table Layout */
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid #EAD3DA;
+      border-radius: 6px;
+    }
+    .plain-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+      background: #FFFFFF;
+    }
+    .plain-table th {
+      background: #FCEFF3;
+      color: #A80F3C;
+      font-weight: 600;
+      padding: 10px 12px;
+      border-bottom: 1px solid #EAD3DA;
+      white-space: nowrap;
+    }
+    .plain-table td {
+      padding: 12px;
+      border-bottom: 1px solid #EAD3DA;
+      vertical-align: middle;
+      color: #333333;
+    }
+    .plain-table tr:last-child td {
+      border-bottom: none;
+    }
+    .plain-table tr:hover {
+      background: #FAF5F7;
+    }
+    .btn-action-group {
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .btn-admin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+    .btn-approve {
+      background: #A80F3C;
+      color: #FFFFFF;
+      border-color: #A80F3C;
+    }
+    .btn-approve:hover {
+      background: #870b30;
+    }
+    .btn-reject {
+      background: #FFFFFF;
+      color: #777777;
+      border-color: #CCCCCC;
+    }
+    .btn-reject:hover {
+      background: #F5F5F5;
+      color: #333333;
+    }
+    .btn-lock {
+      background: #FFFFFF;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+      padding: 7px 14px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+    .btn-lock:hover {
+      background: #FCEFF3;
+    }
+    /* Auth Form */
+    .admin-auth-card {
+      max-width: 420px;
+      margin: 60px auto 0;
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 28px 24px;
+      text-align: center;
+    }
+    .admin-input {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid #EAD3DA;
+      border-radius: 6px;
+      box-sizing: border-box;
+      margin: 14px 0;
+      outline: none;
+    }
+    .admin-input:focus {
+      border-color: #A80F3C;
+    }
+    .admin-msg-box {
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      display: none;
+      text-align: left;
+    }
+    .admin-msg-error {
+      background: #FCEFF3;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+    }
+    .admin-msg-success {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #C8E6C9;
+    }
+    .empty-state {
+      padding: 30px 16px;
+      text-align: center;
+      color: #777777;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <!-- Header -->
+    <header class="admin-header">
+      <div class="admin-brand">
+        <div class="admin-brand-icon">
+          <span class="material-symbols-rounded">admin_panel_settings</span>
+        </div>
+        <div>
+          <h1 class="admin-brand-title">SafeHer Admin</h1>
+          <span style="font-size: 11px; color: #777777;">Volunteer Verification & Platform Stats</span>
+        </div>
+      </div>
+      <div id="admin-header-actions" style="display: none; gap: 8px;">
+        <button type="button" class="btn-admin btn-lock" onclick="refreshAdminData()">
+          <span class="material-symbols-rounded" style="font-size: 16px;">refresh</span>Refresh
+        </button>
+        <button type="button" class="btn-admin btn-lock" onclick="logoutAdmin()">
+          <span class="material-symbols-rounded" style="font-size: 16px;">lock</span>Lock
+        </button>
+      </div>
+    </header>
+
+    <!-- Global feedback banner -->
+    <div id="admin-banner" class="admin-msg-box"></div>
+
+    <!-- 1. Authentication View -->
+    <div id="admin-auth-view" class="admin-auth-card">
+      <span class="material-symbols-rounded" style="font-size: 44px; color: #A80F3C; margin-bottom: 8px;">key</span>
+      <h2 style="font-size: 18px; margin: 0 0 6px; color: #333333;">Admin Authentication</h2>
+      <p style="font-size: 13px; color: #777777; margin: 0 0 16px;">Enter the ADMIN_KEY to access volunteer verification and system statistics.</p>
+      
+      <form onsubmit="handleAuthSubmit(event)">
+        <input type="password" id="admin-key-input" class="admin-input" placeholder="Enter ADMIN_KEY" autocomplete="current-password" required />
+        <button type="submit" class="btn btn-primary btn-crimson" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; border-radius: 6px; background: #A80F3C; color: #FFFFFF;">
+          Unlock Dashboard
+        </button>
+      </form>
+    </div>
+
+    <!-- 2. Dashboard View -->
+    <div id="admin-dashboard-view" style="display: none;">
+      <!-- Stats Block -->
+      <section class="admin-stats-grid">
+        <div class="admin-stat-card">
+          <p class="admin-stat-label">Total Users</p>
+          <p id="stat-total-users" class="admin-stat-value">0</p>
+        </div>
+        <div class="admin-stat-card">
+          <p class="admin-stat-label">Active Alerts</p>
+          <p id="stat-active-alerts" class="admin-stat-value">0</p>
+        </div>
+        <div class="admin-stat-card">
+          <p class="admin-stat-label">Alerts Today</p>
+          <p id="stat-alerts-today" class="admin-stat-value">0</p>
+        </div>
+        <div class="admin-stat-card">
+          <p class="admin-stat-label">Approved Volunteers</p>
+          <p id="stat-approved-volunteers" class="admin-stat-value">0</p>
+        </div>
+      </section>
+
+      <!-- Pending Volunteers List -->
+      <section class="admin-card">
+        <h2 class="admin-card-title">
+          <span class="material-symbols-rounded" style="color: #A80F3C;">verified_user</span>
+          Pending Volunteer Verification
+        </h2>
+        
+        <div class="table-wrap">
+          <table class="plain-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Note</th>
+                <th>Registered</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="pending-volunteers-tbody">
+              <tr>
+                <td colspan="6" class="empty-state">Loading pending volunteers...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- System Logs (Last 100 Lines) -->
+      <section class="admin-card">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <h2 class="admin-card-title" style="margin: 0;">
+            <span class="material-symbols-rounded" style="color: #A80F3C;">terminal</span>
+            System Logs (Last 100 Lines)
+          </h2>
+          <button type="button" class="btn-admin btn-lock" onclick="loadSystemLogs()">
+            <span class="material-symbols-rounded" style="font-size: 16px;">sync</span>Refresh Logs
+          </button>
+        </div>
+        <div id="admin-logs-viewer" style="background: #FAF5F7; border: 1px solid #EAD3DA; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 320px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #333333;">Loading system logs...</div>
+      </section>
+    </div>
+  </div>
+
+  <script src="./js/config.js"></script>
+  <script>
+    (function() {
+      var STORAGE_KEY = 'safeher_admin_key';
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getApiBase() {
+        if (window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
+          return window.SafeHerConfig.API_BASE.replace(/\/+$/, '');
+        }
+        return 'http://localhost:5000';
+      }
+
+      function getSavedKey() {
+        return sessionStorage.getItem(STORAGE_KEY) || '';
+      }
+
+      function setSavedKey(key) {
+        if (key) {
+          sessionStorage.setItem(STORAGE_KEY, key);
+        } else {
+          sessionStorage.removeItem(STORAGE_KEY);
+        }
+      }
+
+      function showBanner(msg, isError) {
+        var banner = document.getElementById('admin-banner');
+        if (!banner) return;
+        banner.textContent = msg;
+        banner.className = 'admin-msg-box ' + (isError ? 'admin-msg-error' : 'admin-msg-success');
+        banner.style.display = 'block';
+        if (!isError) {
+          setTimeout(function() {
+            banner.style.display = 'none';
+          }, 4000);
+        }
+      }
+
+      function clearBanner() {
+        var banner = document.getElementById('admin-banner');
+        if (banner) banner.style.display = 'none';
+      }
+
+      function adminFetch(endpoint, options) {
+        options = options || {};
+        options.headers = options.headers || {};
+        var key = getSavedKey();
+        if (key) {
+          options.headers['X-Admin-Key'] = key;
+        }
+        options.headers['Content-Type'] = 'application/json';
+
+        var url = getApiBase() + endpoint;
+        return fetch(url, options).then(function(res) {
+          return res.json().then(function(json) {
+            return { ok: res.ok, status: res.status, json: json };
+          });
+        });
+      }
+
+      window.handleAuthSubmit = function(e) {
+        if (e) e.preventDefault();
+        clearBanner();
+        var input = document.getElementById('admin-key-input');
+        var key = input ? input.value.trim() : '';
+        if (!key) return;
+
+        setSavedKey(key);
+
+        // Verify key by fetching stats
+        adminFetch('/api/admin/stats').then(function(res) {
+          if (!res.ok || !res.json.ok) {
+            setSavedKey('');
+            showBanner(res.json.error || 'Invalid Admin Key. Access denied.', true);
+          } else {
+            document.getElementById('admin-key-input').value = '';
+            showDashboard();
+            renderStats(res.json.data);
+            loadPendingVolunteers();
+            loadSystemLogs();
+          }
+        }).catch(function(err) {
+          setSavedKey('');
+          showBanner('Failed to connect to backend: ' + err.message, true);
+        });
+      };
+
+      window.logoutAdmin = function() {
+        setSavedKey('');
+        showAuthView();
+        clearBanner();
+      };
+
+      window.refreshAdminData = function() {
+        clearBanner();
+        loadStats();
+        loadPendingVolunteers();
+        loadSystemLogs();
+      };
+
+      function showAuthView() {
+        document.getElementById('admin-auth-view').style.display = 'block';
+        document.getElementById('admin-dashboard-view').style.display = 'none';
+        document.getElementById('admin-header-actions').style.display = 'none';
+      }
+
+      function showDashboard() {
+        document.getElementById('admin-auth-view').style.display = 'none';
+        document.getElementById('admin-dashboard-view').style.display = 'block';
+        document.getElementById('admin-header-actions').style.display = 'flex';
+      }
+
+      function renderStats(stats) {
+        if (!stats) return;
+        document.getElementById('stat-total-users').textContent = stats.total_users || 0;
+        document.getElementById('stat-active-alerts').textContent = stats.active_alerts || 0;
+        document.getElementById('stat-alerts-today').textContent = stats.alerts_today || 0;
+        document.getElementById('stat-approved-volunteers').textContent = stats.approved_volunteers || 0;
+      }
+
+      function loadStats() {
+        adminFetch('/api/admin/stats').then(function(res) {
+          if (res.ok && res.json.ok) {
+            renderStats(res.json.data);
+          } else if (res.status === 401) {
+            logoutAdmin();
+          }
+        });
+      }
+
+      function renderPendingVolunteers(list) {
+        var tbody = document.getElementById('pending-volunteers-tbody');
+        if (!tbody) return;
+
+        if (!list || list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No pending volunteers waiting for approval.</td></tr>';
+          return;
+        }
+
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+          var v = list[i];
+          var dateStr = v.updated_at ? v.updated_at.replace('T', ' ').slice(0, 19) : 'Recently';
+          html += '<tr>' +
+            '<td>#' + escapeHtml(v.id) + '</td>' +
+            '<td><strong>' + escapeHtml(v.name || 'Volunteer') + '</strong></td>' +
+            '<td><a href="tel:' + escapeHtml(v.phone) + '" style="color: #A80F3C; text-decoration: none;">' + escapeHtml(v.phone) + '</a></td>' +
+            '<td>' + (v.note ? escapeHtml(v.note) : '<span style="color:#999;font-style:italic;">No note</span>') + '</td>' +
+            '<td>' + escapeHtml(dateStr) + '</td>' +
+            '<td>' +
+              '<div class="btn-action-group">' +
+                '<button type="button" class="btn-admin btn-approve" onclick="approveVolunteer(' + v.id + ')">' +
+                  '<span class="material-symbols-rounded" style="font-size: 15px;">check</span>Approve' +
+                '</button>' +
+                '<button type="button" class="btn-admin btn-reject" onclick="rejectVolunteer(' + v.id + ')">' +
+                  '<span class="material-symbols-rounded" style="font-size: 15px;">close</span>Reject' +
+                '</button>' +
+              '</div>' +
+            '</td>' +
+          '</tr>';
+        }
+        tbody.innerHTML = html;
+      }
+
+      function loadPendingVolunteers() {
+        adminFetch('/api/admin/volunteers/pending').then(function(res) {
+          if (res.ok && res.json.ok) {
+            renderPendingVolunteers(res.json.data);
+          } else if (res.status === 401) {
+            logoutAdmin();
+          } else {
+            showBanner(res.json.error || 'Failed to load volunteers', true);
+          }
+        }).catch(function(err) {
+          showBanner('Network error: ' + err.message, true);
+        });
+      }
+
+      window.approveVolunteer = function(id) {
+        adminFetch('/api/admin/volunteers/' + id + '/approve', { method: 'POST' }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            showBanner('Volunteer #' + id + ' approved successfully.', false);
+            loadStats();
+            loadPendingVolunteers();
+          } else {
+            showBanner(res.json.error || 'Failed to approve volunteer', true);
+          }
+        });
+      };
+
+      window.rejectVolunteer = function(id) {
+        if (!confirm('Are you sure you want to reject volunteer #' + id + '?')) return;
+        adminFetch('/api/admin/volunteers/' + id + '/reject', { method: 'POST' }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            showBanner('Volunteer #' + id + ' rejected.', false);
+            loadStats();
+            loadPendingVolunteers();
+          } else {
+            showBanner(res.json.error || 'Failed to reject volunteer', true);
+          }
+        });
+      };
+
+      function loadSystemLogs() {
+        var logsEl = document.getElementById('admin-logs-viewer');
+        if (!logsEl) return;
+        adminFetch('/api/admin/logs').then(function(res) {
+          if (res.ok && res.json.ok) {
+            var lines = (res.json.data && res.json.data.lines) || [];
+            if (lines.length === 0) {
+              logsEl.textContent = 'No log entries found.';
+            } else {
+              logsEl.textContent = lines.join('\n');
+              logsEl.scrollTop = logsEl.scrollHeight;
+            }
+          } else {
+            logsEl.textContent = 'Failed to load logs: ' + (res.json.error || 'Server error');
+          }
+        }).catch(function(err) {
+          logsEl.textContent = 'Error loading logs: ' + err.message;
+        });
+      }
+      window.loadSystemLogs = loadSystemLogs;
+
+      // Check saved key on boot
+      if (getSavedKey()) {
+        adminFetch('/api/admin/stats').then(function(res) {
+          if (res.ok && res.json.ok) {
+            showDashboard();
+            renderStats(res.json.data);
+            loadPendingVolunteers();
+            loadSystemLogs();
+            loadSystemLogs();
+          } else {
+            logoutAdmin();
+          }
+        }).catch(function() {
+          showAuthView();
+        });
+      } else {
+        showAuthView();
+      }
+    })();
+  </script>
+</body>
+</html>

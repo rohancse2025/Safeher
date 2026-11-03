@@ -9,12 +9,13 @@ SafeHer.timer = (function() {
   var CIRCUMFERENCE = 552.92; // 2 * PI * 88
 
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function formatTime(totalSecs) {

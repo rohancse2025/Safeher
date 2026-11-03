@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SafeHer – Page Not Found (404)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    body {
+      background: #FCEFF3;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Poppins', sans-serif;
+      min-height: 100vh;
+      box-sizing: border-box;
+      color: #333333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .not-found-container {
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .not-found-card {
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      border-radius: 12px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .not-found-badge {
+      width: 64px;
+      height: 64px;
+      background: #FCEFF3;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .not-found-badge .material-symbols-rounded {
+      font-size: 36px;
+    }
+    .not-found-code {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #A80F3C;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+    }
+    .not-found-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #333333;
+      margin: 0 0 10px;
+    }
+    .not-found-desc {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #595959;
+      margin: 0 0 24px;
+    }
+    .not-found-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .btn-return-home {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 13px;
+      background: #A80F3C;
+      color: #FFFFFF;
+      border: 1px solid #A80F3C;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      min-height: 44px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    .btn-return-home:hover {
+      background: #870b30;
+    }
+    .btn-emergency-112 {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 13px;
+      background: #FFFFFF;
+      color: #A80F3C;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      min-height: 44px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    .btn-emergency-112:hover {
+      background: #FCEFF3;
+    }
+    .emergency-notice {
+      margin-top: 20px;
+      font-size: 12px;
+      color: #777777;
+    }
+  </style>
+</head>
+<body>
+  <div class="not-found-container">
+    <main class="not-found-card" role="main">
+      <div class="not-found-badge">
+        <span class="material-symbols-rounded" aria-hidden="true">error_outline</span>
+      </div>
+      <p class="not-found-code">Error 404</p>
+      <h1 class="not-found-title">Page Not Found</h1>
+      <p class="not-found-desc">
+        The page, emergency link, or resource you are looking for does not exist, has been removed, or was entered incorrectly.
+      </p>
+
+      <div class="not-found-actions">
+        <a href="./" class="btn-return-home">
+          <span class="material-symbols-rounded" style="font-size: 18px;" aria-hidden="true">home</span>
+          Back to SafeHer Home
+        </a>
+        <a href="tel:112" class="btn-emergency-112">
+          <span class="material-symbols-rounded" style="font-size: 18px;" aria-hidden="true">call</span>
+          Emergency Helpline (112)
+        </a>
+      </div>
+
+      <p class="emergency-notice">
+        If you or someone nearby is in immediate danger, dial <strong>112</strong> directly from your phone.
+      </p>
+    </main>
+  </div>
+</body>
+</html>

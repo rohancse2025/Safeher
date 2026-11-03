@@ -2,6 +2,17 @@
 
 var SafeHer = window.SafeHer || {};
 
+/* ─── XSS Sanitizer ──────────────────────────────────────── */
+SafeHer.escapeHtml = function(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 /* ─── Router ─────────────────────────────────────────────── */
 SafeHer.router = (function() {
   // screens where the bottom nav must stay hidden
@@ -10,14 +21,14 @@ SafeHer.router = (function() {
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
     'fake-call', 'location', 'live-location', 'share-location', 'map',
     'helplines', 'nearby-places', 'police', 'volunteers', 'safe-timer',
-    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin'
+    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history'
   ];
 
   var current = null;
   var hooks   = {};   // onShow callbacks keyed by screen id
 
   function go(id) {
-    if (id === 'live-location' || id === 'share-location') {
+    if (id === 'live-location') {
       id = 'map';
     }
     if (id === 'police') {
@@ -26,7 +37,13 @@ SafeHer.router = (function() {
 
     var prev = document.querySelector('.screen.active');
     var next = document.getElementById('screen-' + id);
-    if (!next) { console.warn('SafeHer: no screen #screen-' + id); return; }
+    if (!next) {
+      console.warn('SafeHer: no screen #screen-' + id);
+      if (id !== '404' && document.getElementById('screen-404')) {
+        return go('404');
+      }
+      return;
+    }
 
     if (prev && prev.id === 'screen-map' && SafeHer.map && SafeHer.map.stopTracking) {
       SafeHer.map.stopTracking();
@@ -55,17 +72,47 @@ SafeHer.router = (function() {
   return { go: go, onShow: onShow, getCurrent: getCurrent };
 })();
 
-/* ─── Toast ──────────────────────────────────────────────── */
+/* ─── Toast with Optional Retry Action ────────────────────── */
 SafeHer.toast = (function() {
   var timer = null;
-  return function(msg) {
+  return function(msg, onRetry) {
     var el = document.getElementById('toast');
-    el.textContent = msg;
-    el.classList.add('show');
+    if (!el) return;
     clearTimeout(timer);
-    timer = setTimeout(function() { el.classList.remove('show'); }, 3000);
+
+    if (typeof onRetry === 'function') {
+      el.innerHTML = '';
+      var textSpan = document.createElement('span');
+      textSpan.className = 'toast-msg';
+      textSpan.textContent = msg;
+      el.appendChild(textSpan);
+
+      var retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'toast-retry-btn';
+      retryBtn.textContent = 'Retry';
+      retryBtn.onclick = function(e) {
+        e.stopPropagation();
+        el.classList.remove('show', 'has-action');
+        onRetry();
+      };
+      el.appendChild(retryBtn);
+      el.classList.add('has-action');
+    } else {
+      el.textContent = msg;
+      el.classList.remove('has-action');
+    }
+
+    el.classList.add('show');
+    timer = setTimeout(function() {
+      el.classList.remove('show', 'has-action');
+    }, (typeof onRetry === 'function') ? 7000 : 3200);
   };
 })();
+
+SafeHer.showRetryToast = function(msg, onRetry) {
+  return SafeHer.toast(msg, onRetry);
+};
 
 /* ─── Init ───────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', function() {
@@ -85,6 +132,7 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.profile.init();
   SafeHer.sos.init();
   SafeHer.map.init();
+  if (SafeHer.shareLocation) SafeHer.shareLocation.init();
   SafeHer.police.init();
   SafeHer.volunteer.init();
   SafeHer.timer.init();
@@ -92,13 +140,28 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.i18n.init();
   SafeHer.evidence.init();
 
-  // Check for SOS shortcut launch (?sos=1)
+  // Handle incoming notification click messages from service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'NAVIGATE_SCREEN' && event.data.screen) {
+        SafeHer.router.go(event.data.screen);
+      }
+    });
+  }
+
+  // Check for SOS shortcut launch (?sos=1) or notification screen launch (?screen=...)
   var urlParams = new URLSearchParams(window.location.search);
   var isSosShortcut = urlParams.get('sos') === '1';
+  var targetScreen = urlParams.get('screen');
 
   if (isSosShortcut) {
     SafeHer.router.go('home');
     SafeHer.sos.startCountdown();
+    return;
+  }
+
+  if (targetScreen) {
+    SafeHer.router.go(targetScreen);
     return;
   }
 

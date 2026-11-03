@@ -7,7 +7,10 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
 from db import get_db
+from logger import app_logger, mask_email
 
+basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, '.env'))
 load_dotenv()
 
 
@@ -68,9 +71,13 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
 
         sent_count = 0
         for email in recipient_emails:
-            success, _ = send_email(email, subject, body)
+            masked_to = mask_email(email)
+            success, err_msg = send_email(email, subject, body)
             if success:
                 sent_count += 1
+                app_logger.info(f"[EMAIL SENT] alert_id={alert_id}, to={masked_to}")
+            else:
+                app_logger.error(f"[EMAIL FAILED] alert_id={alert_id}, to={masked_to}, error={err_msg}")
 
         # Update notified_count in database in this thread's own connection
         try:

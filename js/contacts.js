@@ -2,12 +2,13 @@
 
 SafeHer.contacts = (function() {
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function setErr(id, msg) {
@@ -54,13 +55,13 @@ SafeHer.contacts = (function() {
           '</div>' +
         '</div>' +
         '<div class="contact-actions">' +
-          '<a class="contact-action-btn call" href="tel:' + encodeURIComponent(c.phone) + '" aria-label="Call ' + escapeHtml(c.name) + '">' +
+          '<a class="contact-action-btn call" href="tel:' + encodeURIComponent((c.phone || '').replace(/[^\d+]/g, '')) + '" aria-label="Call ' + escapeHtml(c.name) + '">' +
             '<span class="material-symbols-rounded">call</span>' +
           '</a>' +
-          '<button class="contact-action-btn" onclick="SafeHer.contacts.openModal(' + c.id + ')" aria-label="Edit">' +
+          '<button class="contact-action-btn" onclick="SafeHer.contacts.openModal(' + Number(c.id) + ')" aria-label="Edit">' +
             '<span class="material-symbols-rounded">edit</span>' +
           '</button>' +
-          '<button class="contact-action-btn" onclick="SafeHer.contacts.deleteContact(' + c.id + ')" aria-label="Delete">' +
+          '<button class="contact-action-btn" onclick="SafeHer.contacts.deleteContact(' + Number(c.id) + ')" aria-label="Delete">' +
             '<span class="material-symbols-rounded">delete</span>' +
           '</button>' +
         '</div>' +

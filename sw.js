@@ -1,9 +1,13 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v9';
+var CACHE_NAME = 'safeher-v14';
 var ASSETS = [
   './',
   './index.html',
   './offline.html',
+  './track.html',
+  './admin.html',
+  './privacy.html',
+  './404.html',
   './manifest.webmanifest',
   './css/style.css',
   './js/config.js',
@@ -19,6 +23,7 @@ var ASSETS = [
   './js/profile.js',
   './js/sos.js',
   './js/map.js',
+  './js/share_location.js',
   './js/police.js',
   './js/volunteer.js',
   './js/timer.js',
@@ -106,6 +111,62 @@ self.addEventListener('fetch', function(event) {
           return caches.match('./offline.html');
         }
       });
+    })
+  );
+});
+
+// ─── Web Push Event Handling ─────────────────────────────────
+self.addEventListener('push', function(event) {
+  var data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'SafeHer Alert', body: event.data ? event.data.text() : 'Emergency Notification' };
+  }
+
+  var title = data.title || 'SafeHer Alert';
+  var isSilent = !!data.silent;
+  var options = {
+    body: data.body || 'Emergency notification received.',
+    icon: './assets/logo.png',
+    badge: './assets/logo.png',
+    silent: isSilent,
+    vibrate: isSilent ? [] : [200, 100, 200],
+    tag: data.tag || ('safeher-alert-' + Date.now()),
+    renotify: true,
+    data: {
+      screen: (data.data && data.data.screen) || 'home',
+      url: './',
+      alert_id: data.data && data.data.alert_id
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+// ─── Notification Click Handling ─────────────────────────────
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  var notifData = event.notification.data || {};
+  var targetScreen = notifData.screen || 'home';
+  var targetUrl = './?screen=' + encodeURIComponent(targetScreen);
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
+      // Focus existing open app window and route to target screen
+      for (var i = 0; i < windowClients.length; i++) {
+        var client = windowClients[i];
+        if (client.url && 'focus' in client) {
+          client.postMessage({ type: 'NAVIGATE_SCREEN', screen: targetScreen });
+          return client.focus();
+        }
+      }
+      // If no window is open, launch a new window to the screen
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });

@@ -56,7 +56,39 @@ SafeHer.api = (function() {
     }
   }
 
-  // ─── Network Fetch Helper ──────────────────────────────────
+  // ─── Network Request Loading Indicator ────────────────────
+  var activeRequests = 0;
+
+  function showLoadingIndicator() {
+    activeRequests++;
+    var bar = document.getElementById('global-loading-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'global-loading-bar';
+      bar.className = 'global-loading-bar';
+      document.body.appendChild(bar);
+    }
+    bar.classList.remove('done');
+    bar.classList.add('active');
+  }
+
+  function hideLoadingIndicator() {
+    activeRequests = Math.max(0, activeRequests - 1);
+    if (activeRequests === 0) {
+      var bar = document.getElementById('global-loading-bar');
+      if (bar) {
+        bar.classList.remove('active');
+        bar.classList.add('done');
+        setTimeout(function() {
+          if (activeRequests === 0) {
+            bar.classList.remove('done');
+          }
+        }, 300);
+      }
+    }
+  }
+
+  // ─── Network Fetch Helper (10s timeout, loading bar, friendly retry) ──────
   function apiFetch(endpoint, options) {
     if (!useBackend()) {
       showOfflineNotice(true);
@@ -73,19 +105,29 @@ SafeHer.api = (function() {
     }
     options.headers = headers;
 
+    // 10-second timeout on all fetches via AbortController
+    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timeoutId = null;
+    if (controller && !options.signal) {
+      options.signal = controller.signal;
+      timeoutId = setTimeout(function() {
+        controller.abort();
+      }, 10000);
+    }
+
     var url = getApiBase().replace(/\/+$/, '') + endpoint;
+
+    showLoadingIndicator();
 
     return fetch(url, options)
       .then(function(res) {
+        if (timeoutId) clearTimeout(timeoutId);
         return res.json().then(function(json) {
           if (!res.ok) {
             var msg = json && json.error ? json.error : ('Request failed with status ' + res.status);
             if (res.status === 401 && endpoint !== '/api/login' && endpoint !== '/api/register') {
               // Token expired
               setToken(null);
-            }
-            if (SafeHer.toast && res.status !== 404 && res.status !== 429) {
-              SafeHer.toast(msg);
             }
             var err = new Error(msg);
             err.status = res.status;
@@ -97,10 +139,47 @@ SafeHer.api = (function() {
         });
       })
       .catch(function(err) {
-        // Network errors or offline failures
-        if (err.name === 'TypeError' || err.message === 'Failed to fetch' || err.message === 'NetworkError') {
+        if (timeoutId) clearTimeout(timeoutId);
+
+        var isTimeout = (err.name === 'AbortError');
+        if (isTimeout) {
+          err = new Error('Request timed out after 10 seconds');
+          err.isTimeout = true;
+        }
+
+        var isNetworkError = (err.name === 'TypeError' || err.message === 'Failed to fetch' || err.message === 'NetworkError' || isTimeout);
+        if (isNetworkError) {
           showOfflineNotice(true);
         }
+
+        // Friendly error message with Retry button for failed network requests
+        var isPolling = endpoint.indexOf('/nearby-alerts') !== -1 || (endpoint.indexOf('/status') !== -1 && endpoint.indexOf('/api/alerts/') !== -1);
+        if (!options._silent && !isPolling && err.status !== 401 && err.status !== 404 && err.status !== 429) {
+          var friendlyMsg = err.message;
+          if (isTimeout) {
+            friendlyMsg = 'Request timed out after 10s.';
+          } else if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+            friendlyMsg = 'Unable to connect to server.';
+          } else if (err.status >= 500) {
+            friendlyMsg = 'Server temporarily unavailable.';
+          }
+
+          if (SafeHer.showRetryToast) {
+            SafeHer.showRetryToast(friendlyMsg, function() {
+              return apiFetch(endpoint, options);
+            });
+          } else if (SafeHer.toast) {
+            SafeHer.toast(friendlyMsg);
+          }
+        }
+
+        throw err;
+      })
+      .then(function(result) {
+        hideLoadingIndicator();
+        return result;
+      }, function(err) {
+        hideLoadingIndicator();
         throw err;
       });
   }
@@ -271,6 +350,21 @@ SafeHer.api = (function() {
         if (callback) callback(null, user);
       }
       return user;
+    },
+
+    deleteAccount: function(pin, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/me', {
+          method: 'DELETE',
+          body: JSON.stringify({ pin: pin })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { message: 'Deleted locally' });
+      }
     },
 
     findUserByPhone: function(phone) {
@@ -633,6 +727,44 @@ SafeHer.api = (function() {
       return localList;
     },
 
+    getAlertDetails: function(alertId, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/alerts/' + alertId + '/details', { method: 'GET' })
+          .then(function(json) {
+            if (callback) callback(null, json.data);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, null);
+          });
+      } else {
+        var all = SafeHer.storage.get('alerts') || [];
+        var match = null;
+        for (var i = 0; i < all.length; i++) {
+          if (all[i].id == alertId) {
+            match = all[i];
+            break;
+          }
+        }
+        if (match) {
+          if (callback) callback(null, {
+            id: match.id,
+            mode: match.mode,
+            status: match.status,
+            started_at: match.time || 'N/A',
+            ended_at: match.endTime || 'N/A',
+            duration: '05:00',
+            contacts_notified: match.notifiedCount || 0,
+            volunteers_responded: [],
+            route: match.lat && match.lng ? [{ lat: match.lat, lng: match.lng }] : [],
+            lat: match.lat,
+            lng: match.lng
+          });
+        } else {
+          if (callback) callback('Alert not found', null);
+        }
+      }
+    },
+
     addAlert: function(alertData, callback) {
       var user = this.getUser();
       var userId = user ? user.id : 'guest';
@@ -643,26 +775,54 @@ SafeHer.api = (function() {
       SafeHer.storage.set('alerts', all);
 
       if (useBackend() && getToken()) {
-        apiFetch('/api/alerts', {
-          method: 'POST',
-          body: JSON.stringify({
-            mode: alertData.mode || 'normal',
-            lat: alertData.lat || 12.9716,
-            lng: alertData.lng || 77.5946
-          })
-        }).then(function(json) {
-          if (json.data && json.data.id) {
-            alertData.id = json.data.id;
-            alertData.shareToken = json.data.share_token;
-            alertData.notifiedCount = json.data.notified_count;
-            SafeHer.storage.set('alerts', all);
-          }
-          if (callback) callback(null, alertData);
-        }).catch(function(err) {
-          if (callback) callback(err.message, alertData);
-        });
+        var maxRetries = 3;
+        var attempt = 0;
+
+        function attemptCreateAlert() {
+          attempt++;
+          return apiFetch('/api/alerts', {
+            method: 'POST',
+            body: JSON.stringify({
+              mode: alertData.mode || 'normal',
+              lat: alertData.lat || 12.9716,
+              lng: alertData.lng || 77.5946
+            }),
+            _silent: true // SOS has dedicated retry & fallback UI
+          }).then(function(json) {
+            if (json.data && json.data.id) {
+              alertData.id = json.data.id;
+              alertData.shareToken = json.data.share_token;
+              alertData.notifiedCount = json.data.notified_count;
+              SafeHer.storage.set('alerts', all);
+            }
+            if (callback) callback(null, alertData, false);
+            return alertData;
+          }).catch(function(err) {
+            // Abuse limit (429): do NOT retry, surface abuse notice
+            if (err.status === 429 || (err.message && err.message.toLowerCase().indexOf('too many alerts') !== -1)) {
+              var currentAll = SafeHer.storage.get('alerts') || [];
+              currentAll = currentAll.filter(function(a) { return a.id !== alertData.id; });
+              SafeHer.storage.set('alerts', currentAll);
+              if (callback) callback(err.message, alertData, false);
+              return;
+            }
+
+            // Retry up to 3 times with 1s interval
+            if (attempt < maxRetries) {
+              console.warn('[SOS] Create attempt ' + attempt + ' failed (' + err.message + '). Retrying in 1s...');
+              setTimeout(attemptCreateAlert, 1000);
+            } else {
+              // Failed 3 times: trigger fallback
+              console.error('[SOS] Create failed after 3 attempts. Escalating to offline emergency fallback.');
+              err.offlineFallback = true;
+              if (callback) callback(err.message, alertData, true);
+            }
+          });
+        }
+
+        attemptCreateAlert();
       } else {
-        if (callback) callback(null, alertData);
+        if (callback) callback(null, alertData, false);
       }
       return alertData;
     },
@@ -749,9 +909,15 @@ SafeHer.api = (function() {
           body: JSON.stringify({
             available: !!profile.isAvailable,
             lat: profile.lat || null,
-            lng: profile.lng || null
+            lng: profile.lng || null,
+            note: profile.note || ''
           })
         }).then(function(json) {
+          if (json.data) {
+            profile.status = json.data.status;
+            profile.note = json.data.note;
+            SafeHer.storage.set('volunteer_profile', profile);
+          }
           if (callback) callback(null, json.data);
         }).catch(function(err) {
           if (callback) callback(err.message, profile);
@@ -760,6 +926,34 @@ SafeHer.api = (function() {
         if (callback) callback(null, profile);
       }
       return profile;
+    },
+
+    getVolunteerServerProfile: function(callback) {
+      var local = this.getVolunteerProfile();
+      if (useBackend() && getToken()) {
+        apiFetch('/api/volunteers/profile', { method: 'GET' })
+          .then(function(json) {
+            if (json.data) {
+              var merged = {
+                isAvailable: json.data.available,
+                lat: json.data.lat,
+                lng: json.data.lng,
+                status: json.data.status || 'pending',
+                note: json.data.note || '',
+                updatedAt: Date.now()
+              };
+              SafeHer.storage.set('volunteer_profile', merged);
+              if (callback) callback(null, merged);
+            } else {
+              if (callback) callback(null, local);
+            }
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, local);
+          });
+      } else {
+        if (callback) callback(null, local);
+      }
     },
 
     getNearbyAlerts: function(callback) {
@@ -880,6 +1074,52 @@ SafeHer.api = (function() {
       } else {
         var local = this.getSafeTimer();
         if (callback) callback(null, local);
+      }
+    },
+
+    // ─── Web Push Subscriptions ──────────────────────────────
+    getVapidPublicKey: function(callback) {
+      if (useBackend()) {
+        apiFetch('/api/push/vapid-public-key', { method: 'GET' })
+          .then(function(json) {
+            var key = json.data && json.data.public_key ? json.data.public_key : null;
+            if (callback) callback(null, key);
+          })
+          .catch(function(err) {
+            if (callback) callback(err.message, null);
+          });
+      } else {
+        if (callback) callback('Backend disabled', null);
+      }
+    },
+
+    subscribePush: function(subData, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/push/subscribe', {
+          method: 'POST',
+          body: JSON.stringify(subData)
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { message: 'Subscribed locally' });
+      }
+    },
+
+    unsubscribePush: function(endpoint, callback) {
+      if (useBackend() && getToken()) {
+        apiFetch('/api/push/unsubscribe', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint: endpoint })
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { message: 'Unsubscribed locally' });
       }
     },
 

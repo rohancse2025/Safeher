@@ -4,6 +4,7 @@ SafeHer.sos = (function() {
   var countdownSecs = 5;
   var countdownInterval = null;
   var liveTrackingInterval = null;
+  var volunteerStatusInterval = null;
   var currentAlertId = null;
   var alertStartTime = null;
   var durationTimer = null;
@@ -32,12 +33,13 @@ SafeHer.sos = (function() {
   var BENGALURU_LNG = 77.5946;
 
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // ─── Mode Detection from Tap Count ─────────────────────────
@@ -197,6 +199,7 @@ SafeHer.sos = (function() {
   // ─── Trigger Active SOS ──────────────────────────────────
   function triggerActiveAlert(mode) {
     currentMode = mode || 'normal';
+    hideOfflineFallback();
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
       SafeHer.home.setSOSActive(true);
@@ -208,7 +211,7 @@ SafeHer.sos = (function() {
     var now = new Date();
     currentAlertTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    // Save alert into alert history via api.js immediately
+    // Save alert into alert history via api.js immediately (with 3-attempt retry)
     var newAlert = SafeHer.api.addAlert({
       time: currentAlertTime,
       timestamp: Date.now(),
@@ -216,7 +219,43 @@ SafeHer.sos = (function() {
       lng: currentLng,
       mode: currentMode,
       status: 'active'
-    }, function(err, created) {
+    }, function(err, created, isOfflineFallback) {
+      if (err) {
+        if (typeof err === 'string' && err.toLowerCase().indexOf('too many alerts') !== -1) {
+          // Abuse limit hit: cancel active alert state and show modal
+          if (silentPendingTimer) {
+            clearTimeout(silentPendingTimer);
+            silentPendingTimer = null;
+          }
+          stopTrackingInterval();
+          stopDurationCounter();
+          stopVolunteerStatusPolling();
+          stopSiren();
+          stopVibration();
+          releaseWakeLock();
+
+          currentAlertId = null;
+          if (SafeHer.api && SafeHer.api.clearActiveSos) {
+            SafeHer.api.clearActiveSos();
+          }
+          if (SafeHer.home && SafeHer.home.setSOSActive) {
+            SafeHer.home.setSOSActive(false);
+          }
+          SafeHer.router.go('home');
+          var modal = document.getElementById('too-many-alerts-modal');
+          if (modal) {
+            modal.style.display = 'flex';
+          } else {
+            SafeHer.toast('Too many alerts, call 112 directly');
+          }
+          return;
+        }
+
+        // When SOS creation fails after 3 retries, show offline emergency fallback
+        if (isOfflineFallback || (typeof err === 'string' && err.indexOf('failed after 3 attempts') !== -1)) {
+          showOfflineFallback();
+        }
+      }
       if (!err && created && created.id) {
         currentAlertId = created.id;
         var active = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
@@ -225,6 +264,7 @@ SafeHer.sos = (function() {
           if (created.shareToken) active.shareToken = created.shareToken;
           SafeHer.api.setActiveSos(active);
         }
+        startVolunteerStatusPolling();
       }
     });
     currentAlertId = newAlert ? newAlert.id : Date.now();
@@ -248,6 +288,7 @@ SafeHer.sos = (function() {
 
     startDurationCounter();
     startTrackingInterval();
+    startVolunteerStatusPolling();
 
     // Render screen IMMEDIATELY without delay
     if (currentMode === 'normal') {
@@ -364,12 +405,14 @@ SafeHer.sos = (function() {
   }
 
   function endAlertSilently(enteredPin) {
+    hideOfflineFallback();
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
     }
     stopTrackingInterval();
     stopDurationCounter();
+    stopVolunteerStatusPolling();
     releaseWakeLock();
 
     if (document.fullscreenElement && document.exitFullscreen) {
@@ -547,13 +590,13 @@ SafeHer.sos = (function() {
       html += '<div class="sos-notified-item">' +
         '<div class="sos-notified-left">' +
           '<div class="sos-notified-avatar">' + escapeHtml(initial) + '</div>' +
-          '<a class="sos-notified-name" href="' + telUrl + '" title="Call ' + escapeHtml(c.name) + '">' +
+          '<a class="sos-notified-name" href="' + escapeHtml(telUrl) + '" title="Call ' + escapeHtml(c.name) + '">' +
             escapeHtml(c.name) +
           '</a>' +
         '</div>' +
         '<div class="sos-contact-btns">' +
-          '<a class="sos-btn-wa" href="' + waUrl + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>' +
-          '<a class="sos-btn-sms" href="' + smsUrl + '">SMS</a>' +
+          '<a class="sos-btn-wa" href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>' +
+          '<a class="sos-btn-sms" href="' + escapeHtml(smsUrl) + '">SMS</a>' +
         '</div>' +
       '</div>';
     }
@@ -599,6 +642,51 @@ SafeHer.sos = (function() {
       }
       document.body.removeChild(ta);
     }
+  }
+
+  // ─── Offline SOS Fallback Actions ─────────────────────────
+  function showOfflineFallback() {
+    var card1 = document.getElementById('sos-offline-fallback-card');
+    if (card1) card1.style.display = 'block';
+    var card2 = document.getElementById('em-offline-fallback-card');
+    if (card2) card2.style.display = 'block';
+    if (SafeHer.toast) {
+      SafeHer.toast('SOS server unreachable. Use offline options below.');
+    }
+  }
+
+  function hideOfflineFallback() {
+    var card1 = document.getElementById('sos-offline-fallback-card');
+    if (card1) card1.style.display = 'none';
+    var card2 = document.getElementById('em-offline-fallback-card');
+    if (card2) card2.style.display = 'none';
+  }
+
+  function sendOfflineSmsAll() {
+    var contacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    var phones = [];
+    for (var i = 0; i < contacts.length; i++) {
+      var p = (contacts[i].phone || '').replace(/\D/g, '');
+      if (p) phones.push(p);
+    }
+    var message = buildAlertMessage();
+    var smsUrl = 'sms:' + (phones.length ? phones.join(',') : '') + '?body=' + encodeURIComponent(message);
+    window.location.href = smsUrl;
+  }
+
+  function sendOfflineWhatsAppAll() {
+    var contacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    var targetPhone = '';
+    for (var i = 0; i < contacts.length; i++) {
+      var p = (contacts[i].phone || '').replace(/\D/g, '');
+      if (p.length === 10) { targetPhone = '91' + p; break; }
+      if (p.length > 10) { targetPhone = p; break; }
+    }
+    var message = buildAlertMessage();
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+    window.open(waUrl, '_blank');
   }
 
   // ─── Live Location Tracking (every 10s) ───────────────────
@@ -661,12 +749,14 @@ SafeHer.sos = (function() {
   }
 
   function finishEndingAlert(enteredPin) {
+    hideOfflineFallback();
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
     }
     stopTrackingInterval();
     stopDurationCounter();
+    stopVolunteerStatusPolling();
     stopSiren();
     stopVibration();
     releaseWakeLock();
@@ -699,17 +789,64 @@ SafeHer.sos = (function() {
     SafeHer.router.go('home');
   }
 
+  // ─── Volunteer Status Polling (every 5s) ───────────────────
+  function startVolunteerStatusPolling() {
+    stopVolunteerStatusPolling();
+    pollVolunteerStatus();
+    volunteerStatusInterval = setInterval(pollVolunteerStatus, 5000);
+  }
+
+  function stopVolunteerStatusPolling() {
+    if (volunteerStatusInterval) {
+      clearInterval(volunteerStatusInterval);
+      volunteerStatusInterval = null;
+    }
+  }
+
+  function pollVolunteerStatus() {
+    var alertId = currentAlertId;
+    if (!alertId && SafeHer.api && SafeHer.api.getActiveSos) {
+      var act = SafeHer.api.getActiveSos();
+      if (act && act.id) alertId = act.id;
+    }
+    if (!alertId) return;
+
+    if (SafeHer.api && SafeHer.api.getAlertVolunteerStatus) {
+      SafeHer.api.getAlertVolunteerStatus(alertId, function(err, data) {
+        if (err || !data) return;
+        var coming = data.volunteers_coming !== undefined ? data.volunteers_coming : 0;
+        var act = SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
+        if (act) {
+          act.volunteersEnRoute = coming;
+          act.volunteerStatus = coming > 0 ? (coming + ' volunteer' + (coming > 1 ? 's are' : ' is') + ' on the way') : 'Waiting for volunteers...';
+          SafeHer.api.setActiveSos(act);
+        }
+        updateVolunteerStatusDisplay();
+      });
+    }
+  }
+
   function updateVolunteerStatusDisplay() {
     if (!SafeHer.api || !SafeHer.api.getActiveSos) return;
     var activeSos = SafeHer.api.getActiveSos();
     var subEl = document.getElementById('sos-status-sub');
     if (!subEl) return;
 
-    if (activeSos && activeSos.volunteersEnRoute && activeSos.volunteersEnRoute > 0) {
-      var n = activeSos.volunteersEnRoute;
+    var n = (activeSos && activeSos.volunteersEnRoute) ? activeSos.volunteersEnRoute : 0;
+    if (n > 0) {
       subEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way';
+      var box = subEl.parentElement;
+      if (box) {
+        var icon = box.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = 'directions_run';
+      }
     } else {
       subEl.textContent = 'Waiting for volunteers...';
+      var box = subEl.parentElement;
+      if (box) {
+        var icon = box.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = 'hourglass_top';
+      }
     }
   }
 
@@ -725,6 +862,7 @@ SafeHer.sos = (function() {
       }
       updateDurationDisplay();
       updateVolunteerStatusDisplay();
+      startVolunteerStatusPolling();
       if (mapInstance) {
         mapInstance.invalidateSize();
         setTimeout(function() {
@@ -754,6 +892,8 @@ SafeHer.sos = (function() {
     onSilentScreenTap: onSilentScreenTap,
     requestEndAlert: requestEndAlert,
     requestStopAlarm: requestStopAlarm,
-    shareToAll: shareToAll
+    shareToAll: shareToAll,
+    sendOfflineSmsAll: sendOfflineSmsAll,
+    sendOfflineWhatsAppAll: sendOfflineWhatsAppAll
   };
 })();
