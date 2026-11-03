@@ -117,7 +117,16 @@ SafeHer.api = (function() {
 
     var url = getApiBase().replace(/\/+$/, '') + endpoint;
 
-    showLoadingIndicator();
+    var isBackground = !!(options._silent ||
+                       endpoint.indexOf('/nearby-alerts') !== -1 ||
+                       endpoint.indexOf('/volunteers/count') !== -1 ||
+                       endpoint.indexOf('/volunteers/profile') !== -1 ||
+                       endpoint.indexOf('/timers/active') !== -1 ||
+                       (endpoint.indexOf('/status') !== -1 && endpoint.indexOf('/api/alerts/') !== -1));
+
+    if (!isBackground) {
+      showLoadingIndicator();
+    }
 
     return fetch(url, options)
       .then(function(res) {
@@ -152,9 +161,8 @@ SafeHer.api = (function() {
           showOfflineNotice(true);
         }
 
-        // Friendly error message with Retry button for failed network requests
-        var isPolling = endpoint.indexOf('/nearby-alerts') !== -1 || (endpoint.indexOf('/status') !== -1 && endpoint.indexOf('/api/alerts/') !== -1);
-        if (!options._silent && !isPolling && err.status !== 401 && err.status !== 404 && err.status !== 429) {
+        // Friendly error message with Retry button for failed explicit user requests
+        if (!isBackground && err.status !== 401 && err.status !== 404 && err.status !== 429) {
           var friendlyMsg = err.message;
           if (isTimeout) {
             friendlyMsg = 'Request timed out after 10s.';
@@ -176,10 +184,10 @@ SafeHer.api = (function() {
         throw err;
       })
       .then(function(result) {
-        hideLoadingIndicator();
+        if (!isBackground) hideLoadingIndicator();
         return result;
       }, function(err) {
-        hideLoadingIndicator();
+        if (!isBackground) hideLoadingIndicator();
         throw err;
       });
   }
@@ -931,7 +939,7 @@ SafeHer.api = (function() {
     getVolunteerServerProfile: function(callback) {
       var local = this.getVolunteerProfile();
       if (useBackend() && getToken()) {
-        apiFetch('/api/volunteers/profile', { method: 'GET' })
+        apiFetch('/api/volunteers/profile', { method: 'GET', _silent: true })
           .then(function(json) {
             if (json.data) {
               var merged = {
@@ -1001,7 +1009,7 @@ SafeHer.api = (function() {
 
     getAvailableVolunteersCount: function(callback) {
       if (useBackend()) {
-        apiFetch('/api/volunteers/count', { method: 'GET' })
+        apiFetch('/api/volunteers/count', { method: 'GET', _silent: true })
           .then(function(json) {
             var count = json.data && json.data.available_volunteers !== undefined ? json.data.available_volunteers : 0;
             if (callback) callback(null, count);
@@ -1064,7 +1072,7 @@ SafeHer.api = (function() {
 
     getActiveTimer: function(callback) {
       if (useBackend() && getToken()) {
-        apiFetch('/api/timers/active', { method: 'GET' })
+        apiFetch('/api/timers/active', { method: 'GET', _silent: true })
           .then(function(json) {
             if (callback) callback(null, json.data);
           })
