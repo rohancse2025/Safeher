@@ -1007,9 +1007,13 @@ SafeHer.api = (function() {
       }
     },
 
-    getAvailableVolunteersCount: function(callback) {
+    getAvailableVolunteersCount: function(callback, coords) {
       if (useBackend()) {
-        apiFetch('/api/volunteers/count', { method: 'GET', _silent: true })
+        var url = '/api/volunteers/count';
+        if (coords && coords.lat != null && coords.lng != null) {
+          url += '?lat=' + encodeURIComponent(coords.lat) + '&lng=' + encodeURIComponent(coords.lng);
+        }
+        apiFetch(url, { method: 'GET', _silent: true })
           .then(function(json) {
             var count = json.data && json.data.available_volunteers !== undefined ? json.data.available_volunteers : 0;
             if (callback) callback(null, count);

@@ -219,12 +219,31 @@ SafeHer.volunteer = (function() {
     var countEl = document.getElementById('home-volunteers-count');
     if (!countEl) return;
 
-    if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
-      SafeHer.api.getAvailableVolunteersCount(function(err, count) {
-        if (!err && count !== undefined && countEl) {
-          countEl.textContent = String(count);
-        }
-      });
+    var loc = (SafeHer.api && SafeHer.api.getLiveLocation) ? SafeHer.api.getLiveLocation() : null;
+    if (loc && loc.lat != null && loc.lng != null) {
+      fetchWithCoords(loc);
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          fetchWithCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        function() {
+          fetchWithCoords(null);
+        },
+        { timeout: 4000, maximumAge: 60000 }
+      );
+    } else {
+      fetchWithCoords(null);
+    }
+
+    function fetchWithCoords(coords) {
+      if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
+        SafeHer.api.getAvailableVolunteersCount(function(err, count) {
+          if (!err && count !== undefined && countEl) {
+            countEl.textContent = String(count);
+          }
+        }, coords);
+      }
     }
   }
 

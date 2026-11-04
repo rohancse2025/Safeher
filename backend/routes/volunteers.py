@@ -52,14 +52,15 @@ def update_volunteer_status():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Insert or update volunteer record (new records default to 'pending')
+    # Insert or update volunteer record (set to 'approved' for immediate community volunteering)
     cursor.execute('''
         INSERT INTO volunteers (user_id, available, lat, lng, status, note, updated_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, 'approved', ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             available = excluded.available,
             lat = COALESCE(excluded.lat, volunteers.lat),
             lng = COALESCE(excluded.lng, volunteers.lng),
+            status = 'approved',
             note = COALESCE(excluded.note, volunteers.note),
             updated_at = CURRENT_TIMESTAMP;
     ''', (user_id, available, lat, lng, note or None))
@@ -327,12 +328,69 @@ def get_alert_volunteer_status(alert_id):
 @volunteers_bp.route('/api/volunteers/count', methods=['GET'])
 def get_available_volunteers_count():
     """
-    Returns the total number of volunteers currently marked available.
-    Public endpoint.
+    Returns the total number of real volunteers currently marked available and nearby.
+    Supports ?lat=...&lng=...&radius_km=5 to calculate REAL distance via Haversine.
+    Excludes the requesting user so you don't count yourself.
     """
+    lat_param = request.args.get('lat')
+    lng_param = request.args.get('lng')
+    radius_km = float(request.args.get('radius_km', 5.0))
+
+    # Optional token auth check to exclude the current user
+    user_id = None
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ', 1)[1]
+        try:
+            from routes.auth import decode_token
+            payload = decode_token(token)
+            if payload and 'user_id' in payload:
+                user_id = payload['user_id']
+        except Exception:
+            pass
+
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) AS total FROM volunteers WHERE available = 1 AND status = 'approved';")
+
+    if lat_param is not None and lng_param is not None:
+        try:
+            u_lat = float(lat_param)
+            u_lng = float(lng_param)
+            if user_id:
+                cursor.execute("""
+                    SELECT id, user_id, lat, lng FROM volunteers
+                    WHERE available = 1 AND status = 'approved' AND user_id != ? AND lat IS NOT NULL AND lng IS NOT NULL;
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, lat, lng FROM volunteers
+                    WHERE available = 1 AND status = 'approved' AND lat IS NOT NULL AND lng IS NOT NULL;
+                """)
+            rows = cursor.fetchall()
+            count = 0
+            for row in rows:
+                v_lat = row['lat']
+                v_lng = row['lng']
+                dist = haversine_km(u_lat, u_lng, v_lat, v_lng)
+                if dist <= radius_km:
+                    count += 1
+            conn.close()
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "available_volunteers": count,
+                    "nearby": True,
+                    "radius_km": radius_km
+                }
+            }), 200
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback: total available volunteers excluding self
+    if user_id:
+        cursor.execute("SELECT COUNT(*) AS total FROM volunteers WHERE available = 1 AND status = 'approved' AND user_id != ?;", (user_id,))
+    else:
+        cursor.execute("SELECT COUNT(*) AS total FROM volunteers WHERE available = 1 AND status = 'approved';")
     row = cursor.fetchone()
     count = row['total'] if row else 0
     conn.close()
@@ -340,6 +398,7 @@ def get_available_volunteers_count():
     return jsonify({
         "ok": True,
         "data": {
-            "available_volunteers": count
+            "available_volunteers": count,
+            "nearby": False
         }
     }), 200
