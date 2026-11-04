@@ -4491,3 +4491,111 @@ button, a, input[type="button"], input[type="submit"] {
   color: #555;
   line-height: 1.35;
 }
+
+/* Complaint Form Additional Controls */
+.complaint-evidence-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.complaint-checkbox-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-dark);
+  cursor: pointer;
+  min-height: 38px;
+}
+.complaint-checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--crimson);
+}
+.complaint-police-notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: #FFFDFC;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--crimson);
+  border-radius: var(--radius-btn);
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+.complaint-police-notice .material-symbols-rounded {
+  font-size: 18px;
+  color: var(--crimson);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.complaint-police-notice p {
+  font-size: 11px;
+  color: var(--text-dark);
+  line-height: 1.4;
+}
+.evidence-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.evidence-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  min-height: 32px;
+}
+.evidence-check-item.checked {
+  background: #FFFDFC;
+  border-color: var(--crimson);
+}
+
+/* ─── Clean Print Stylesheet for Formal Police Complaint ─── */
+.complaint-print-area {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #complaint-print-area, #complaint-print-area * {
+    visibility: visible !important;
+  }
+  #complaint-print-area {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 25mm 20mm;
+    margin: 0;
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .complaint-print-letter {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+}

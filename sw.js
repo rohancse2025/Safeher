@@ -1,5 +1,5 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v14';
+var CACHE_NAME = 'safeher-v15';
 var ASSETS = [
   './',
   './index.html',
@@ -20,6 +20,8 @@ var ASSETS = [
   './js/home.js',
   './js/contacts.js',
   './js/tips.js',
+  './js/helpdata.js',
+  './js/help_rights.js',
   './js/profile.js',
   './js/sos.js',
   './js/map.js',

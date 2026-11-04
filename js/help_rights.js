@@ -1,5 +1,5 @@
-// js/help_rights.js – Help & Rights screen: Helplines, Laws, File FIR, Tools, and "What happened?" Guide
-// Powered strictly by js/helpdata.js
+// js/help_rights.js – Help & Rights: Helplines, Laws, File FIR, Tools, Complaint Generator, and Evidence Checklist
+// Fully multilingual (English, Kannada, Hindi), offline-ready, and backed by localStorage
 
 SafeHer.helpRights = (function() {
 
@@ -14,6 +14,7 @@ SafeHer.helpRights = (function() {
   var SCENARIOS = [
     {
       id: 'stalking',
+      titleKey: 'scenStalkingTitle',
       title: 'Being followed or stalked',
       icon: 'directions_walk',
       whatToDo: [
@@ -28,6 +29,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'street',
+      titleKey: 'scenStreetTitle',
       title: 'Street harassment',
       icon: 'campaign',
       whatToDo: [
@@ -42,6 +44,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'workplace',
+      titleKey: 'scenWorkplaceTitle',
       title: 'Harassment at workplace',
       icon: 'business_center',
       whatToDo: [
@@ -57,6 +60,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'domestic',
+      titleKey: 'scenDomesticTitle',
       title: 'Domestic violence or dowry harassment',
       icon: 'home',
       whatToDo: [
@@ -72,6 +76,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'assault',
+      titleKey: 'scenAssaultTitle',
       title: 'Sexual assault',
       icon: 'warning',
       whatToDo: [
@@ -86,6 +91,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'online',
+      titleKey: 'scenOnlineTitle',
       title: 'Online harassment or morphed images',
       icon: 'phonelink_lock',
       whatToDo: [
@@ -100,6 +106,7 @@ SafeHer.helpRights = (function() {
     },
     {
       id: 'acid',
+      titleKey: 'scenAcidTitle',
       title: 'Acid attack',
       icon: 'medical_services',
       whatToDo: [
@@ -114,7 +121,49 @@ SafeHer.helpRights = (function() {
     }
   ];
 
-  // ─── Data Access Helpers ─────────────────────────────────────
+  // ─── 6 Prescribed Evidence Checklist Items ────────────────────
+  var EVIDENCE_ITEMS = [
+    {
+      id: 'ev_item_1',
+      defaultTitle: 'Save screenshots and voice notes',
+      defaultDesc: 'Capture uncropped screenshots with timestamps and back up audio files or voice notes to secure storage.'
+    },
+    {
+      id: 'ev_item_2',
+      defaultTitle: "Don't delete messages",
+      defaultDesc: 'Keep original message threads, emails, and SMS intact as primary digital evidence without alterations.'
+    },
+    {
+      id: 'ev_item_3',
+      defaultTitle: 'Note date, time and place',
+      defaultDesc: 'Write down exact timestamps, dates, and street or landmark locations while details are fresh.'
+    },
+    {
+      id: 'ev_item_4',
+      defaultTitle: 'Keep medical records if any',
+      defaultDesc: 'Preserve doctor prescriptions, treatment receipts, and Medico-Legal Case (MLC) examination slips.'
+    },
+    {
+      id: 'ev_item_5',
+      defaultTitle: 'Write down witness details',
+      defaultDesc: 'Record names, phone numbers, shop addresses, or vehicle registration numbers of witnesses.'
+    },
+    {
+      id: 'ev_item_6',
+      defaultTitle: 'Note any CCTV nearby',
+      defaultDesc: 'Identify traffic cameras, ATM booths, commercial shops, or residential doorbell cameras overlooking the area.'
+    }
+  ];
+
+  // ─── Translation & Data Access Helpers ───────────────────────
+  function t(key, fallback) {
+    if (window.SafeHer && window.SafeHer.i18n && window.SafeHer.i18n.t) {
+      var val = window.SafeHer.i18n.t(key);
+      if (val && val !== key) return val;
+    }
+    return fallback !== undefined ? fallback : key;
+  }
+
   function getHelplines() {
     return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.HELPLINES) ||
            window.HELPLINES || [];
@@ -136,9 +185,11 @@ SafeHer.helpRights = (function() {
   }
 
   function getDisclaimer() {
-    return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.DISCLAIMER_TEXT) ||
-           window.DISCLAIMER_TEXT ||
-           'General information, not legal advice. Laws and numbers can change. Last checked: November 2026. If you are in danger, call 112.';
+    return t('hrDisclaimer',
+      (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.DISCLAIMER_TEXT) ||
+      window.DISCLAIMER_TEXT ||
+      'General information, not legal advice. Laws and numbers can change. Last checked: November 2026. If you are in danger, call 112.'
+    );
   }
 
   function escapeHtml(str) {
@@ -186,11 +237,11 @@ SafeHer.helpRights = (function() {
     currentTab = tabId;
     var tabs = ['helplines', 'laws', 'fir', 'tools'];
     for (var i = 0; i < tabs.length; i++) {
-      var t = tabs[i];
-      var btn = document.getElementById('hr-tab-btn-' + t);
-      var pane = document.getElementById('hr-tab-pane-' + t);
-      if (btn) btn.classList.toggle('active', t === tabId);
-      if (pane) pane.style.display = (t === tabId) ? 'block' : 'none';
+      var tId = tabs[i];
+      var btn = document.getElementById('hr-tab-btn-' + tId);
+      var pane = document.getElementById('hr-tab-pane-' + tId);
+      if (btn) btn.classList.toggle('active', tId === tabId);
+      if (pane) pane.style.display = (tId === tabId) ? 'block' : 'none';
     }
   }
 
@@ -262,7 +313,6 @@ SafeHer.helpRights = (function() {
   }
 
   function renderHelplineRow(item) {
-    var isWebsiteOnly = !item.number;
     var webUrl = '';
     if (item.name.indexOf('SHe-Box') !== -1 || (item.note && item.note.indexOf('shebox.nic.in') !== -1)) {
       webUrl = 'https://shebox.nic.in';
@@ -313,7 +363,7 @@ SafeHer.helpRights = (function() {
     return html;
   }
 
-  // ─── Laws Tab Logic ──────────────────────────────────────────
+  // ─── Laws Tab Logic (Preserving law section numbers) ────────
   function setLawsSearch(query) {
     lawsSearchQuery = (query || '').trim().toLowerCase();
     renderLawsList();
@@ -346,17 +396,22 @@ SafeHer.helpRights = (function() {
       for (var i = 0; i < filtered.length; i++) {
         var law = filtered[i];
         var isExpanded = !!expandedLaws[i];
+
+        // Section numbers kept unchanged; plain meaning translated through i18n
+        var meaningKey = 'law_' + law.bns_section.replace('-', '_') + '_meaning';
+        var translatedMeaning = t(meaningKey, law.meaning);
+
         html += '<div class="hr-law-card ' + (isExpanded ? 'expanded' : '') + '" onclick="SafeHer.helpRights.toggleLawExpand(' + i + ')">';
         html += '<div class="hr-law-header">';
         html += '<div class="hr-law-tags">';
-        html += '<span class="hr-bns-tag">BNS ' + escapeHtml(law.bns_section) + '</span>';
-        html += '<span class="hr-ipc-tag">old IPC ' + escapeHtml(law.old_ipc) + '</span>';
+        html += '<span class="hr-bns-tag">BNS Sec ' + escapeHtml(law.bns_section) + '</span>';
+        html += '<span class="hr-ipc-tag">(old IPC ' + escapeHtml(law.old_ipc) + ')</span>';
         html += '</div>';
         html += '<span class="material-symbols-rounded hr-expand-icon">' + (isExpanded ? 'expand_less' : 'expand_more') + '</span>';
         html += '</div>';
 
         html += '<h4 class="hr-law-title">' + escapeHtml(law.title) + '</h4>';
-        html += '<p class="hr-law-meaning">' + escapeHtml(law.meaning) + '</p>';
+        html += '<p class="hr-law-meaning">' + escapeHtml(translatedMeaning) + '</p>';
 
         if (isExpanded) {
           html += '<div class="hr-law-details">';
@@ -376,10 +431,14 @@ SafeHer.helpRights = (function() {
       var otherHtml = '';
       for (var j = 0; j < otherList.length; j++) {
         var ol = otherList[j];
+        var olMeaningKey = (ol.title.indexOf('POSH') !== -1) ? 'law_posh_meaning' :
+                          (ol.title.indexOf('Domestic') !== -1) ? 'law_domestic_meaning' : 'law_dowry_meaning';
+        var transOtherMeaning = t(olMeaningKey, ol.meaning || ol.note);
+
         otherHtml += '<div class="hr-other-law-card">';
         otherHtml += '<div class="hr-other-law-title">' + escapeHtml(ol.title) + '</div>';
-        if (ol.note || ol.meaning) {
-          otherHtml += '<p class="hr-other-law-desc">' + escapeHtml(ol.note || ol.meaning) + '</p>';
+        if (transOtherMeaning) {
+          otherHtml += '<p class="hr-other-law-desc">' + escapeHtml(transOtherMeaning) + '</p>';
         }
         otherHtml += '</div>';
       }
@@ -387,7 +446,7 @@ SafeHer.helpRights = (function() {
     }
   }
 
-  // ─── File FIR Tab Logic ──────────────────────────────────────
+  // ─── File FIR Tab Logic (Preserving BNSS sections) ───────────
   function renderFirTab() {
     var container = document.getElementById('hr-fir-stepper');
     if (!container) return;
@@ -397,6 +456,9 @@ SafeHer.helpRights = (function() {
 
     for (var i = 0; i < rights.length; i++) {
       var r = rights[i];
+      var stepKey = 'fir_step_' + (i + 1);
+      var translatedStepText = t(stepKey, r.text);
+
       html += '<div class="hr-step-item">';
       html += '<div class="hr-step-num-wrap">';
       html += '<div class="hr-step-number">' + (r.point || (i + 1)) + '</div>';
@@ -406,7 +468,7 @@ SafeHer.helpRights = (function() {
       html += '</div>';
 
       html += '<div class="hr-step-content">';
-      html += '<p class="hr-step-text">' + escapeHtml(r.text) + '</p>';
+      html += '<p class="hr-step-text">' + escapeHtml(translatedStepText) + '</p>';
       html += '</div>';
       html += '</div>'; // /.hr-step-item
     }
@@ -447,6 +509,8 @@ SafeHer.helpRights = (function() {
     }
     if (!sc) return;
 
+    var scenarioTitle = t(sc.titleKey, sc.title);
+
     var allHelplines = getHelplines();
     var matchedHelplines = allHelplines.filter(function(h) {
       return sc.helplineNames.indexOf(h.name) !== -1;
@@ -466,7 +530,7 @@ SafeHer.helpRights = (function() {
     html += '<div class="hr-guide-header">';
     html += '<span class="material-symbols-rounded hr-guide-icon">' + escapeHtml(sc.icon) + '</span>';
     html += '<div class="hr-guide-title-box">';
-    html += '<h3 class="hr-guide-title">' + escapeHtml(sc.title) + '</h3>';
+    html += '<h3 class="hr-guide-title">' + escapeHtml(scenarioTitle) + '</h3>';
     html += '<p class="hr-guide-subtitle">Immediate emergency instructions & legal remedies</p>';
     html += '</div>';
     html += '</div>';
@@ -491,19 +555,20 @@ SafeHer.helpRights = (function() {
     html += '</div>';
     html += '</div>';
 
-    // (3) Related laws
+    // (3) Related laws (Section numbers intact)
     html += '<div class="hr-guide-section">';
     html += '<h4 class="hr-guide-section-title"><span class="material-symbols-rounded">gavel</span> 3. Related laws</h4>';
     html += '<div class="hr-guide-laws-list">';
     for (var m = 0; m < matchedLaws.length; m++) {
       var law = matchedLaws[m];
+      var lawMean = t('law_' + law.bns_section.replace('-', '_') + '_meaning', law.meaning);
       html += '<div class="hr-mini-law-card">';
       html += '<div class="hr-law-tags">';
-      html += '<span class="hr-bns-tag">BNS ' + escapeHtml(law.bns_section) + '</span>';
-      html += '<span class="hr-ipc-tag">old IPC ' + escapeHtml(law.old_ipc) + '</span>';
+      html += '<span class="hr-bns-tag">BNS Sec ' + escapeHtml(law.bns_section) + '</span>';
+      html += '<span class="hr-ipc-tag">(old IPC ' + escapeHtml(law.old_ipc) + ')</span>';
       html += '</div>';
       html += '<div class="hr-mini-law-title">' + escapeHtml(law.title) + '</div>';
-      html += '<div class="hr-mini-law-meaning">' + escapeHtml(law.meaning) + '</div>';
+      html += '<div class="hr-mini-law-meaning">' + escapeHtml(lawMean) + '</div>';
       html += '</div>';
     }
     for (var n = 0; n < matchedOther.length; n++) {
@@ -526,102 +591,256 @@ SafeHer.helpRights = (function() {
     // (5) Prepare my complaint button
     html += '<div class="hr-guide-action-section">';
     html += '<button type="button" class="btn btn-primary hr-prepare-btn" onclick="SafeHer.helpRights.prepareComplaint(\'' + escapeHtml(sc.id) + '\')">';
-    html += '<span class="material-symbols-rounded">edit_document</span> Prepare my complaint</button>';
+    html += '<span class="material-symbols-rounded">edit_document</span> ' + escapeHtml(t('hrPrepareComplaint', 'Prepare my complaint')) + '</button>';
     html += '</div>';
 
     container.innerHTML = html;
   }
 
+  // ─── Tool 1: Complaint Letter Generator ───────────────────────
   function prepareComplaint(scenarioId) {
     closeScenario();
     if (SafeHer.router && SafeHer.router.go) {
       SafeHer.router.go('complaint-letter');
-      // If scenario was passed, pre-select it
       setTimeout(function() {
         var sel = document.getElementById('complaint-incident-type');
         if (sel && scenarioId) {
           sel.value = scenarioId;
-          updateComplaintTemplate();
         }
+        prefillUserData();
+        generateComplaintLetter();
       }, 50);
     }
   }
 
-  // ─── Tools: Complaint Letter & Evidence Checklist Logic ─────
-  function updateComplaintTemplate() {
-    var sel = document.getElementById('complaint-incident-type');
-    var val = sel ? sel.value : 'other';
+  function prefillUserData() {
     var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
-
     var nameInput = document.getElementById('complaint-complainant-name');
     var phoneInput = document.getElementById('complaint-complainant-phone');
+    var dtInput = document.getElementById('complaint-datetime');
+
     if (user) {
       if (nameInput && !nameInput.value) nameInput.value = user.name || '';
       if (phoneInput && !phoneInput.value) phoneInput.value = user.phone || '';
     }
 
-    var textEl = document.getElementById('complaint-preview-text');
-    if (!textEl) return;
+    if (dtInput && !dtInput.value) {
+      // Default to current date and time
+      var now = new Date();
+      var year = now.getFullYear();
+      var month = String(now.getMonth() + 1).padStart(2, '0');
+      var day = String(now.getDate()).padStart(2, '0');
+      var hours = String(now.getHours()).padStart(2, '0');
+      var minutes = String(now.getMinutes()).padStart(2, '0');
+      dtInput.value = year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
+    }
+  }
 
-    var now = new Date();
-    var dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    var timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  function generateComplaintLetter() {
+    var name = (document.getElementById('complaint-complainant-name') || {}).value || '';
+    var phone = (document.getElementById('complaint-complainant-phone') || {}).value || '';
+    var station = (document.getElementById('complaint-police-station') || {}).value || '';
+    var incidentType = (document.getElementById('complaint-incident-type') || {}).value || 'harassment';
+    var dt = (document.getElementById('complaint-datetime') || {}).value || '';
+    var place = (document.getElementById('complaint-place') || {}).value || '';
+    var accused = (document.getElementById('complaint-accused') || {}).value || '';
+    var description = (document.getElementById('complaint-description') || {}).value || '';
+    var witnesses = (document.getElementById('complaint-witnesses') || {}).value || '';
 
-    var sc = null;
-    for (var i = 0; i < SCENARIOS.length; i++) {
-      if (SCENARIOS[i].id === val) {
-        sc = SCENARIOS[i];
-        break;
-      }
+    // Evidence checkboxes
+    var evidenceList = [];
+    if (document.getElementById('complaint-ev-screenshots') && document.getElementById('complaint-ev-screenshots').checked) {
+      evidenceList.push('Screenshots of chats/posts');
+    }
+    if (document.getElementById('complaint-ev-voicenotes') && document.getElementById('complaint-ev-voicenotes').checked) {
+      evidenceList.push('Voice notes / Audio recordings');
+    }
+    if (document.getElementById('complaint-ev-photos') && document.getElementById('complaint-ev-photos').checked) {
+      evidenceList.push('Photographs');
+    }
+    if (document.getElementById('complaint-ev-medical') && document.getElementById('complaint-ev-medical').checked) {
+      evidenceList.push('Medical examination report (MLC)');
+    }
+    if (document.getElementById('complaint-ev-messages') && document.getElementById('complaint-ev-messages').checked) {
+      evidenceList.push('SMS / Direct Message threads');
     }
 
-    var incidentTitle = sc ? sc.title : 'Incident / Harassment';
-    var bnsRef = sc ? ('BNS Sections ' + sc.bnsSections.join(', ') + ' and applicable provisions of Bharatiya Nagarik Suraksha Sanhita (BNSS)') : 'relevant provisions of the Bharatiya Nyaya Sanhita (BNS)';
+    var now = new Date();
+    var todayStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-    var cName = (nameInput && nameInput.value) ? nameInput.value : '[Complainant Name]';
-    var cPhone = (phoneInput && phoneInput.value) ? phoneInput.value : '[Phone Number]';
+    var formattedDt = dt ? dt.replace('T', ' at ') : todayStr;
 
-    var sample = 'To,\n' +
-      'The Station House Officer (SHO),\n' +
-      '[Police Station Name / District]\n\n' +
-      'Date: ' + dateStr + '\n\n' +
-      'Subject: Formal Complaint and request for registration of FIR regarding ' + incidentTitle + ' under ' + bnsRef + '.\n\n' +
+    // Map incident type to descriptive title
+    var scMap = {
+      stalking: 'Being followed or stalked',
+      street: 'Street harassment',
+      workplace: 'Harassment at workplace',
+      domestic: 'Domestic violence or dowry harassment',
+      assault: 'Sexual assault',
+      online: 'Online harassment or morphed images',
+      acid: 'Acid attack',
+      other: 'Harassment and Criminal Offence'
+    };
+    var incidentTitle = scMap[incidentType] || incidentType;
+
+    var stationStr = station.trim() ? station.trim() : '<Police Station Name / District>';
+    var complainantNameStr = name.trim() ? name.trim() : '<Your Full Name>';
+    var complainantPhoneStr = phone.trim() ? phone.trim() : '<Your Phone Number>';
+    var placeStr = place.trim() ? place.trim() : '<Location / Address of Incident>';
+    var accusedStr = accused.trim() ? accused.trim() : 'Unknown / Unidentified person(s)';
+    var descStr = description.trim() ? description.trim() : '[Detailed description of what happened, actions taken, and statements made]';
+    var witnessStr = witnesses.trim() ? witnesses.trim() : 'None / Bystanders at the scene';
+    var evidenceStr = evidenceList.length > 0 ? evidenceList.join(', ') : 'None attached at this stage';
+
+    // Format formal letter without inserting law section numbers automatically
+    var letter = 'To,\n' +
+      'The Station House Officer,\n' +
+      stationStr + '\n\n' +
+      'Date: ' + todayStr + '\n\n' +
+      'Subject: Complaint regarding ' + incidentTitle + '\n\n' +
       'Respected Sir / Madam,\n\n' +
-      'I, ' + cName + ' (Contact: ' + cPhone + '), wish to lodge a formal complaint regarding the following incident:\n\n' +
-      '1. Date & Time of Occurrence: ' + dateStr + ' at approximately ' + timeStr + '\n' +
-      '2. Location of Incident: [Specify place, street, landmark, or online handle/URL]\n' +
-      '3. Accused Details: [Name, vehicle number, profile handle, physical description, or unknown]\n' +
+      'I, ' + complainantNameStr + ', residing at [My Address], contact phone: ' + complainantPhoneStr + ', wish to lodge a formal complaint regarding the following incident:\n\n' +
+      '1. Date and Time of Incident:\n' +
+      '   ' + formattedDt + '\n\n' +
+      '2. Place of Occurrence:\n' +
+      '   ' + placeStr + '\n\n' +
+      '3. Details of Accused (if known):\n' +
+      '   ' + accusedStr + '\n\n' +
       '4. Description of Incident:\n' +
-      '   [Please describe the sequence of events clearly. State exact words used, actions taken, and witnesses present]\n\n' +
-      '5. Preserved Evidence: [Screenshots, call logs, audio recording, witness details, or medical examination]\n\n' +
-      'In view of the above cognizable offence, I kindly request you to register a formal FIR under ' + bnsRef + ' and provide me a free signed copy of the FIR as mandated under Section 173(2) of the BNSS.\n\n' +
-      'Yours sincerely,\n' +
-      cName + '\n' +
-      'Phone: ' + cPhone + '\n';
+      '   ' + descStr + '\n\n' +
+      '5. Witnesses:\n' +
+      '   ' + witnessStr + '\n\n' +
+      '6. Available Evidence Attached / Preserved:\n' +
+      '   ' + evidenceStr + '\n\n' +
+      'I respectfully request you to register a formal First Information Report (FIR) on the basis of this complaint, initiate a prompt investigation into the matter, and provide me with a free signed copy of the FIR as mandated under Section 173(2) of the Bharatiya Nagarik Suraksha Sanhita (BNSS).\n\n' +
+      'Note: The relevant legal section numbers are to be determined and assigned by the investigating police authority upon registration of the FIR.\n\n' +
+      'Yours faithfully,\n\n' +
+      '(Signature)\n' +
+      complainantNameStr + '\n' +
+      'Phone: ' + complainantPhoneStr + '\n';
 
-    textEl.value = sample;
+    var previewEl = document.getElementById('complaint-preview-text');
+    if (previewEl) {
+      previewEl.value = letter;
+    }
+
+    var printEl = document.getElementById('complaint-print-letter-content');
+    if (printEl) {
+      printEl.textContent = letter;
+    }
   }
 
   function copyComplaintLetter() {
-    var textEl = document.getElementById('complaint-preview-text');
-    if (!textEl) return;
-    copyText(textEl.value, 'Complaint Letter');
+    var previewEl = document.getElementById('complaint-preview-text');
+    if (!previewEl) return;
+    copyText(previewEl.value, 'Complaint Letter');
   }
 
-  function toggleEvidenceItem(cb) {
-    var items = document.querySelectorAll('.evidence-check-item input[type="checkbox"]');
+  function shareComplaintLetter() {
+    var previewEl = document.getElementById('complaint-preview-text');
+    var letterText = previewEl ? previewEl.value : '';
+    if (!letterText) return;
+
+    if (navigator.share) {
+      navigator.share({
+        title: 'Formal Police Complaint',
+        text: letterText
+      }).catch(function(err) {
+        if (err.name !== 'AbortError') {
+          copyComplaintLetter();
+        }
+      });
+    } else {
+      copyComplaintLetter();
+    }
+  }
+
+  function printComplaintLetter() {
+    generateComplaintLetter();
+    window.print();
+  }
+
+  // ─── Tool 2: Evidence Checklist with localStorage Persistence ─
+  var STORAGE_KEY_CHECKLIST = 'safeher_evidence_checklist_state';
+
+  function getChecklistState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY_CHECKLIST);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e) {
+      return {};
+    }
+  }
+
+  function saveChecklistState(state) {
+    try {
+      localStorage.setItem(STORAGE_KEY_CHECKLIST, JSON.stringify(state));
+    } catch(e) {}
+  }
+
+  function renderEvidenceChecklist() {
+    var container = document.getElementById('evidence-checklist-items-wrap');
+    if (!container) return;
+
+    var state = getChecklistState();
     var checkedCount = 0;
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].checked) checkedCount++;
+    var html = '';
+
+    for (var i = 0; i < EVIDENCE_ITEMS.length; i++) {
+      var item = EVIDENCE_ITEMS[i];
+      var isChecked = !!state[item.id];
+      if (isChecked) checkedCount++;
+
+      var title = t(item.id + '_title', item.defaultTitle);
+      var desc = t(item.id + '_desc', item.defaultDesc);
+
+      html += '<label class="evidence-check-item ' + (isChecked ? 'checked' : '') + '">';
+      html += '<input type="checkbox" id="' + item.id + '" ' + (isChecked ? 'checked' : '') + ' onchange="SafeHer.helpRights.onEvidenceCheckChange(\'' + item.id + '\', this.checked)">';
+      html += '<div class="evidence-check-text">';
+      html += '<strong>' + (i + 1) + '. ' + escapeHtml(title) + '</strong>';
+      html += '<p>' + escapeHtml(desc) + '</p>';
+      html += '</div>';
+      html += '</label>';
     }
-    var counter = document.getElementById('evidence-checked-count');
-    if (counter) {
-      counter.textContent = checkedCount + ' of ' + items.length + ' items collected';
+
+    container.innerHTML = html;
+
+    var countBadge = document.getElementById('evidence-checked-count');
+    if (countBadge) {
+      countBadge.textContent = checkedCount + ' of ' + EVIDENCE_ITEMS.length + ' items collected';
     }
   }
 
-  // ─── Initialization ──────────────────────────────────────────
-  function init() {
+  function onEvidenceCheckChange(itemId, isChecked) {
+    var state = getChecklistState();
+    state[itemId] = isChecked;
+    saveChecklistState(state);
+
+    var count = 0;
+    for (var i = 0; i < EVIDENCE_ITEMS.length; i++) {
+      if (state[EVIDENCE_ITEMS[i].id]) count++;
+    }
+
+    var countBadge = document.getElementById('evidence-checked-count');
+    if (countBadge) {
+      countBadge.textContent = count + ' of ' + EVIDENCE_ITEMS.length + ' items collected';
+    }
+
+    var label = document.getElementById(itemId);
+    if (label && label.closest) {
+      var parent = label.closest('.evidence-check-item');
+      if (parent) parent.classList.toggle('checked', isChecked);
+    }
+  }
+
+  function resetEvidenceChecklist() {
+    saveChecklistState({});
+    renderEvidenceChecklist();
+    if (SafeHer.toast) SafeHer.toast('Evidence checklist reset');
+  }
+
+  // ─── Re-render Everything (for Language Changes) ──────────────
+  function render() {
     // Fill disclaimer text on every tab
     var disclaimers = document.querySelectorAll('.hr-disclaimer-box');
     var discText = getDisclaimer();
@@ -629,10 +848,16 @@ SafeHer.helpRights = (function() {
       disclaimers[i].innerHTML = '<span class="material-symbols-rounded">info</span><p>' + escapeHtml(discText) + '</p>';
     }
 
-    // Render Helplines, Laws, and FIR stepper
     renderHelplinesList();
     renderLawsList();
     renderFirTab();
+    renderEvidenceChecklist();
+    generateComplaintLetter();
+  }
+
+  // ─── Initialization ──────────────────────────────────────────
+  function init() {
+    render();
 
     // Hook search inputs
     var hSearch = document.getElementById('hr-helplines-search');
@@ -652,18 +877,21 @@ SafeHer.helpRights = (function() {
     // Router hooks
     if (SafeHer.router && SafeHer.router.onShow) {
       SafeHer.router.onShow('help-rights', function() {
-        renderHelplinesList();
-        renderLawsList();
-        renderFirTab();
+        render();
       });
       SafeHer.router.onShow('complaint-letter', function() {
-        updateComplaintTemplate();
+        prefillUserData();
+        generateComplaintLetter();
+      });
+      SafeHer.router.onShow('evidence-checklist', function() {
+        renderEvidenceChecklist();
       });
     }
   }
 
   return {
     init: init,
+    render: render,
     switchTab: switchTab,
     setCategory: setCategory,
     setHelplineSearch: setHelplineSearch,
@@ -672,9 +900,14 @@ SafeHer.helpRights = (function() {
     openScenario: openScenario,
     closeScenario: closeScenario,
     prepareComplaint: prepareComplaint,
-    updateComplaintTemplate: updateComplaintTemplate,
+    prefillUserData: prefillUserData,
+    generateComplaintLetter: generateComplaintLetter,
     copyComplaintLetter: copyComplaintLetter,
-    toggleEvidenceItem: toggleEvidenceItem,
+    shareComplaintLetter: shareComplaintLetter,
+    printComplaintLetter: printComplaintLetter,
+    renderEvidenceChecklist: renderEvidenceChecklist,
+    onEvidenceCheckChange: onEvidenceCheckChange,
+    resetEvidenceChecklist: resetEvidenceChecklist,
     copyText: copyText
   };
 

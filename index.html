@@ -762,39 +762,39 @@
             <span class="material-symbols-rounded">support_agent</span>
           </div>
           <div class="hr-wh-info">
-            <h3 class="hr-wh-title">What happened?</h3>
-            <p class="hr-wh-sub">Tap a situation for instant advice, helplines, laws, and reporting steps:</p>
+            <h3 class="hr-wh-title" data-i18n="hrWhatHappened">What happened?</h3>
+            <p class="hr-wh-sub" data-i18n="hrWhatHappenedSub">Tap a situation for instant advice, helplines, laws, and reporting steps:</p>
           </div>
         </div>
 
         <div class="hr-scenarios-grid">
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('stalking')">
             <span class="material-symbols-rounded">directions_walk</span>
-            <span>Being followed or stalked</span>
+            <span data-i18n="scenStalkingTitle">Being followed or stalked</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('street')">
             <span class="material-symbols-rounded">campaign</span>
-            <span>Street harassment</span>
+            <span data-i18n="scenStreetTitle">Street harassment</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('workplace')">
             <span class="material-symbols-rounded">business_center</span>
-            <span>Harassment at workplace</span>
+            <span data-i18n="scenWorkplaceTitle">Harassment at workplace</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('domestic')">
             <span class="material-symbols-rounded">home</span>
-            <span>Domestic violence or dowry harassment</span>
+            <span data-i18n="scenDomesticTitle">Domestic violence or dowry harassment</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('assault')">
             <span class="material-symbols-rounded">warning</span>
-            <span>Sexual assault</span>
+            <span data-i18n="scenAssaultTitle">Sexual assault</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('online')">
             <span class="material-symbols-rounded">phonelink_lock</span>
-            <span>Online harassment or morphed images</span>
+            <span data-i18n="scenOnlineTitle">Online harassment or morphed images</span>
           </button>
           <button type="button" class="hr-scenario-btn" onclick="SafeHer.helpRights.openScenario('acid')">
             <span class="material-symbols-rounded">medical_services</span>
-            <span>Acid attack</span>
+            <span data-i18n="scenAcidTitle">Acid attack</span>
           </button>
         </div>
       </div>
@@ -803,19 +803,19 @@
       <div class="hr-tabs-nav">
         <button type="button" class="hr-tab-btn active" id="hr-tab-btn-helplines" onclick="SafeHer.helpRights.switchTab('helplines')">
           <span class="material-symbols-rounded">call</span>
-          <span>Helplines</span>
+          <span data-i18n="hrTabHelplines">Helplines</span>
         </button>
         <button type="button" class="hr-tab-btn" id="hr-tab-btn-laws" onclick="SafeHer.helpRights.switchTab('laws')">
           <span class="material-symbols-rounded">gavel</span>
-          <span>Laws</span>
+          <span data-i18n="hrTabLaws">Laws</span>
         </button>
         <button type="button" class="hr-tab-btn" id="hr-tab-btn-fir" onclick="SafeHer.helpRights.switchTab('fir')">
           <span class="material-symbols-rounded">fact_check</span>
-          <span>File FIR</span>
+          <span data-i18n="hrTabFir">File FIR</span>
         </button>
         <button type="button" class="hr-tab-btn" id="hr-tab-btn-tools" onclick="SafeHer.helpRights.switchTab('tools')">
           <span class="material-symbols-rounded">build</span>
-          <span>Tools</span>
+          <span data-i18n="hrTabTools">Tools</span>
         </button>
       </div>
 
@@ -828,13 +828,13 @@
 
         <!-- Category Chips -->
         <div class="hr-category-chips">
-          <button type="button" class="hr-category-chip active" data-category="All" onclick="SafeHer.helpRights.setCategory('All')">All</button>
-          <button type="button" class="hr-category-chip" data-category="Emergency" onclick="SafeHer.helpRights.setCategory('Emergency')">Emergency</button>
-          <button type="button" class="hr-category-chip" data-category="Women" onclick="SafeHer.helpRights.setCategory('Women')">Women</button>
-          <button type="button" class="hr-category-chip" data-category="Child" onclick="SafeHer.helpRights.setCategory('Child')">Child</button>
-          <button type="button" class="hr-category-chip" data-category="Cyber" onclick="SafeHer.helpRights.setCategory('Cyber')">Cyber</button>
-          <button type="button" class="hr-category-chip" data-category="Legal" onclick="SafeHer.helpRights.setCategory('Legal')">Legal</button>
-          <button type="button" class="hr-category-chip" data-category="Health" onclick="SafeHer.helpRights.setCategory('Health')">Health</button>
+          <button type="button" class="hr-category-chip active" data-category="All" onclick="SafeHer.helpRights.setCategory('All')" data-i18n="hrCatAll">All</button>
+          <button type="button" class="hr-category-chip" data-category="Emergency" onclick="SafeHer.helpRights.setCategory('Emergency')" data-i18n="hrCatEmergency">Emergency</button>
+          <button type="button" class="hr-category-chip" data-category="Women" onclick="SafeHer.helpRights.setCategory('Women')" data-i18n="hrCatWomen">Women</button>
+          <button type="button" class="hr-category-chip" data-category="Child" onclick="SafeHer.helpRights.setCategory('Child')" data-i18n="hrCatChild">Child</button>
+          <button type="button" class="hr-category-chip" data-category="Cyber" onclick="SafeHer.helpRights.setCategory('Cyber')" data-i18n="hrCatCyber">Cyber</button>
+          <button type="button" class="hr-category-chip" data-category="Legal" onclick="SafeHer.helpRights.setCategory('Legal')" data-i18n="hrCatLegal">Legal</button>
+          <button type="button" class="hr-category-chip" data-category="Health" onclick="SafeHer.helpRights.setCategory('Health')" data-i18n="hrCatHealth">Health</button>
         </div>
 
         <!-- A-to-Z Helplines List with Sticky Headers -->
@@ -882,11 +882,11 @@
         <div class="hr-fir-actions">
           <a class="btn btn-outline hr-map-link-btn" href="https://www.google.com/maps/search/police+station+near+me" target="_blank" rel="noopener noreferrer">
             <span class="material-symbols-rounded">local_police</span>
-            <span>Nearest police station</span>
+            <span data-i18n="hrNearestStation">Nearest police station</span>
           </a>
           <a class="btn btn-primary hr-map-link-btn" href="https://www.google.com/maps/search/women+police+station+near+me" target="_blank" rel="noopener noreferrer">
             <span class="material-symbols-rounded">security</span>
-            <span>Women police station</span>
+            <span data-i18n="hrWomenStation">Women police station</span>
           </a>
         </div>
 
@@ -906,8 +906,8 @@
               <span class="material-symbols-rounded">description</span>
             </div>
             <div class="hr-tool-body">
-              <h4 class="hr-tool-title">Complaint Letter</h4>
-              <p class="hr-tool-desc">Draft a formal police complaint using standard legal format with pre-filled BNS sections.</p>
+              <h4 class="hr-tool-title" data-i18n="hrComplaintLetter">Complaint Letter</h4>
+              <p class="hr-tool-desc">Draft a formal police complaint addressed to the SHO with incident details and evidence list.</p>
               <button type="button" class="btn btn-sm btn-outline hr-tool-btn">
                 <span>Open Complaint Letter</span>
                 <span class="material-symbols-rounded">arrow_forward</span>
@@ -920,8 +920,8 @@
               <span class="material-symbols-rounded">fact_check</span>
             </div>
             <div class="hr-tool-body">
-              <h4 class="hr-tool-title">Evidence Checklist</h4>
-              <p class="hr-tool-desc">Step-by-step interactive checklist to preserve digital, medical, and physical evidence safely.</p>
+              <h4 class="hr-tool-title" data-i18n="hrEvidenceChecklist">Evidence Checklist</h4>
+              <p class="hr-tool-desc">Persistent tickable checklist to preserve screenshots, voice notes, CCTV, and medical reports.</p>
               <button type="button" class="btn btn-sm btn-outline hr-tool-btn">
                 <span>Open Checklist</span>
                 <span class="material-symbols-rounded">arrow_forward</span>
@@ -955,13 +955,18 @@
       <button class="topbar-back" onclick="SafeHer.router.go('help-rights')" aria-label="Back to Help & Rights">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Complaint Letter</span>
+      <span class="topbar-title" data-i18n="hrComplaintLetter">Complaint Letter</span>
     </div>
     <div class="page-wrap complaint-page-wrap">
       <div class="complaint-card">
         <div class="complaint-field-group">
+          <label for="complaint-police-station" class="complaint-label">Police Station Name</label>
+          <input type="text" id="complaint-police-station" class="complaint-input" placeholder="e.g. Koramangala Police Station, Bengaluru" oninput="SafeHer.helpRights.generateComplaintLetter()">
+        </div>
+
+        <div class="complaint-field-group">
           <label for="complaint-incident-type" class="complaint-label">Incident Type</label>
-          <select id="complaint-incident-type" class="complaint-select" onchange="SafeHer.helpRights.updateComplaintTemplate()">
+          <select id="complaint-incident-type" class="complaint-select" onchange="SafeHer.helpRights.generateComplaintLetter()">
             <option value="stalking">Being followed or stalked</option>
             <option value="street">Street harassment</option>
             <option value="workplace">Harassment at workplace</option>
@@ -976,32 +981,100 @@
         <div class="complaint-row-2">
           <div class="complaint-field-group">
             <label for="complaint-complainant-name" class="complaint-label">Your Name</label>
-            <input type="text" id="complaint-complainant-name" class="complaint-input" placeholder="Your full name" oninput="SafeHer.helpRights.updateComplaintTemplate()">
+            <input type="text" id="complaint-complainant-name" class="complaint-input" placeholder="Your full name" oninput="SafeHer.helpRights.generateComplaintLetter()">
           </div>
           <div class="complaint-field-group">
             <label for="complaint-complainant-phone" class="complaint-label">Your Phone</label>
-            <input type="tel" id="complaint-complainant-phone" class="complaint-input" placeholder="10-digit number" oninput="SafeHer.helpRights.updateComplaintTemplate()">
+            <input type="tel" id="complaint-complainant-phone" class="complaint-input" placeholder="10-digit number" oninput="SafeHer.helpRights.generateComplaintLetter()">
+          </div>
+        </div>
+
+        <div class="complaint-row-2">
+          <div class="complaint-field-group">
+            <label for="complaint-datetime" class="complaint-label">Date & Time of Incident</label>
+            <input type="datetime-local" id="complaint-datetime" class="complaint-input" onchange="SafeHer.helpRights.generateComplaintLetter()">
+          </div>
+          <div class="complaint-field-group">
+            <label for="complaint-place" class="complaint-label">Place of Incident</label>
+            <input type="text" id="complaint-place" class="complaint-input" placeholder="Street, landmark, or URL" oninput="SafeHer.helpRights.generateComplaintLetter()">
           </div>
         </div>
 
         <div class="complaint-field-group">
-          <label for="complaint-preview-text" class="complaint-label">Formal Complaint Draft (Editable)</label>
-          <textarea id="complaint-preview-text" class="complaint-textarea" rows="14" aria-label="Formal complaint draft"></textarea>
+          <label for="complaint-accused" class="complaint-label">Details of the Accused (if known)</label>
+          <input type="text" id="complaint-accused" class="complaint-input" placeholder="Name, physical description, vehicle number, or leave blank if unknown" oninput="SafeHer.helpRights.generateComplaintLetter()">
+        </div>
+
+        <div class="complaint-field-group">
+          <label for="complaint-description" class="complaint-label">Description of What Happened</label>
+          <textarea id="complaint-description" class="complaint-textarea" rows="4" placeholder="Describe the incident clearly in your own words..." oninput="SafeHer.helpRights.generateComplaintLetter()"></textarea>
+        </div>
+
+        <div class="complaint-field-group">
+          <label for="complaint-witnesses" class="complaint-label">Witnesses (if any)</label>
+          <input type="text" id="complaint-witnesses" class="complaint-input" placeholder="Names and contact details of bystanders or companions" oninput="SafeHer.helpRights.generateComplaintLetter()">
+        </div>
+
+        <!-- Evidence Available Checkboxes -->
+        <div class="complaint-field-group">
+          <label class="complaint-label">Evidence Available</label>
+          <div class="complaint-evidence-checkboxes">
+            <label class="complaint-checkbox-item">
+              <input type="checkbox" id="complaint-ev-screenshots" onchange="SafeHer.helpRights.generateComplaintLetter()">
+              <span>Screenshots</span>
+            </label>
+            <label class="complaint-checkbox-item">
+              <input type="checkbox" id="complaint-ev-voicenotes" onchange="SafeHer.helpRights.generateComplaintLetter()">
+              <span>Voice notes</span>
+            </label>
+            <label class="complaint-checkbox-item">
+              <input type="checkbox" id="complaint-ev-photos" onchange="SafeHer.helpRights.generateComplaintLetter()">
+              <span>Photos</span>
+            </label>
+            <label class="complaint-checkbox-item">
+              <input type="checkbox" id="complaint-ev-medical" onchange="SafeHer.helpRights.generateComplaintLetter()">
+              <span>Medical report</span>
+            </label>
+            <label class="complaint-checkbox-item">
+              <input type="checkbox" id="complaint-ev-messages" onchange="SafeHer.helpRights.generateComplaintLetter()">
+              <span>Messages</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Section Number Notice -->
+        <div class="complaint-police-notice">
+          <span class="material-symbols-rounded">info</span>
+          <p>Note: Law section numbers are not inserted automatically. The police decide the applicable legal sections upon FIR registration.</p>
+        </div>
+
+        <div class="complaint-field-group" style="margin-top:14px;">
+          <label for="complaint-preview-text" class="complaint-label">Generated Formal Letter (Preview / Edit)</label>
+          <textarea id="complaint-preview-text" class="complaint-textarea complaint-preview-box" rows="12" aria-label="Formal complaint preview"></textarea>
         </div>
 
         <div class="complaint-actions">
           <button type="button" class="btn btn-primary complaint-btn" onclick="SafeHer.helpRights.copyComplaintLetter()">
             <span class="material-symbols-rounded">content_copy</span>
-            <span>Copy Letter</span>
+            <span>Copy</span>
           </button>
-          <button type="button" class="btn btn-outline complaint-btn" onclick="window.print()">
+          <button type="button" class="btn btn-outline complaint-btn" onclick="SafeHer.helpRights.shareComplaintLetter()">
+            <span class="material-symbols-rounded">share</span>
+            <span>Share</span>
+          </button>
+          <button type="button" class="btn btn-outline complaint-btn" onclick="SafeHer.helpRights.printComplaintLetter()">
             <span class="material-symbols-rounded">print</span>
-            <span>Print / Save</span>
+            <span>Print</span>
           </button>
         </div>
       </div>
     </div>
   </div><!-- /#screen-complaint-letter -->
+
+  <!-- Printable Area (Hidden on screen, visible during window.print) -->
+  <div id="complaint-print-area" class="complaint-print-area">
+    <pre id="complaint-print-letter-content" class="complaint-print-letter"></pre>
+  </div>
 
   <!-- ── Evidence Checklist Tool Screen ──────────────────────── -->
   <div id="screen-evidence-checklist" class="screen">
@@ -1009,63 +1082,21 @@
       <button class="topbar-back" onclick="SafeHer.router.go('help-rights')" aria-label="Back to Help & Rights">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Evidence Checklist</span>
+      <span class="topbar-title" data-i18n="hrEvidenceChecklist">Evidence Checklist</span>
     </div>
     <div class="page-wrap evidence-checklist-page-wrap">
       <div class="evidence-checklist-header">
-        <div class="evidence-count-badge" id="evidence-checked-count">0 of 6 items collected</div>
-        <p class="evidence-sub">Preserving accurate evidence is critical for police investigation and court proceedings:</p>
+        <div class="evidence-header-row">
+          <div class="evidence-count-badge" id="evidence-checked-count">0 of 6 items collected</div>
+          <button type="button" class="btn btn-sm btn-outline evidence-reset-btn" onclick="SafeHer.helpRights.resetEvidenceChecklist()">
+            <span class="material-symbols-rounded">restart_alt</span> Reset
+          </button>
+        </div>
+        <p class="evidence-sub">Tick each item as you collect it. Your progress is saved automatically on this device:</p>
       </div>
 
-      <div class="evidence-checklist-items">
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>1. Digital Screenshots</strong>
-            <p>Capture full uncropped screenshots of texts, direct messages, comments, and profile URLs with visible dates and timestamps.</p>
-          </div>
-        </label>
-
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>2. Call Logs & Audio Recordings</strong>
-            <p>Save call history, voicemail recordings, and any audio/video recordings securely. Do not delete original threads.</p>
-          </div>
-        </label>
-
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>3. Physical Clothes & Articles</strong>
-            <p>If physical violence occurred, store unwashed clothing and articles in clean paper bags (avoid plastic bags which cause moisture decay).</p>
-          </div>
-        </label>
-
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>4. Medical Legal Examination (MLC)</strong>
-            <p>Visit the nearest hospital as soon as possible for medical treatment and formal MLC documentation. Hospitals cannot refuse emergency care.</p>
-          </div>
-        </label>
-
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>5. Eyewitness & Vehicle Details</strong>
-            <p>Write down names, contact numbers, or physical descriptions of bystanders, security guards, and vehicle registration numbers.</p>
-          </div>
-        </label>
-
-        <label class="evidence-check-item">
-          <input type="checkbox" onchange="SafeHer.helpRights.toggleEvidenceItem(this)">
-          <div class="evidence-check-text">
-            <strong>6. Exact Location & CCTV Points</strong>
-            <p>Note exact date, time, lighting conditions, and nearby shops or traffic signals with surveillance cameras.</p>
-          </div>
-        </label>
-      </div>
+      <!-- Dynamically Rendered 6 Prescribed Items with LocalStorage Persistence -->
+      <div id="evidence-checklist-items-wrap" class="evidence-checklist-items"></div>
 
       <div class="hr-disclaimer-box" style="margin-top:20px;"></div>
     </div>
