@@ -839,6 +839,27 @@ SafeHer.helpRights = (function() {
     if (SafeHer.toast) SafeHer.toast('Evidence checklist reset');
   }
 
+  function proceedToComplaintFromChecklist() {
+    var state = getChecklistState();
+    prefillUserData();
+
+    // Map checked evidence items directly into Complaint Letter checkboxes
+    var sShots = document.getElementById('complaint-ev-screenshots');
+    var vNotes = document.getElementById('complaint-ev-voicenotes');
+    var msgs = document.getElementById('complaint-ev-messages');
+    var med = document.getElementById('complaint-ev-medical');
+
+    if (sShots && state['ev_item_1']) sShots.checked = true;
+    if (vNotes && state['ev_item_1']) vNotes.checked = true;
+    if (msgs && state['ev_item_2']) msgs.checked = true;
+    if (med && state['ev_item_4']) med.checked = true;
+
+    generateComplaintLetter();
+    if (SafeHer.router && SafeHer.router.go) {
+      SafeHer.router.go('complaint-letter');
+    }
+  }
+
   // ─── Re-render Everything (for Language Changes) ──────────────
   function render() {
     // Fill disclaimer text on every tab
@@ -908,6 +929,7 @@ SafeHer.helpRights = (function() {
     renderEvidenceChecklist: renderEvidenceChecklist,
     onEvidenceCheckChange: onEvidenceCheckChange,
     resetEvidenceChecklist: resetEvidenceChecklist,
+    proceedToComplaintFromChecklist: proceedToComplaintFromChecklist,
     copyText: copyText
   };
 

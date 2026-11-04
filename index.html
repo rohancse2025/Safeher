@@ -1098,6 +1098,14 @@
       <!-- Dynamically Rendered 6 Prescribed Items with LocalStorage Persistence -->
       <div id="evidence-checklist-items-wrap" class="evidence-checklist-items"></div>
 
+      <!-- Action: Proceed to Complaint Letter with these Evidence Items -->
+      <div class="evidence-checklist-actions" style="margin-top: 18px;">
+        <button type="button" class="btn btn-primary" onclick="SafeHer.helpRights.proceedToComplaintFromChecklist()" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:48px;">
+          <span class="material-symbols-rounded">edit_document</span>
+          <span data-i18n="hrDraftComplaintWithEvidence">Draft Complaint Letter with this Evidence &rarr;</span>
+        </button>
+      </div>
+
       <div class="hr-disclaimer-box" style="margin-top:20px;"></div>
     </div>
   </div><!-- /#screen-evidence-checklist -->

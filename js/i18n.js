@@ -88,6 +88,7 @@ SafeHer.i18n = (function() {
       hrPrepareComplaint: 'Prepare my complaint',
       hrComplaintLetter: 'Complaint Letter',
       hrEvidenceChecklist: 'Evidence Checklist',
+      hrDraftComplaintWithEvidence: 'Draft Complaint Letter with this Evidence →',
       hrDisclaimer: 'General information, not legal advice. Laws and numbers can change. Last checked: November 2026. If you are in danger, call 112.',
 
       // Scenarios
@@ -221,6 +222,7 @@ SafeHer.i18n = (function() {
       hrPrepareComplaint: 'ನನ್ನ ದೂರು ಸಿದ್ಧಪಡಿಸಿ',
       hrComplaintLetter: 'ದೂರು ಪತ್ರ',
       hrEvidenceChecklist: 'ಸಾಕ್ಷ್ಯ ಪರಿಶೀಲನಾ ಪಟ್ಟಿ',
+      hrDraftComplaintWithEvidence: 'ಈ ಸಾಕ್ಷ್ಯಾಧಾರಗಳೊಂದಿಗೆ ದೂರು ಪತ್ರ ರಚಿಸಿ →',
       hrDisclaimer: 'ಸಾಮಾನ್ಯ ಮಾಹಿತಿ, ಕಾನೂನು ಸಲಹೆಯಲ್ಲ. ಕಾನೂನುಗಳು ಮತ್ತು ಸಂಖ್ಯೆಗಳು ಬದಲಾಗಬಹುದು. ಕೊನೆಯದಾಗಿ ಪರಿಶೀಲಿಸಲಾಗಿದೆ: ನವೆಂಬರ್ 2026. ನೀವು ಅಪಾಯದಲ್ಲಿದ್ದರೆ 112 ಗೆ ಕರೆ ಮಾಡಿ.',
 
       // Scenarios
@@ -354,6 +356,7 @@ SafeHer.i18n = (function() {
       hrPrepareComplaint: 'मेरी शिकायत तैयार करें',
       hrComplaintLetter: 'शिकायत पत्र',
       hrEvidenceChecklist: 'साक्ष्य चेकलिस्ट',
+      hrDraftComplaintWithEvidence: 'इन साक्ष्यों के साथ शिकायत पत्र तैयार करें →',
       hrDisclaimer: 'सामान्य जानकारी, कानूनी सलाह नहीं। कानून और नंबर बदल सकते हैं। अंतिम जांच: नवंबर 2026। यदि आप खतरे में हैं, तो 112 पर कॉल करें।',
 
       // Scenarios
