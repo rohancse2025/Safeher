@@ -1366,7 +1366,7 @@ body {
   flex-shrink: 0;
 }
 
-.sos-btn-wa, .sos-btn-sms {
+.sos-btn-wa, .sos-btn-sms, .sos-btn-email {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1392,6 +1392,15 @@ body {
   color: var(--crimson);
   border-color: var(--crimson-ring2);
   background: var(--white);
+}
+
+.sos-btn-email {
+  color: #1565C0;
+  border-color: #BBDEFB;
+  background: #E3F2FD;
+}
+.sos-btn-email:hover, .sos-btn-email:active {
+  background: #BBDEFB;
 }
 
 .sos-share-all-btn {

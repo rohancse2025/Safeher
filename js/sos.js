@@ -129,7 +129,13 @@ SafeHer.sos = (function() {
     var lng = currentLng || BENGALURU_LNG;
     var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
 
-    return 'EMERGENCY: ' + userName + ' triggered an SOS alert on SafeHer at ' + time + '. Location: ' + mapsUrl;
+    var active = (SafeHer.api && SafeHer.api.getActiveSos) ? SafeHer.api.getActiveSos() : null;
+    var trackPart = '';
+    if (active && active.shareToken) {
+      trackPart = ' Live Tracking: ' + window.location.origin + '/track.html?t=' + active.shareToken;
+    }
+
+    return 'EMERGENCY: ' + userName + ' triggered an SOS alert on SafeHer at ' + time + '. Location: ' + mapsUrl + trackPart;
   }
 
   // ─── 5-4-3-2-1 Countdown (Normal Mode) ────────────────────
@@ -577,6 +583,9 @@ SafeHer.sos = (function() {
     var message = buildAlertMessage();
     var encodedMessage = encodeURIComponent(message);
 
+    var user = SafeHer.api.getUser();
+    var userName = user && user.name ? user.name : 'SafeHer User';
+
     var html = '';
     for (var i = 0; i < contacts.length; i++) {
       var c = contacts[i];
@@ -587,16 +596,25 @@ SafeHer.sos = (function() {
       var telUrl = rawPhone ? 'tel:' + rawPhone : '#';
       var initial = (c.name || '?').charAt(0).toUpperCase();
 
+      var emailSubject = encodeURIComponent('EMERGENCY: SafeHer SOS Alert from ' + userName);
+      var emailUrl = c.email
+        ? ('mailto:' + encodeURIComponent(c.email) + '?subject=' + emailSubject + '&body=' + encodedMessage)
+        : ('mailto:?subject=' + emailSubject + '&body=' + encodedMessage);
+
       html += '<div class="sos-notified-item">' +
         '<div class="sos-notified-left">' +
           '<div class="sos-notified-avatar">' + escapeHtml(initial) + '</div>' +
-          '<a class="sos-notified-name" href="' + escapeHtml(telUrl) + '" title="Call ' + escapeHtml(c.name) + '">' +
-            escapeHtml(c.name) +
-          '</a>' +
+          '<div class="sos-notified-info">' +
+            '<a class="sos-notified-name" href="' + escapeHtml(telUrl) + '" title="Call ' + escapeHtml(c.name) + '">' +
+              escapeHtml(c.name) +
+            '</a>' +
+            (c.email ? '<span class="sos-notified-email" style="display:block;font-size:10px;color:#777;line-height:1.2;">' + escapeHtml(c.email) + '</span>' : '') +
+          '</div>' +
         '</div>' +
         '<div class="sos-contact-btns">' +
           '<a class="sos-btn-wa" href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>' +
           '<a class="sos-btn-sms" href="' + escapeHtml(smsUrl) + '">SMS</a>' +
+          '<a class="sos-btn-email" href="' + escapeHtml(emailUrl) + '" title="Send Emergency Email">Email</a>' +
         '</div>' +
       '</div>';
     }
