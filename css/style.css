@@ -3703,3 +3703,791 @@ button, a, input[type="button"], input[type="submit"] {
     overflow: hidden;
   }
 }
+
+/* ─── Help & Rights Screen Styles ────────────────────────── */
+.hr-page-wrap {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: calc(100vh - 60px);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* "What happened?" Card */
+.hr-what-happened-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.hr-wh-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.hr-wh-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--pink-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--crimson);
+  flex-shrink: 0;
+}
+.hr-wh-info {
+  flex: 1;
+}
+.hr-wh-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin-bottom: 2px;
+}
+.hr-wh-sub {
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.3;
+}
+.hr-scenarios-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-scenario-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crimson);
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s ease;
+}
+.hr-scenario-btn:hover, .hr-scenario-btn:active {
+  background: #F8DFE6;
+}
+.hr-scenario-btn .material-symbols-rounded {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* Four Tabs Navigation */
+.hr-tabs-nav {
+  display: flex;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 3px;
+  margin-bottom: 14px;
+  gap: 2px;
+}
+.hr-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dark);
+  cursor: pointer;
+  min-height: 40px;
+}
+.hr-tab-btn .material-symbols-rounded {
+  font-size: 16px;
+}
+.hr-tab-btn.active {
+  background: #FFFFFF;
+  color: var(--crimson);
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+/* Search Input */
+.hr-search-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+.hr-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-gray);
+  font-size: 20px;
+  pointer-events: none;
+}
+.hr-search-input {
+  width: 100%;
+  height: 44px;
+  padding: 8px 12px 8px 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-dark);
+  background: #FFFFFF;
+  outline: none;
+}
+.hr-search-input:focus {
+  border-color: var(--crimson);
+}
+
+/* Category Chips */
+.hr-category-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+}
+.hr-category-chips::-webkit-scrollbar {
+  display: none;
+}
+.hr-category-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+  color: var(--text-dark);
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  min-height: 36px;
+}
+.hr-category-chip.active {
+  background: var(--crimson);
+  color: #FFFFFF;
+  border-color: var(--crimson);
+  font-weight: 600;
+}
+
+/* Sticky Letter Headers & Helplines List */
+.hr-items-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.hr-letter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-sticky-letter {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--pink-light);
+  color: var(--crimson);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--crimson);
+}
+.hr-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 12px;
+  gap: 10px;
+}
+.hr-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.hr-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.hr-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+.hr-cat-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--crimson);
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.hr-item-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--crimson);
+  letter-spacing: 0.5px;
+}
+.hr-num-web {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-gray);
+}
+.hr-item-note {
+  font-size: 11px;
+  color: var(--text-gray);
+  margin-top: 3px;
+  line-height: 1.3;
+}
+.hr-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.hr-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: 40px;
+  min-width: 40px;
+}
+.hr-call-btn {
+  background: var(--crimson);
+  color: #FFFFFF;
+  border: 1px solid var(--crimson);
+}
+.hr-open-btn {
+  background: var(--pink-light);
+  color: var(--crimson);
+  border: 1px solid var(--border);
+}
+.hr-copy-btn {
+  background: #FFFFFF;
+  color: var(--text-dark);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+
+/* Laws Cards */
+.hr-section-header {
+  margin-bottom: 10px;
+}
+.hr-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--crimson);
+}
+.hr-section-sub {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+.hr-laws-container, .hr-other-laws-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.hr-law-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.hr-law-card:hover {
+  border-color: var(--crimson);
+}
+.hr-law-card.expanded {
+  border-color: var(--crimson);
+  background: #FFFDFC;
+}
+.hr-law-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.hr-law-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hr-bns-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--crimson);
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.hr-ipc-tag {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+.hr-expand-icon {
+  font-size: 20px;
+  color: var(--text-gray);
+}
+.hr-law-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+.hr-law-meaning {
+  font-size: 12px;
+  color: #555;
+  line-height: 1.4;
+}
+.hr-law-details {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-gray);
+}
+.hr-other-law-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 12px;
+}
+.hr-other-law-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin-bottom: 4px;
+}
+.hr-other-law-desc {
+  font-size: 12px;
+  color: #555;
+  line-height: 1.3;
+}
+
+/* FIR Stepper */
+.hr-stepper-container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+.hr-step-item {
+  display: flex;
+  gap: 12px;
+}
+.hr-step-num-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 28px;
+  flex-shrink: 0;
+}
+.hr-step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--crimson);
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hr-step-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border);
+  margin: 4px 0;
+  min-height: 28px;
+}
+.hr-step-content {
+  flex: 1;
+  padding-bottom: 16px;
+}
+.hr-step-text {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dark);
+}
+.hr-fir-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.hr-map-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+/* Tools Tab */
+.hr-tools-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.hr-tool-card {
+  display: flex;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 14px;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.hr-tool-card:hover {
+  border-color: var(--crimson);
+}
+.hr-tool-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--pink-light);
+  color: var(--crimson);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.hr-tool-body {
+  flex: 1;
+}
+.hr-tool-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin-bottom: 4px;
+}
+.hr-tool-desc {
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.3;
+  margin-bottom: 10px;
+}
+.hr-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Disclaimer Box */
+.hr-disclaimer-box {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+.hr-disclaimer-box .material-symbols-rounded {
+  color: var(--crimson);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.hr-disclaimer-box p {
+  font-size: 11px;
+  color: var(--text-dark);
+  line-height: 1.4;
+}
+
+/* "What happened?" Modal */
+.hr-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow-y: auto;
+}
+.hr-modal-dialog {
+  background: #FFFFFF;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.hr-modal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--pink-light);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.hr-modal-topbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--crimson);
+}
+.hr-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--crimson);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+.hr-modal-content {
+  padding: 16px;
+  flex: 1;
+}
+.hr-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.hr-guide-icon {
+  font-size: 32px;
+  color: var(--crimson);
+  background: var(--pink-light);
+  padding: 8px;
+  border-radius: 8px;
+}
+.hr-guide-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--crimson);
+}
+.hr-guide-subtitle {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+.hr-guide-section {
+  margin-bottom: 18px;
+}
+.hr-guide-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin-bottom: 8px;
+}
+.hr-guide-section-title .material-symbols-rounded {
+  font-size: 18px;
+}
+.hr-guide-bullets {
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--text-dark);
+  line-height: 1.5;
+}
+.hr-guide-bullets li {
+  margin-bottom: 6px;
+}
+.hr-guide-helplines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-guide-laws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-mini-law-card {
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px;
+}
+.hr-mini-law-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+.hr-mini-law-meaning {
+  font-size: 11px;
+  color: #555;
+}
+.hr-guide-report-box {
+  background: #FFFDFC;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--crimson);
+  border-radius: var(--radius-btn);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dark);
+}
+.hr-guide-action-section {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+.hr-prepare-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  font-size: 15px;
+}
+
+/* Complaint Letter Screen Styles */
+.complaint-page-wrap, .evidence-checklist-page-wrap {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: calc(100vh - 60px);
+}
+.complaint-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 14px;
+}
+.complaint-field-group {
+  margin-bottom: 12px;
+}
+.complaint-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--crimson);
+  margin-bottom: 4px;
+}
+.complaint-select, .complaint-input, .complaint-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  color: var(--text-dark);
+  background: #FFFFFF;
+  outline: none;
+}
+.complaint-select:focus, .complaint-input:focus, .complaint-textarea:focus {
+  border-color: var(--crimson);
+}
+.complaint-textarea {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+.complaint-row-2 {
+  display: flex;
+  gap: 10px;
+}
+.complaint-row-2 .complaint-field-group {
+  flex: 1;
+}
+.complaint-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.complaint-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+/* Evidence Checklist Screen Styles */
+.evidence-checklist-header {
+  margin-bottom: 14px;
+}
+.evidence-count-badge {
+  display: inline-block;
+  background: var(--pink-light);
+  color: var(--crimson);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.evidence-sub {
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.3;
+}
+.evidence-checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.evidence-check-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 12px;
+  cursor: pointer;
+}
+.evidence-check-item input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--crimson);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.evidence-check-text strong {
+  display: block;
+  font-size: 13px;
+  color: var(--crimson);
+  margin-bottom: 2px;
+}
+.evidence-check-text p {
+  font-size: 12px;
+  color: #555;
+  line-height: 1.35;
+}

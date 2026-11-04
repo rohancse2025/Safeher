@@ -20,7 +20,7 @@ SafeHer.router = (function() {
     'splash', 'onboarding',
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
     'fake-call', 'location', 'live-location', 'share-location', 'map',
-    'helplines', 'nearby-places', 'police', 'volunteers', 'safe-timer',
+    'helplines', 'help-rights', 'complaint-letter', 'evidence-checklist', 'nearby-places', 'police', 'volunteers', 'safe-timer',
     'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history'
   ];
 
@@ -28,6 +28,9 @@ SafeHer.router = (function() {
   var hooks   = {};   // onShow callbacks keyed by screen id
 
   function go(id) {
+    if (id === 'helplines') {
+      id = 'help-rights';
+    }
     if (id === 'live-location') {
       id = 'map';
     }
@@ -139,6 +142,7 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.fakecall.init();
   SafeHer.i18n.init();
   SafeHer.evidence.init();
+  if (SafeHer.helpRights && SafeHer.helpRights.init) SafeHer.helpRights.init();
 
   // Handle incoming notification click messages from service worker
   if ('serviceWorker' in navigator) {
