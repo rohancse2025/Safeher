@@ -66,6 +66,10 @@ SafeHer.router = (function() {
       });
     }
 
+    if (id === 'help-rights' && SafeHer.helpRights && SafeHer.helpRights.render) {
+      SafeHer.helpRights.render();
+    }
+
     if (hooks[id]) hooks[id]();
   }
 
@@ -126,6 +130,9 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // Initialize i18n translations first so all screens render with proper language
+  SafeHer.i18n.init();
+
   SafeHer.onboarding.init();
   SafeHer.auth.init();
   SafeHer.pin.init();
@@ -140,7 +147,6 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.volunteer.init();
   SafeHer.timer.init();
   SafeHer.fakecall.init();
-  SafeHer.i18n.init();
   SafeHer.evidence.init();
   if (SafeHer.helpRights && SafeHer.helpRights.init) SafeHer.helpRights.init();
 

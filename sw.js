@@ -1,5 +1,5 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v15';
+var CACHE_NAME = 'safeher-v16';
 var ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,9 @@ var ASSETS = [
   './js/config.js',
   './js/storage.js',
   './js/api.js',
+  './js/i18n.js',
+  './js/helpdata.js',
+  './js/help_rights.js',
   './js/app.js',
   './js/onboarding.js',
   './js/auth.js',
@@ -20,8 +23,6 @@ var ASSETS = [
   './js/home.js',
   './js/contacts.js',
   './js/tips.js',
-  './js/helpdata.js',
-  './js/help_rights.js',
   './js/profile.js',
   './js/sos.js',
   './js/map.js',
@@ -30,7 +31,6 @@ var ASSETS = [
   './js/volunteer.js',
   './js/timer.js',
   './js/fakecall.js',
-  './js/i18n.js',
   './js/evidence.js',
   './assets/logo.png',
   './assets/icon-192.png',
@@ -43,15 +43,20 @@ var ASSETS = [
 ];
 
 self.addEventListener('install', function(event) {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
       return Promise.allSettled(
         ASSETS.map(function(url) {
-          return cache.add(url);
+          return fetch(new Request(url, { cache: 'reload' })).then(function(response) {
+            if (response && response.ok) {
+              return cache.put(url, response);
+            }
+          }).catch(function(err) {
+            console.warn('[SW] Pre-cache failed for', url, err);
+          });
         })
       );
-    }).then(function() {
-      return self.skipWaiting();
     })
   );
 });
@@ -100,13 +105,37 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // Static assets: cache-first with network fallback
+  // Static CSS & JS: Network-first to always reflect updates immediately, cache fallback for offline
+  if (url.pathname.endsWith('.css') || url.pathname.endsWith('.js')) {
+    event.respondWith(
+      fetch(event.request).then(function(networkResponse) {
+        if (networkResponse && networkResponse.status === 200) {
+          var copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, copy);
+          });
+        }
+        return networkResponse;
+      }).catch(function() {
+        return caches.match(event.request);
+      })
+    );
+    return;
+  }
+
+  // Other static assets (images, icons, fonts): Cache-first with network fallback
   event.respondWith(
     caches.match(event.request).then(function(cachedResponse) {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).then(function(networkResponse) {
+        if (networkResponse && networkResponse.status === 200) {
+          var copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, copy);
+          });
+        }
         return networkResponse;
       }).catch(function() {
         if (event.request.destination === 'document') {

@@ -1,6 +1,7 @@
 // js/storage.js – thin localStorage wrapper used only by api.js
 
 var SafeHer = window.SafeHer || {};
+window.SafeHer = SafeHer;
 
 SafeHer.storage = {
   _key: function(k) { return 'safeher_' + k; },

@@ -404,11 +404,14 @@ SafeHer.i18n = (function() {
     }
   };
 
-  function t(key) {
+  function t(key, fallback) {
     if (translations[currentLang] && translations[currentLang][key]) {
       return translations[currentLang][key];
     }
-    return (translations.en && translations.en[key]) ? translations.en[key] : key;
+    if (translations.en && translations.en[key]) {
+      return translations.en[key];
+    }
+    return fallback !== undefined ? fallback : key;
   }
 
   function applyTranslations() {
@@ -420,7 +423,8 @@ SafeHer.i18n = (function() {
     elements.forEach(function(el) {
       var key = el.getAttribute('data-i18n');
       var translated = t(key);
-      if (translated) {
+      // NEVER overwrite DOM text if translation is missing or equals raw key
+      if (translated && translated !== key) {
         el.textContent = translated;
         if (currentLang && currentLang !== 'en') {
           el.setAttribute('lang', currentLang);

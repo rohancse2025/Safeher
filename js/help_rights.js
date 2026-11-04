@@ -166,29 +166,29 @@ SafeHer.helpRights = (function() {
 
   function getHelplines() {
     return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.HELPLINES) ||
-           window.HELPLINES || [];
+           window.HELPLINES || (typeof HELPLINES !== 'undefined' ? HELPLINES : []);
   }
 
   function getLaws() {
     return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.LAWS) ||
-           window.LAWS || [];
+           window.LAWS || (typeof LAWS !== 'undefined' ? LAWS : []);
   }
 
   function getOtherLaws() {
     return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.OTHER_LAWS) ||
-           window.OTHER_LAWS || [];
+           window.OTHER_LAWS || (typeof OTHER_LAWS !== 'undefined' ? OTHER_LAWS : []);
   }
 
   function getFirRights() {
     return (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.FIR_RIGHTS) ||
-           window.FIR_RIGHTS || [];
+           window.FIR_RIGHTS || (typeof FIR_RIGHTS !== 'undefined' ? FIR_RIGHTS : []);
   }
 
   function getDisclaimer() {
     return t('hrDisclaimer',
       (window.SafeHer && window.SafeHer.helpdata && window.SafeHer.helpdata.DISCLAIMER_TEXT) ||
-      window.DISCLAIMER_TEXT ||
-      'General information, not legal advice. Laws and numbers can change. Last checked: November 2026. If you are in danger, call 112.'
+      window.DISCLAIMER_TEXT || (typeof DISCLAIMER_TEXT !== 'undefined' ? DISCLAIMER_TEXT :
+      'General information, not legal advice. Laws and numbers can change. Last checked: November 2026. If you are in danger, call 112.')
     );
   }
 
@@ -912,3 +912,16 @@ SafeHer.helpRights = (function() {
   };
 
 })();
+
+// Self-initialize on DOM ready to guarantee rendered content
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      if (SafeHer.helpRights && SafeHer.helpRights.init) SafeHer.helpRights.init();
+    });
+  } else {
+    setTimeout(function() {
+      if (SafeHer.helpRights && SafeHer.helpRights.init) SafeHer.helpRights.init();
+    }, 0);
+  }
+}
