@@ -3,7 +3,7 @@ import os
 import re
 import time
 from urllib.parse import urlparse
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
@@ -71,6 +71,22 @@ def create_app():
 
     # 5. Start background thread checking for expired running timers
     start_timer_monitor()
+
+    # Serve frontend files when accessing backend port directly (e.g. /admin.html)
+    frontend_dir = os.path.abspath(os.path.join(basedir, '..'))
+
+    @app.route('/')
+    def serve_index():
+        return send_from_directory(frontend_dir, 'index.html')
+
+    @app.route('/<path:filename>')
+    def serve_frontend_file(filename):
+        if filename.startswith('api/') or filename == 'api':
+            return jsonify({"ok": False, "error": "Resource not found"}), 404
+        file_path = os.path.join(frontend_dir, filename)
+        if os.path.isfile(file_path):
+            return send_from_directory(frontend_dir, filename)
+        return send_from_directory(frontend_dir, 'index.html')
 
     # 6. Request timing and rotating file logging
     @app.before_request
