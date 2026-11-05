@@ -1115,24 +1115,45 @@
     </div>
   </div><!-- /#screen-evidence-checklist -->
 
-  <!-- ── Nearby Places (Police & Hospitals) ────────────────── -->
+  <!-- ── Nearby Open Places ────────────────────────────────── -->
   <div id="screen-nearby-places" class="screen">
     <div class="topbar">
       <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Nearby Places</span>
+      <span class="topbar-title">Nearby Open Places</span>
     </div>
 
     <div class="page-wrap places-page-wrap">
-      <!-- Tabs: Police and Hospitals -->
-      <div class="places-tabs">
-        <button class="places-tab-btn active" id="tab-btn-police" onclick="SafeHer.police.switchTab('police')">
+      <!-- Category Chips: Pharmacy, Hospital, Police, Petrol Station, Shop, Restaurant -->
+      <div class="places-chips-scroll" role="tablist" aria-label="Place Categories">
+        <button type="button" class="places-chip active" data-category="pharmacy" onclick="SafeHer.places.switchCategory('pharmacy')">
+          <span class="material-symbols-rounded">local_pharmacy</span>Pharmacy
+        </button>
+        <button type="button" class="places-chip" data-category="hospital" onclick="SafeHer.places.switchCategory('hospital')">
+          <span class="material-symbols-rounded">local_hospital</span>Hospital
+        </button>
+        <button type="button" class="places-chip" data-category="police" onclick="SafeHer.places.switchCategory('police')">
           <span class="material-symbols-rounded">local_police</span>Police
         </button>
-        <button class="places-tab-btn" id="tab-btn-hospital" onclick="SafeHer.police.switchTab('hospital')">
-          <span class="material-symbols-rounded">local_hospital</span>Hospitals
+        <button type="button" class="places-chip" data-category="fuel" onclick="SafeHer.places.switchCategory('fuel')">
+          <span class="material-symbols-rounded">local_gas_station</span>Petrol Station
         </button>
+        <button type="button" class="places-chip" data-category="shop" onclick="SafeHer.places.switchCategory('shop')">
+          <span class="material-symbols-rounded">storefront</span>Shop
+        </button>
+        <button type="button" class="places-chip" data-category="restaurant" onclick="SafeHer.places.switchCategory('restaurant')">
+          <span class="material-symbols-rounded">restaurant</span>Restaurant
+        </button>
+      </div>
+
+      <!-- Filter Bar: Open 24 hours only toggle -->
+      <div class="places-filter-bar">
+        <label class="places-toggle-label" for="toggle-24hours">
+          <input type="checkbox" id="toggle-24hours" class="places-checkbox" onchange="SafeHer.places.toggle24HoursOnly(this.checked)">
+          <span>Open 24 hours only</span>
+        </label>
+        <span class="place-badge-247" style="font-size:10px;">24/7 Filter</span>
       </div>
 
       <!-- Map display -->
@@ -1143,7 +1164,7 @@
       <!-- Loading State -->
       <div id="places-loading" class="places-loading-box">
         <span class="material-symbols-rounded places-loading-icon">location_searching</span>
-        <p class="places-loading-text">Searching nearby places within 3 km...</p>
+        <p class="places-loading-text">Searching nearby places within 2 km...</p>
       </div>
 
       <!-- Failure / Error State -->
@@ -1151,7 +1172,7 @@
         <span class="material-symbols-rounded places-error-icon">error_outline</span>
         <p class="places-error-title">Unable to load nearby places</p>
         <p class="places-error-desc">Could not connect to the places service. Please check your internet connection or GPS.</p>
-        <button class="btn btn-crimson places-retry-btn" onclick="SafeHer.police.retry()">
+        <button class="btn btn-crimson places-retry-btn" onclick="SafeHer.places.retry()">
           <span class="material-symbols-rounded">refresh</span>Retry
         </button>
       </div>
@@ -2000,6 +2021,7 @@
 <script src="./js/map.js?v=17"></script>
 <script src="./js/share_location.js?v=17"></script>
 <script src="./js/police.js?v=17"></script>
+<script src="./js/places.js?v=18"></script>
 <script src="./js/volunteer.js?v=17"></script>
 <script src="./js/timer.js?v=17"></script>
 <script src="./js/fakecall.js?v=17"></script>
