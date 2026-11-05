@@ -294,8 +294,30 @@
         </div>
       </div>
 
+      <!-- Active Ride Safety Banner -->
+      <div id="ride-active-home-banner" class="ride-active-banner" style="display: none;">
+        <div class="ride-active-banner-inner">
+          <div style="flex: 1; min-width: 0;">
+            <div class="ride-banner-title">
+              <span class="material-symbols-rounded" style="font-size: 18px;">local_taxi</span>
+              <span id="ride-banner-veh-num">Ride in Progress</span>
+            </div>
+            <div class="ride-banner-dest" id="ride-banner-dest">To Destination</div>
+            <div class="ride-banner-time" id="ride-banner-time">Arriving soon</div>
+          </div>
+          <div class="ride-banner-actions">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.router.go('ride')" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">View</button>
+            <button type="button" class="btn btn-crimson" onclick="SafeHer.ride.endRide()" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">End</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Tile grid -->
       <div class="tile-grid">
+        <button class="tile" onclick="SafeHer.router.go('ride')">
+          <span class="material-symbols-rounded">local_taxi</span>
+          <span class="tile-label">Ride Safety</span>
+        </button>
         <button class="tile" onclick="SafeHer.router.go('share-location')">
           <span class="material-symbols-rounded">share</span>
           <span class="tile-label" data-i18n="homeShareLocation">Share Location</span>
@@ -1185,6 +1207,176 @@
   <!-- Fallback alias for screen-police -->
   <div id="screen-police" class="screen" style="display:none;"></div>
 
+  <!-- ── Ride Safety Screen ─────────────────────────────────── -->
+  <div id="screen-ride" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Ride Safety</span>
+    </div>
+
+    <div class="page-wrap" style="padding: 16px; padding-bottom: 32px;">
+      <!-- 1. Setup View (when no ride active) -->
+      <div id="ride-setup-view">
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <!-- Vehicle Type -->
+          <p class="settings-section-title" style="margin-bottom: 6px;">Vehicle Type</p>
+          <div class="ride-chips-grid">
+            <button type="button" class="ride-vtype-chip active" data-value="Cab" onclick="SafeHer.ride.selectVehicleType(this)">Cab</button>
+            <button type="button" class="ride-vtype-chip" data-value="Auto" onclick="SafeHer.ride.selectVehicleType(this)">Auto</button>
+            <button type="button" class="ride-vtype-chip" data-value="Bike taxi" onclick="SafeHer.ride.selectVehicleType(this)">Bike taxi</button>
+          </div>
+
+          <!-- Vehicle Number -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="ride-vehicle-number">Vehicle Number *</label>
+            <input type="text" id="ride-vehicle-number" class="form-input" placeholder="e.g. KA01AB1234" style="text-transform: uppercase; font-weight: 600;" oninput="this.value = this.value.toUpperCase()" />
+            <p style="font-size: 11px; color: var(--text-gray); margin-top: 2px;">Enter vehicle registration plate number</p>
+          </div>
+
+          <!-- Driver Name & Phone -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="ride-driver-name">Driver Name</label>
+              <input type="text" id="ride-driver-name" class="form-input" placeholder="e.g. Ramesh" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="ride-driver-phone">Driver Phone (opt)</label>
+              <input type="tel" id="ride-driver-phone" class="form-input" placeholder="10-digit phone" />
+            </div>
+          </div>
+
+          <!-- App Used -->
+          <p class="settings-section-title" style="margin-bottom: 6px;">App Used</p>
+          <div class="ride-chips-grid">
+            <button type="button" class="ride-app-chip active" data-value="Ola" onclick="SafeHer.ride.selectApp(this)">Ola</button>
+            <button type="button" class="ride-app-chip" data-value="Uber" onclick="SafeHer.ride.selectApp(this)">Uber</button>
+            <button type="button" class="ride-app-chip" data-value="Rapido" onclick="SafeHer.ride.selectApp(this)">Rapido</button>
+            <button type="button" class="ride-app-chip" data-value="Other" onclick="SafeHer.ride.selectApp(this)">Other</button>
+          </div>
+
+          <!-- Pickup & Destination -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="ride-pickup">Pickup Location</label>
+            <input type="text" id="ride-pickup" class="form-input" placeholder="Current Location" value="Current Location" />
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="ride-destination">Destination *</label>
+            <input type="text" id="ride-destination" class="form-input" placeholder="Where are you heading?" />
+          </div>
+
+          <!-- Expected Travel Time -->
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label" for="ride-travel-minutes">Expected Travel Time (minutes) *</label>
+            <input type="number" id="ride-travel-minutes" class="form-input" value="25" min="5" max="300" />
+            <p style="font-size: 11px; color: var(--text-gray); margin-top: 2px;">We will check on you if you don't end ride 10 mins after arrival</p>
+          </div>
+
+          <!-- Optional Photos: Number Plate & Driver -->
+          <p class="settings-section-title" style="margin-bottom: 6px;">Optional Photos</p>
+          <div class="ride-photos-grid">
+            <div>
+              <label class="ride-photo-box" for="ride-plate-input">
+                <span class="material-symbols-rounded" style="color: var(--crimson);">camera_alt</span>
+                <span style="font-size: 11px; font-weight: 600; color: var(--text-dark);">Plate Photo</span>
+                <input type="file" id="ride-plate-input" accept="image/*" capture="environment" style="display:none;" onchange="SafeHer.ride.handlePhotoUpload('plate', this)" />
+              </label>
+              <div id="ride-plate-preview" style="margin-top: 4px;"></div>
+            </div>
+            <div>
+              <label class="ride-photo-box" for="ride-driver-input">
+                <span class="material-symbols-rounded" style="color: var(--crimson);">account_circle</span>
+                <span style="font-size: 11px; font-weight: 600; color: var(--text-dark);">Driver Photo</span>
+                <input type="file" id="ride-driver-input" accept="image/*" capture="environment" style="display:none;" onchange="SafeHer.ride.handlePhotoUpload('driver', this)" />
+              </label>
+              <div id="ride-driver-preview" style="margin-top: 4px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Choose Saved Contacts -->
+        <div class="settings-card" style="margin-bottom: 16px;">
+          <p class="settings-section-title" style="margin-bottom: 8px;">Share Ride With Contacts</p>
+          <div id="ride-contacts-list"></div>
+        </div>
+
+        <!-- Start Ride Button -->
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.ride.startRide()" style="width: 100%; min-height: 48px; font-size: 15px; font-weight: 700;">
+          <span class="material-symbols-rounded">local_taxi</span>Start Ride & Share Details
+        </button>
+      </div>
+
+      <!-- 2. Active Ride View (shown while ride is active) -->
+      <div id="ride-active-view" style="display: none;">
+        <div id="ride-active-details"></div>
+
+        <!-- Share with Contacts Actions -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <p class="settings-section-title" style="margin-bottom: 0;">Notify Contacts</p>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.ride.shareViaWebShare()" style="font-size: 12px; padding: 4px 10px; height: 28px; min-height: 28px;">
+              <span class="material-symbols-rounded" style="font-size: 15px;">share</span>Share with Photos
+            </button>
+          </div>
+          <div id="ride-active-contacts-list"></div>
+        </div>
+
+        <!-- End Ride Button -->
+        <button type="button" class="btn btn-secondary" onclick="SafeHer.ride.endRide()" style="width: 100%; min-height: 48px; font-size: 15px; font-weight: 700; color: #2E7D32; border-color: #2E7D32; background: #E8F5E9;">
+          <span class="material-symbols-rounded">check_circle</span>End Ride (Reached Safely)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── "Are you OK?" Screen ─────────────────────────────────── -->
+  <div id="screen-ride-check" class="screen">
+    <div class="topbar">
+      <span class="topbar-title" style="margin-left: 12px; color: var(--crimson);">Safety Check</span>
+    </div>
+    <div class="ride-check-wrap">
+      <span class="material-symbols-rounded ride-check-icon">warning</span>
+      <h2 class="ride-check-title">Are you OK?</h2>
+      <p class="ride-check-sub">Your ride's expected arrival time was 10 minutes ago and you haven't ended your ride.</p>
+      
+      <div class="ride-check-timer-badge">
+        SOS countdown starts in: <span id="ride-check-countdown-num">60</span>s
+      </div>
+
+      <div class="ride-check-actions">
+        <button type="button" class="btn btn-secondary" onclick="SafeHer.ride.userIsOk()" style="background: #E8F5E9; color: #2E7D32; border-color: #A5D6A7; font-size: 16px; font-weight: 700; min-height: 52px;">
+          <span class="material-symbols-rounded">check_circle</span>I'm OK
+        </button>
+        <button type="button" class="btn btn-crimson" onclick="SafeHer.ride.userNeedsHelp()" style="font-size: 16px; font-weight: 700; min-height: 52px;">
+          <span class="material-symbols-rounded">sos</span>I need help (SOS)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reached Safely Modal ─────────────────────────────────── -->
+  <div id="ride-safely-modal" class="ride-modal-overlay" style="display: none;">
+    <div class="ride-modal-card">
+      <span class="material-symbols-rounded" style="font-size: 48px; color: #2E7D32;">task_alt</span>
+      <h3 class="ride-modal-title">Reached Safely!</h3>
+      <p style="font-size: 13px; color: var(--text-gray); margin: 0;">Your ride has ended and been saved to history.</p>
+
+      <div class="ride-modal-preview" id="ride-safely-msg-preview"></div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="ride-safely-wa-btn" class="ride-share-btn wa" style="flex: 1; padding: 10px;">WhatsApp</button>
+          <a href="#" id="ride-safely-sms-btn" class="ride-share-btn sms" style="flex: 1; padding: 10px;">SMS</a>
+        </div>
+        <button type="button" id="ride-safely-share-btn" class="btn btn-secondary" style="font-size: 13px; font-weight: 600;">
+          <span class="material-symbols-rounded" style="font-size: 16px;">share</span>Share via other app
+        </button>
+        <button type="button" class="btn btn-primary" onclick="SafeHer.ride.closeReachedSafelyModal()" style="margin-top: 6px; font-weight: 600;">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Volunteers ───────────────────────────────────────── -->
   <div id="screen-volunteers" class="screen">
     <div class="topbar">
@@ -1608,6 +1800,15 @@
         <div id="profile-alert-history" class="alert-history-list"></div>
       </div>
 
+      <!-- Ride History -->
+      <div class="settings-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <p class="settings-section-title" style="margin-bottom: 0;">Ride History</p>
+          <button type="button" class="btn-text-link" onclick="SafeHer.ride.clearHistory()" style="font-size: 11px;">Clear</button>
+        </div>
+        <div id="ride-history-list" class="ride-history-list"></div>
+      </div>
+
       <!-- Automated Emergency Dispatch & Backend Service -->
       <div class="settings-section">
         <p class="settings-section-title">Automated Emergency Dispatch</p>
@@ -2022,6 +2223,7 @@
 <script src="./js/share_location.js?v=17"></script>
 <script src="./js/police.js?v=17"></script>
 <script src="./js/places.js?v=18"></script>
+<script src="./js/ride.js?v=18"></script>
 <script src="./js/volunteer.js?v=17"></script>
 <script src="./js/timer.js?v=17"></script>
 <script src="./js/fakecall.js?v=17"></script>

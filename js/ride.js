@@ -1,0 +1,849 @@
+// js/ride.js – Ride Safety with Vehicle Details, Resized Photos in IndexedDB, Live Sharing, Overdue Check & History
+window.SafeHer = window.SafeHer || {};
+
+SafeHer.ride = (function() {
+  var activeRide = null;
+  var dbInstance = null;
+  var platePhotoBlob = null;
+  var driverPhotoBlob = null;
+  var platePhotoDataUrl = null;
+  var driverPhotoDataUrl = null;
+  var checkCountdownTimer = null;
+  var checkCountdownRemaining = 60;
+  var monitorInterval = null;
+
+  var DB_NAME = 'SafeHerRideDB';
+  var DB_VERSION = 1;
+  var STORE_NAME = 'ride_photos';
+
+  // ─── IndexedDB Photo Storage ──────────────────────────────
+  function initDB(callback) {
+    if (dbInstance) {
+      if (callback) callback(null, dbInstance);
+      return;
+    }
+    if (!window.indexedDB) {
+      if (callback) callback(new Error('IndexedDB not supported'));
+      return;
+    }
+    var request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = function(e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = function(e) {
+      dbInstance = e.target.result;
+      if (callback) callback(null, dbInstance);
+    };
+    request.onerror = function(e) {
+      if (callback) callback(e.target.error);
+    };
+  }
+
+  function savePhotoToDB(id, blob, dataUrl, callback) {
+    initDB(function(err, db) {
+      if (err || !db) {
+        if (callback) callback(err);
+        return;
+      }
+      try {
+        var tx = db.transaction([STORE_NAME], 'readwrite');
+        var store = tx.objectStore(STORE_NAME);
+        store.put({ id: id, blob: blob, dataUrl: dataUrl, timestamp: Date.now() });
+        tx.oncomplete = function() { if (callback) callback(null); };
+        tx.onerror = function(e) { if (callback) callback(e.target.error); };
+      } catch (ex) {
+        if (callback) callback(ex);
+      }
+    });
+  }
+
+  function getPhotoFromDB(id, callback) {
+    initDB(function(err, db) {
+      if (err || !db) {
+        if (callback) callback(err, null);
+        return;
+      }
+      try {
+        var tx = db.transaction([STORE_NAME], 'readonly');
+        var store = tx.objectStore(STORE_NAME);
+        var req = store.get(id);
+        req.onsuccess = function() {
+          callback(null, req.result || null);
+        };
+        req.onerror = function(e) {
+          callback(e.target.error, null);
+        };
+      } catch (ex) {
+        callback(ex, null);
+      }
+    });
+  }
+
+  // ─── Photo Resizing Helper (Max 800px & ~200 KB) ──────────
+  function processAndResizeImage(file, callback) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var maxDim = 800;
+        var width = img.width;
+        var height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.round(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
+
+        var canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Quality 0.7 keeps size strictly under 200 KB
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        canvas.toBlob(function(blob) {
+          callback(null, blob, dataUrl);
+        }, 'image/jpeg', 0.7);
+      };
+      img.onerror = function() {
+        callback(new Error('Invalid image file'));
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(err) {
+      callback(err);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handlePhotoUpload(type, fileInput) {
+    if (!fileInput.files || !fileInput.files[0]) return;
+    var file = fileInput.files[0];
+    processAndResizeImage(file, function(err, blob, dataUrl) {
+      if (err) {
+        if (SafeHer.toast) SafeHer.toast('Error processing image');
+        return;
+      }
+      if (type === 'plate') {
+        platePhotoBlob = blob;
+        platePhotoDataUrl = dataUrl;
+        renderPhotoPreview('ride-plate-preview', dataUrl, 'plate');
+      } else if (type === 'driver') {
+        driverPhotoBlob = blob;
+        driverPhotoDataUrl = dataUrl;
+        renderPhotoPreview('ride-driver-preview', dataUrl, 'driver');
+      }
+      if (SafeHer.toast) SafeHer.toast('Photo attached (' + Math.round(blob.size / 1024) + ' KB)');
+    });
+  }
+
+  function removePhoto(type) {
+    if (type === 'plate') {
+      platePhotoBlob = null;
+      platePhotoDataUrl = null;
+      var preview = document.getElementById('ride-plate-preview');
+      if (preview) preview.innerHTML = '';
+      var input = document.getElementById('ride-plate-input');
+      if (input) input.value = '';
+    } else if (type === 'driver') {
+      driverPhotoBlob = null;
+      driverPhotoDataUrl = null;
+      var preview2 = document.getElementById('ride-driver-preview');
+      if (preview2) preview2.innerHTML = '';
+      var input2 = document.getElementById('ride-driver-input');
+      if (input2) input2.value = '';
+    }
+  }
+
+  function renderPhotoPreview(containerId, dataUrl, type) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '<div class="ride-photo-thumb-wrap">' +
+      '<img src="' + dataUrl + '" alt="' + type + ' photo" class="ride-photo-thumb" />' +
+      '<button type="button" class="ride-photo-remove-btn" onclick="SafeHer.ride.removePhoto(\'' + type + '\')" aria-label="Remove photo">' +
+        '<span class="material-symbols-rounded">close</span>' +
+      '</button>' +
+    '</div>';
+  }
+
+  // ─── Indian Vehicle Number Validation ─────────────────────
+  function isValidIndianPlate(plate) {
+    if (!plate) return false;
+    // Loose validation accepting standard formats like KA01AB1234, DL 1C 1234, MH-12-AB-1234
+    var clean = plate.toUpperCase().replace(/[\s-]/g, '');
+    var loosePattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/;
+    return loosePattern.test(clean) || (clean.length >= 6 && clean.length <= 12 && /^[A-Z]{2}[A-Z0-9]+$/.test(clean));
+  }
+
+  // ─── Contact Selection Rendering ──────────────────────────
+  function renderContactSelection() {
+    var listEl = document.getElementById('ride-contacts-list');
+    if (!listEl) return;
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+
+    if (contacts.length === 0) {
+      listEl.innerHTML = '<p style="font-size:12px;color:var(--text-gray);margin:4px 0;">No saved contacts found. <a href="javascript:void(0)" onclick="SafeHer.router.go(\'contacts\')" style="color:var(--crimson);font-weight:600;">Add emergency contacts &rarr;</a></p>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < contacts.length; i++) {
+      var c = contacts[i];
+      var cid = 'ride-contact-' + (c.id || i);
+      html += '<label class="ride-contact-checkbox-item" for="' + cid + '">' +
+        '<input type="checkbox" id="' + cid + '" class="ride-contact-check" value="' + (c.id || i) + '" checked />' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(c.name) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-gray);">' + escapeHtml(c.phone || c.email || '') + ' (' + escapeHtml(c.relation || 'Contact') + ')</div>' +
+        '</div>' +
+      '</label>';
+    }
+    listEl.innerHTML = html;
+  }
+
+  function getSelectedContacts() {
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    var checkboxes = document.querySelectorAll('.ride-contact-check:checked');
+    var selectedIds = Array.from(checkboxes).map(function(cb) { return cb.value; });
+    return contacts.filter(function(c, i) {
+      var idStr = String(c.id !== undefined ? c.id : i);
+      return selectedIds.indexOf(idStr) !== -1;
+    });
+  }
+
+  // ─── Message Construction ─────────────────────────────────
+  function buildRideMessage(ride, user) {
+    var userName = (user && user.name) ? user.name : 'SafeHer User';
+    var driverInfo = ride.driverName || 'Driver';
+    if (ride.driverPhone) driverInfo += ' (Tel: ' + ride.driverPhone + ')';
+
+    var arrivalTimeStr = new Date(ride.expectedArrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || window.location.origin;
+    var token = ride.shareToken || '';
+    var trackLink = base.replace(/\/+$/, '') + '/track.html' + (token ? ('?t=' + token) : '');
+
+    return '🚖 *SAFEHER RIDE SAFETY ALERT* 🚖\n\n' +
+      '*' + userName + '* has started a ' + ride.vehicleType + ' ride via ' + ride.appUsed + '.\n\n' +
+      '• *Vehicle:* ' + ride.vehicleNumber + ' (' + ride.vehicleType + ')\n' +
+      '• *Driver:* ' + driverInfo + '\n' +
+      '• *Pickup:* ' + ride.pickup + '\n' +
+      '• *Destination:* ' + ride.destination + '\n' +
+      '• *Expected Arrival:* ' + arrivalTimeStr + ' (~' + ride.travelMinutes + ' mins)\n\n' +
+      '🔴 *Live GPS Location:*\n' + trackLink + '\n\n' +
+      'Please monitor my ride. I will confirm when I reach safely.';
+  }
+
+  function buildSafeArrivalMessage(ride, user) {
+    var userName = (user && user.name) ? user.name : 'SafeHer User';
+    return '✅ *REACHED SAFELY*\n\n' +
+      'Hi, I have reached my destination (' + ride.destination + ') safely from my ' + ride.appUsed + ' ' + ride.vehicleType + ' ride. Thank you for looking out for me!\n- ' + userName;
+  }
+
+  // ─── Start Ride ───────────────────────────────────────────
+  function startRide() {
+    var vTypeEl = document.querySelector('.ride-vtype-chip.active');
+    var vehicleType = vTypeEl ? vTypeEl.getAttribute('data-value') : 'Cab';
+
+    var vNumInput = document.getElementById('ride-vehicle-number');
+    var rawPlate = vNumInput ? vNumInput.value.trim().toUpperCase() : '';
+
+    if (!rawPlate) {
+      if (SafeHer.toast) SafeHer.toast('Please enter vehicle number');
+      if (vNumInput) vNumInput.focus();
+      return;
+    }
+
+    if (!isValidIndianPlate(rawPlate)) {
+      if (SafeHer.toast) SafeHer.toast('Please enter a valid vehicle number (e.g. KA01AB1234)');
+      if (vNumInput) vNumInput.focus();
+      return;
+    }
+
+    var driverNameInput = document.getElementById('ride-driver-name');
+    var driverName = driverNameInput ? driverNameInput.value.trim() : '';
+
+    var driverPhoneInput = document.getElementById('ride-driver-phone');
+    var driverPhone = driverPhoneInput ? driverPhoneInput.value.trim() : '';
+
+    var appUsedEl = document.querySelector('.ride-app-chip.active');
+    var appUsed = appUsedEl ? appUsedEl.getAttribute('data-value') : 'Ola';
+
+    var pickupInput = document.getElementById('ride-pickup');
+    var pickup = pickupInput && pickupInput.value.trim() ? pickupInput.value.trim() : 'Current Location';
+
+    var destInput = document.getElementById('ride-destination');
+    var destination = destInput ? destInput.value.trim() : '';
+    if (!destination) {
+      if (SafeHer.toast) SafeHer.toast('Please enter ride destination');
+      if (destInput) destInput.focus();
+      return;
+    }
+
+    var minsInput = document.getElementById('ride-travel-minutes');
+    var travelMinutes = parseInt(minsInput ? minsInput.value : '25', 10);
+    if (isNaN(travelMinutes) || travelMinutes < 1) travelMinutes = 25;
+
+    var selectedContacts = getSelectedContacts();
+    if (selectedContacts.length === 0) {
+      if (SafeHer.toast) SafeHer.toast('Please select at least 1 emergency contact');
+      return;
+    }
+
+    var rideId = Date.now();
+    var shareToken = 'ride_' + rideId + '_' + Math.random().toString(36).substring(2, 8);
+
+    activeRide = {
+      id: rideId,
+      vehicleType: vehicleType,
+      vehicleNumber: rawPlate,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      appUsed: appUsed,
+      pickup: pickup,
+      destination: destination,
+      travelMinutes: travelMinutes,
+      startTime: Date.now(),
+      expectedArrival: Date.now() + (travelMinutes * 60 * 1000),
+      contacts: selectedContacts,
+      shareToken: shareToken,
+      status: 'active',
+      areYouOkShown: false
+    };
+
+    // Save to localStorage so it survives refresh
+    try {
+      localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide));
+    } catch (e) {
+      console.warn('[Ride] localStorage save failed:', e);
+    }
+
+    // Save photos to IndexedDB
+    if (platePhotoBlob) {
+      savePhotoToDB('plate_' + rideId, platePhotoBlob, platePhotoDataUrl);
+    }
+    if (driverPhotoBlob) {
+      savePhotoToDB('driver_' + rideId, driverPhotoBlob, driverPhotoDataUrl);
+    }
+
+    if (SafeHer.toast) SafeHer.toast('Ride started! Emergency message generated.');
+
+    // Switch view to active ride screen
+    renderActiveRideView();
+    updateHomeBanner();
+    startMonitoring();
+  }
+
+  // ─── Active Ride View & Contact Sharing ───────────────────
+  function renderActiveRideView() {
+    var setupView = document.getElementById('ride-setup-view');
+    var activeView = document.getElementById('ride-active-view');
+    if (setupView) setupView.style.display = 'none';
+    if (activeView) activeView.style.display = 'block';
+
+    if (!activeRide) return;
+
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
+    var message = buildRideMessage(activeRide, user);
+
+    var detailsEl = document.getElementById('ride-active-details');
+    if (detailsEl) {
+      detailsEl.innerHTML = '<div class="ride-active-card">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span class="material-symbols-rounded" style="color:var(--crimson);font-size:22px;">local_taxi</span>' +
+            '<span style="font-weight:700;font-size:15px;color:var(--text-dark);">' + escapeHtml(activeRide.vehicleNumber) + '</span>' +
+          '</div>' +
+          '<span class="ride-status-badge">In Progress</span>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--text-gray);line-height:1.5;">' +
+          '<div><strong>Type:</strong> ' + escapeHtml(activeRide.vehicleType) + ' (' + escapeHtml(activeRide.appUsed) + ')</div>' +
+          (activeRide.driverName ? ('<div><strong>Driver:</strong> ' + escapeHtml(activeRide.driverName) + (activeRide.driverPhone ? ' (' + escapeHtml(activeRide.driverPhone) + ')' : '') + '</div>') : '') +
+          '<div><strong>To:</strong> ' + escapeHtml(activeRide.destination) + '</div>' +
+        '</div>' +
+        '<div class="ride-timer-box" style="margin-top:12px;">' +
+          '<span class="material-symbols-rounded" style="color:var(--crimson);">timer</span>' +
+          '<span id="ride-active-countdown" style="font-weight:700;font-size:16px;color:var(--crimson);">Calculating...</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Render contacts with WhatsApp and SMS buttons
+    var contactsList = document.getElementById('ride-active-contacts-list');
+    if (contactsList) {
+      var html = '';
+      var encodedMsg = encodeURIComponent(message);
+      (activeRide.contacts || []).forEach(function(c) {
+        var rawPhone = (c.phone || '').replace(/\D/g, '');
+        var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
+        var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMsg;
+        var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMsg;
+
+        html += '<div class="ride-contact-share-row">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(c.name) + '</div>' +
+            '<div style="font-size:11px;color:var(--text-gray);">' + escapeHtml(c.phone || '') + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;">' +
+            '<a href="' + waUrl + '" target="_blank" rel="noopener" class="ride-share-btn wa" title="Share via WhatsApp">' +
+              '<span>WhatsApp</span>' +
+            '</a>' +
+            '<a href="' + smsUrl + '" class="ride-share-btn sms" title="Send SMS">' +
+              '<span>SMS</span>' +
+            '</a>' +
+          '</div>' +
+        '</div>';
+      });
+      contactsList.innerHTML = html;
+    }
+  }
+
+  // ─── Web Share with Photos Attachment ─────────────────────
+  function shareViaWebShare() {
+    if (!activeRide) return;
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
+    var message = buildRideMessage(activeRide, user);
+
+    var filesToShare = [];
+
+    function executeShare() {
+      if (navigator.share) {
+        var shareData = {
+          title: 'Ride Safety: ' + activeRide.vehicleNumber,
+          text: message
+        };
+
+        if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+          shareData.files = filesToShare;
+        }
+
+        navigator.share(shareData).then(function() {
+          if (SafeHer.toast) SafeHer.toast('Ride details shared successfully!');
+        }).catch(function(err) {
+          if (err.name !== 'AbortError') {
+            copyRideText(message);
+          }
+        });
+      } else {
+        copyRideText(message);
+      }
+    }
+
+    // Try fetching blobs from IndexedDB if not in memory
+    if (platePhotoBlob) {
+      filesToShare.push(new File([platePhotoBlob], 'plate_' + activeRide.vehicleNumber + '.jpg', { type: 'image/jpeg' }));
+    }
+    if (driverPhotoBlob) {
+      filesToShare.push(new File([driverPhotoBlob], 'driver_' + activeRide.vehicleNumber + '.jpg', { type: 'image/jpeg' }));
+    }
+
+    if (filesToShare.length === 0 && activeRide.id) {
+      getPhotoFromDB('plate_' + activeRide.id, function(err, rec1) {
+        if (rec1 && rec1.blob) filesToShare.push(new File([rec1.blob], 'plate.jpg', { type: 'image/jpeg' }));
+        getPhotoFromDB('driver_' + activeRide.id, function(err2, rec2) {
+          if (rec2 && rec2.blob) filesToShare.push(new File([rec2.blob], 'driver.jpg', { type: 'image/jpeg' }));
+          executeShare();
+        });
+      });
+    } else {
+      executeShare();
+    }
+  }
+
+  function copyRideText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        if (SafeHer.toast) SafeHer.toast('Ride details copied to clipboard!');
+      });
+    } else {
+      window.prompt('Copy Ride Details:', text);
+    }
+  }
+
+  // ─── End Ride & Reached Safely ────────────────────────────
+  function endRide() {
+    if (!activeRide) return;
+
+    var completedRecord = {
+      id: activeRide.id,
+      vehicleType: activeRide.vehicleType,
+      vehicleNumber: activeRide.vehicleNumber,
+      appUsed: activeRide.appUsed,
+      pickup: activeRide.pickup,
+      destination: activeRide.destination,
+      startTime: activeRide.startTime,
+      endTime: Date.now(),
+      status: 'Reached safely'
+    };
+
+    // Save to ride history
+    saveToHistory(completedRecord);
+
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
+    var safeMessage = buildSafeArrivalMessage(activeRide, user);
+
+    // Clear active ride
+    activeRide = null;
+    platePhotoBlob = null;
+    driverPhotoBlob = null;
+    platePhotoDataUrl = null;
+    driverPhotoDataUrl = null;
+    try {
+      localStorage.removeItem('safeher_active_ride');
+    } catch (e) {}
+
+    updateHomeBanner();
+    renderSetupView();
+
+    // Show "Reached safely" dialog with one-tap notify
+    showReachedSafelyModal(safeMessage, completedRecord);
+  }
+
+  function showReachedSafelyModal(message, record) {
+    var modal = document.getElementById('ride-safely-modal');
+    if (!modal) {
+      if (SafeHer.toast) SafeHer.toast('Reached safely! Ride completed.');
+      SafeHer.router.go('home');
+      return;
+    }
+
+    var textEl = document.getElementById('ride-safely-msg-preview');
+    if (textEl) textEl.textContent = message;
+
+    var waBtn = document.getElementById('ride-safely-wa-btn');
+    if (waBtn) {
+      waBtn.onclick = function() {
+        window.open('https://wa.me/?text=' + encodeURIComponent(message), '_blank');
+      };
+    }
+
+    var smsBtn = document.getElementById('ride-safely-sms-btn');
+    if (smsBtn) {
+      smsBtn.href = 'sms:?body=' + encodeURIComponent(message);
+    }
+
+    var shareBtn = document.getElementById('ride-safely-share-btn');
+    if (shareBtn) {
+      shareBtn.onclick = function() {
+        if (navigator.share) {
+          navigator.share({ title: 'Reached Safely', text: message });
+        } else {
+          copyRideText(message);
+        }
+      };
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  function closeReachedSafelyModal() {
+    var modal = document.getElementById('ride-safely-modal');
+    if (modal) modal.style.display = 'none';
+    SafeHer.router.go('home');
+  }
+
+  // ─── Overdue Monitoring & "Are you OK?" Check ──────────────
+  function startMonitoring() {
+    if (monitorInterval) clearInterval(monitorInterval);
+    monitorInterval = setInterval(checkRideStatus, 1000);
+    checkRideStatus();
+  }
+
+  function checkRideStatus() {
+    if (!activeRide || activeRide.status !== 'active') return;
+
+    var now = Date.now();
+    var diffMs = activeRide.expectedArrival - now;
+
+    // Update countdown in active screen
+    var countdownEl = document.getElementById('ride-active-countdown');
+    if (countdownEl) {
+      if (diffMs > 0) {
+        var mins = Math.floor(diffMs / 60000);
+        var secs = Math.floor((diffMs % 60000) / 1000);
+        countdownEl.textContent = 'Arriving in ' + mins + 'm ' + (secs < 10 ? '0' : '') + secs + 's';
+        countdownEl.style.color = 'var(--crimson)';
+      } else {
+        var overMins = Math.floor(Math.abs(diffMs) / 60000);
+        var overSecs = Math.floor((Math.abs(diffMs) % 60000) / 1000);
+        countdownEl.textContent = 'Overdue by ' + overMins + 'm ' + (overSecs < 10 ? '0' : '') + overSecs + 's';
+        countdownEl.style.color = '#DC2626';
+      }
+    }
+
+    // Update home banner
+    updateHomeBannerCountdown(diffMs);
+
+    // Overdue check: 10 minutes past expected arrival
+    var tenMinutesMs = 10 * 60 * 1000;
+    if (diffMs < -tenMinutesMs && !activeRide.areYouOkShown) {
+      activeRide.areYouOkShown = true;
+      try {
+        localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide));
+      } catch (e) {}
+      triggerAreYouOkCheck();
+    }
+  }
+
+  function triggerAreYouOkCheck() {
+    if (SafeHer.router && SafeHer.router.go) {
+      SafeHer.router.go('ride-check');
+    }
+
+    checkCountdownRemaining = 60;
+    var timerEl = document.getElementById('ride-check-countdown-num');
+    if (timerEl) timerEl.textContent = checkCountdownRemaining;
+
+    // Play vibration if supported
+    if (navigator.vibrate) {
+      navigator.vibrate([400, 200, 400, 200, 800]);
+    }
+
+    if (checkCountdownTimer) clearInterval(checkCountdownTimer);
+    checkCountdownTimer = setInterval(function() {
+      checkCountdownRemaining--;
+      if (timerEl) timerEl.textContent = checkCountdownRemaining;
+
+      if (checkCountdownRemaining <= 0) {
+        clearInterval(checkCountdownTimer);
+        // Auto-escalate to normal SOS countdown
+        if (SafeHer.toast) SafeHer.toast('No reply: Auto-triggering SOS countdown!');
+        if (SafeHer.sos && SafeHer.sos.startEmergencyMode) {
+          SafeHer.sos.startEmergencyMode();
+        } else if (SafeHer.sos && SafeHer.sos.startCountdown) {
+          SafeHer.sos.startCountdown();
+        }
+      }
+    }, 1000);
+  }
+
+  function userIsOk() {
+    if (checkCountdownTimer) clearInterval(checkCountdownTimer);
+    if (!activeRide) {
+      SafeHer.router.go('home');
+      return;
+    }
+
+    // Ask user: Extend ride by 15 mins or End Ride
+    var choice = window.confirm('Glad you are safe! Would you like to extend your expected arrival by 15 minutes?\n\nClick OK to add 15 minutes, or Cancel to End Ride now.');
+    if (choice) {
+      activeRide.expectedArrival = Date.now() + (15 * 60 * 1000);
+      activeRide.areYouOkShown = false;
+      try {
+        localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide));
+      } catch (e) {}
+      if (SafeHer.toast) SafeHer.toast('Ride arrival extended by 15 minutes');
+      SafeHer.router.go('ride');
+    } else {
+      endRide();
+    }
+  }
+
+  function userNeedsHelp() {
+    if (checkCountdownTimer) clearInterval(checkCountdownTimer);
+    if (SafeHer.toast) SafeHer.toast('Emergency SOS triggered from Ride Safety!');
+    if (SafeHer.sos && SafeHer.sos.startEmergencyMode) {
+      SafeHer.sos.startEmergencyMode();
+    } else if (SafeHer.sos && SafeHer.sos.startCountdown) {
+      SafeHer.sos.startCountdown();
+    }
+  }
+
+  // ─── Home Screen Banner ───────────────────────────────────
+  function updateHomeBanner() {
+    var banner = document.getElementById('ride-active-home-banner');
+    if (!banner) return;
+
+    if (!activeRide || activeRide.status !== 'active') {
+      banner.style.display = 'none';
+      return;
+    }
+
+    banner.style.display = 'block';
+    var numEl = document.getElementById('ride-banner-veh-num');
+    if (numEl) numEl.textContent = activeRide.vehicleNumber + ' (' + activeRide.vehicleType + ')';
+
+    var destEl = document.getElementById('ride-banner-dest');
+    if (destEl) destEl.textContent = 'To: ' + activeRide.destination;
+  }
+
+  function updateHomeBannerCountdown(diffMs) {
+    var timeEl = document.getElementById('ride-banner-time');
+    if (!timeEl) return;
+    if (diffMs > 0) {
+      var mins = Math.floor(diffMs / 60000);
+      var secs = Math.floor((diffMs % 60000) / 1000);
+      timeEl.textContent = 'Arriving in ' + mins + 'm ' + (secs < 10 ? '0' : '') + secs + 's';
+      timeEl.style.color = 'var(--crimson)';
+    } else {
+      var overMins = Math.floor(Math.abs(diffMs) / 60000);
+      timeEl.textContent = 'Overdue by ' + overMins + 'm';
+      timeEl.style.color = '#DC2626';
+    }
+  }
+
+  // ─── Ride History Storage ─────────────────────────────────
+  function saveToHistory(record) {
+    try {
+      var history = getHistory();
+      history.unshift(record);
+      // Keep up to 30 past rides
+      if (history.length > 30) history = history.slice(0, 30);
+      localStorage.setItem('safeher_ride_history', JSON.stringify(history));
+    } catch (e) {
+      console.warn('[Ride] History save failed:', e);
+    }
+  }
+
+  function getHistory() {
+    try {
+      var raw = localStorage.getItem('safeher_ride_history');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function clearHistory() {
+    try {
+      localStorage.removeItem('safeher_ride_history');
+      renderHistory('ride-history-list');
+      if (SafeHer.toast) SafeHer.toast('Ride history cleared');
+    } catch (e) {}
+  }
+
+  function renderHistory(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    var history = getHistory();
+    if (history.length === 0) {
+      container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-gray);font-size:13px;border:1px dashed var(--border);border-radius:var(--radius-tile);background:#ffffff;">No ride history recorded yet.</div>';
+      return;
+    }
+
+    var html = '';
+    history.forEach(function(r) {
+      var startStr = new Date(r.startTime).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                     new Date(r.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var durationMins = r.endTime ? Math.round((r.endTime - r.startTime) / 60000) : null;
+
+      html += '<div class="ride-history-item">' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span class="material-symbols-rounded" style="color:var(--crimson);font-size:18px;">local_taxi</span>' +
+            '<strong style="font-size:14px;color:var(--text-dark);">' + escapeHtml(r.vehicleNumber) + '</strong>' +
+            '<span style="font-size:11px;color:var(--text-gray);">' + escapeHtml(r.vehicleType) + ' (' + escapeHtml(r.appUsed) + ')</span>' +
+          '</div>' +
+          '<span class="ride-status-badge reached">Reached safely</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-gray);">' +
+          '<div>' + escapeHtml(r.pickup) + ' &rarr; ' + escapeHtml(r.destination) + '</div>' +
+          '<div style="margin-top:2px;font-size:11px;color:#9CA3AF;">' + startStr + (durationMins ? (' &bull; ' + durationMins + ' mins') : '') + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  // ─── Setup Screen Reset ───────────────────────────────────
+  function renderSetupView() {
+    var setupView = document.getElementById('ride-setup-view');
+    var activeView = document.getElementById('ride-active-view');
+    if (setupView) setupView.style.display = 'block';
+    if (activeView) activeView.style.display = 'none';
+
+    renderContactSelection();
+  }
+
+  // ─── Chip Click Handlers ──────────────────────────────────
+  function selectVehicleType(chipEl) {
+    var chips = document.querySelectorAll('.ride-vtype-chip');
+    chips.forEach(function(c) { c.classList.remove('active'); });
+    chipEl.classList.add('active');
+  }
+
+  function selectApp(chipEl) {
+    var chips = document.querySelectorAll('.ride-app-chip');
+    chips.forEach(function(c) { c.classList.remove('active'); });
+    chipEl.classList.add('active');
+  }
+
+  // ─── Initialization ───────────────────────────────────────
+  function init() {
+    // Restore active ride from localStorage
+    try {
+      var stored = localStorage.getItem('safeher_active_ride');
+      if (stored) {
+        activeRide = JSON.parse(stored);
+      }
+    } catch (e) {
+      activeRide = null;
+    }
+
+    if (activeRide && activeRide.status === 'active') {
+      renderActiveRideView();
+      updateHomeBanner();
+      startMonitoring();
+    } else {
+      updateHomeBanner();
+    }
+
+    // Router hooks
+    if (SafeHer.router && SafeHer.router.onShow) {
+      SafeHer.router.onShow('ride', function() {
+        if (activeRide && activeRide.status === 'active') {
+          renderActiveRideView();
+        } else {
+          renderSetupView();
+        }
+      });
+
+      SafeHer.router.onShow('home', function() {
+        updateHomeBanner();
+      });
+
+      SafeHer.router.onShow('profile', function() {
+        renderHistory('ride-history-list');
+      });
+    }
+
+    initDB();
+  }
+
+  return {
+    init: init,
+    startRide: startRide,
+    endRide: endRide,
+    handlePhotoUpload: handlePhotoUpload,
+    removePhoto: removePhoto,
+    shareViaWebShare: shareViaWebShare,
+    userIsOk: userIsOk,
+    userNeedsHelp: userNeedsHelp,
+    selectVehicleType: selectVehicleType,
+    selectApp: selectApp,
+    renderHistory: renderHistory,
+    clearHistory: clearHistory,
+    closeReachedSafelyModal: closeReachedSafelyModal
+  };
+})();
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    SafeHer.ride.init();
+  });
+} else {
+  SafeHer.ride.init();
+}

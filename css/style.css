@@ -4701,6 +4701,319 @@ button, a, input[type="button"], input[type="submit"] {
   display: none;
 }
 
+/* ─── Ride Safety Styles ─────────────────────────────────── */
+.ride-active-banner {
+  background: #FFFFFF;
+  border: 1.5px solid var(--crimson);
+  border-radius: var(--radius-tile);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(168, 15, 60, 0.08);
+}
+.ride-active-banner-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ride-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crimson);
+}
+.ride-banner-dest {
+  font-size: 12px;
+  color: var(--text-gray);
+  margin-top: 2px;
+}
+.ride-banner-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crimson);
+  margin-top: 2px;
+}
+.ride-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ride-chips-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ride-vtype-chip,
+.ride-app-chip {
+  flex: 1;
+  min-width: 60px;
+  padding: 8px 10px;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dark);
+  cursor: pointer;
+  text-align: center;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.ride-vtype-chip.active,
+.ride-app-chip.active {
+  background: var(--pink-light);
+  border-color: var(--crimson);
+  color: var(--crimson);
+  font-weight: 600;
+}
+
+.ride-photos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ride-photo-box {
+  background: #FFFFFF;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-btn);
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 80px;
+  position: relative;
+  transition: border-color 0.15s ease;
+}
+.ride-photo-box:hover {
+  border-color: var(--crimson);
+}
+.ride-photo-thumb-wrap {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+.ride-photo-thumb {
+  width: 100%;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.ride-photo-remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--crimson);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  min-height: 20px;
+}
+.ride-photo-remove-btn .material-symbols-rounded {
+  font-size: 14px;
+}
+
+.ride-contact-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.ride-contact-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--crimson);
+  flex-shrink: 0;
+}
+
+.ride-active-card {
+  background: #FFFFFF;
+  border: 1.5px solid var(--crimson);
+  border-radius: var(--radius-tile);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.ride-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--pink-light);
+  color: var(--crimson);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid #F3C6D3;
+}
+.ride-status-badge.reached {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border-color: #C8E6C9;
+}
+.ride-timer-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--pink-light);
+  border: 1px solid #F3C6D3;
+  border-radius: var(--radius-btn);
+  padding: 10px 14px;
+}
+
+.ride-contact-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  margin-bottom: 8px;
+}
+.ride-share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-btn);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  min-height: 34px;
+  border: 1px solid transparent;
+}
+.ride-share-btn.wa {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border-color: #C8E6C9;
+}
+.ride-share-btn.sms {
+  background: #FCEFF3;
+  color: var(--crimson);
+  border-color: #F3C6D3;
+}
+
+/* "Are you OK?" Screen */
+.ride-check-wrap {
+  padding: 32px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+}
+.ride-check-icon {
+  font-size: 56px;
+  color: var(--crimson);
+  margin-bottom: 12px;
+}
+.ride-check-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 8px;
+}
+.ride-check-sub {
+  font-size: 14px;
+  color: var(--text-gray);
+  max-width: 320px;
+  margin-bottom: 24px;
+  line-height: 1.4;
+}
+.ride-check-timer-badge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: #FCEFF3;
+  border: 1px solid var(--crimson);
+  color: var(--crimson);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.ride-check-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+}
+
+/* Reached Safely Modal */
+.ride-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 16px;
+}
+.ride-modal-card {
+  background: #FFFFFF;
+  border: 1.5px solid var(--crimson);
+  border-radius: var(--radius-tile);
+  padding: 24px 20px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+.ride-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2E7D32;
+  margin: 10px 0 6px 0;
+}
+.ride-modal-preview {
+  background: #F9FAFB;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-gray);
+  text-align: left;
+  line-height: 1.4;
+  margin: 14px 0;
+  white-space: pre-wrap;
+}
+
+.ride-history-item {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
 @media print {
   body {
     background: #ffffff !important;

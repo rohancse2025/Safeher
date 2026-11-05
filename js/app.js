@@ -21,7 +21,7 @@ SafeHer.router = (function() {
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
     'fake-call', 'location', 'live-location', 'share-location', 'map',
     'helplines', 'help-rights', 'complaint-letter', 'evidence-checklist', 'nearby-places', 'police', 'volunteers', 'safe-timer',
-    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history'
+    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history', 'ride', 'ride-check'
   ];
 
   var current = null;
