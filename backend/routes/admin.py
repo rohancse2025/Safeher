@@ -73,6 +73,77 @@ def list_pending_volunteers():
     }), 200
 
 
+# ─── Route: GET /api/admin/volunteers ────────────────────────
+@admin_bp.route('/api/admin/volunteers', methods=['GET'])
+@admin_required
+def list_all_volunteers():
+    """
+    List all volunteers (pending, approved, rejected) with their details,
+    availability, and last known GPS coordinates.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT v.id, v.user_id, u.name, u.phone, u.email, v.note, v.status, v.available, v.lat, v.lng, v.updated_at
+        FROM volunteers v
+        JOIN users u ON v.user_id = u.id
+        ORDER BY v.id DESC;
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": [dict(r) for r in rows]
+    }), 200
+
+
+# ─── Route: POST /api/admin/volunteers/approve-all ───────────
+@admin_bp.route('/api/admin/volunteers/approve-all', methods=['POST'])
+@admin_required
+def approve_all_volunteers():
+    """
+    Approve all pending volunteers at once.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE volunteers SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE status = 'pending';")
+    updated_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "approved_count": updated_count,
+            "message": f"Successfully approved {updated_count} pending volunteer(s)"
+        }
+    }), 200
+
+
+# ─── Route: POST /api/admin/volunteers/<id>/revoke ────────────
+@admin_bp.route('/api/admin/volunteers/<int:volunteer_id>/revoke', methods=['POST'])
+@admin_required
+def revoke_volunteer(volunteer_id):
+    """
+    Revoke or set a volunteer back to 'pending'.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE volunteers SET status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (volunteer_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": volunteer_id,
+            "status": "pending",
+            "message": "Volunteer status set to pending"
+        }
+    }), 200
+
+
 # ─── Route: POST /api/admin/volunteers/<id>/approve ───────────
 @admin_bp.route('/api/admin/volunteers/<int:volunteer_id>/approve', methods=['POST'])
 @admin_required
@@ -129,6 +200,36 @@ def reject_volunteer(volunteer_id):
             "id": volunteer_id,
             "status": "rejected",
             "message": "Volunteer application rejected"
+        }
+    }), 200
+
+
+# ─── Route: POST /api/admin/purge-test-data ───────────────────
+@admin_bp.route('/api/admin/purge-test-data', methods=['POST'])
+@admin_required
+def purge_test_data():
+    """
+    Purges obsolete automated test dummy accounts while preserving real user accounts (ID >= 10000).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM users WHERE id < 10000;')
+    cursor.execute('DELETE FROM contacts WHERE user_id < 10000;')
+    cursor.execute('DELETE FROM alerts WHERE user_id < 10000;')
+    cursor.execute('DELETE FROM locations WHERE alert_id NOT IN (SELECT id FROM alerts);')
+    cursor.execute('DELETE FROM volunteers WHERE user_id < 10000;')
+    cursor.execute('DELETE FROM timers WHERE user_id < 10000;')
+    conn.commit()
+
+    cursor.execute('SELECT COUNT(*) AS total FROM users;')
+    user_count = cursor.fetchone()['total']
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "remaining_users": user_count,
+            "message": f"Purged automated test users. Real users remaining: {user_count}"
         }
     }), 200
 

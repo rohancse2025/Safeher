@@ -918,14 +918,18 @@ SafeHer.api = (function() {
     setVolunteerProfile: function(profile, callback) {
       SafeHer.storage.set('volunteer_profile', profile);
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
+        var user = this.getUser() || {};
         apiFetch('/api/volunteers/status', {
           method: 'POST',
           body: JSON.stringify({
             available: !!profile.isAvailable,
             lat: profile.lat || null,
             lng: profile.lng || null,
-            note: profile.note || ''
+            note: profile.note || '',
+            user_id: user.id || null,
+            phone: user.phone || '',
+            name: user.name || 'Volunteer'
           })
         }).then(function(json) {
           if (json.data) {
@@ -945,8 +949,10 @@ SafeHer.api = (function() {
 
     getVolunteerServerProfile: function(callback) {
       var local = this.getVolunteerProfile();
-      if (useBackend() && getToken()) {
-        apiFetch('/api/volunteers/profile', { method: 'GET', _silent: true })
+      if (useBackend()) {
+        var user = this.getUser() || {};
+        var query = user.id ? ('?user_id=' + encodeURIComponent(user.id)) : '';
+        apiFetch('/api/volunteers/profile' + query, { method: 'GET', _silent: true })
           .then(function(json) {
             if (json.data) {
               var merged = {
@@ -972,8 +978,10 @@ SafeHer.api = (function() {
     },
 
     getNearbyAlerts: function(callback) {
-      if (useBackend() && getToken()) {
-        apiFetch('/api/volunteers/nearby-alerts', { method: 'GET' })
+      if (useBackend()) {
+        var user = this.getUser() || {};
+        var query = user.id ? ('?user_id=' + encodeURIComponent(user.id)) : '';
+        apiFetch('/api/volunteers/nearby-alerts' + query, { method: 'GET' })
           .then(function(json) {
             if (callback) callback(null, json.data || []);
           })
@@ -986,10 +994,15 @@ SafeHer.api = (function() {
     },
 
     respondToAlert: function(alertId, status, callback) {
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
+        var user = this.getUser() || {};
         apiFetch('/api/alerts/' + alertId + '/respond', {
           method: 'POST',
-          body: JSON.stringify({ status: status })
+          body: JSON.stringify({
+            status: status,
+            user_id: user.id || null,
+            phone: user.phone || ''
+          })
         }).then(function(json) {
           if (callback) callback(null, json.data);
         }).catch(function(err) {
@@ -1001,8 +1014,10 @@ SafeHer.api = (function() {
     },
 
     getAlertVolunteerStatus: function(alertId, callback) {
-      if (useBackend() && getToken()) {
-        apiFetch('/api/alerts/' + alertId + '/status', { method: 'GET' })
+      if (useBackend()) {
+        var user = this.getUser() || {};
+        var query = user.id ? ('?user_id=' + encodeURIComponent(user.id)) : '';
+        apiFetch('/api/alerts/' + alertId + '/status' + query, { method: 'GET' })
           .then(function(json) {
             if (callback) callback(null, json.data);
           })

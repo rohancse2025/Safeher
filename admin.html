@@ -295,10 +295,15 @@
 
       <!-- Pending Volunteers List -->
       <section class="admin-card">
-        <h2 class="admin-card-title">
-          <span class="material-symbols-rounded" style="color: #A80F3C;">verified_user</span>
-          Pending Volunteer Verification
-        </h2>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <h2 class="admin-card-title" style="margin: 0;">
+            <span class="material-symbols-rounded" style="color: #A80F3C;">verified_user</span>
+            Pending Volunteer Verification
+          </h2>
+          <button type="button" class="btn-admin btn-approve" onclick="approveAllVolunteers()" style="font-size: 12px; padding: 6px 12px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">done_all</span>Approve All Pending
+          </button>
+        </div>
         
         <div class="table-wrap">
           <table class="plain-table">
@@ -315,6 +320,38 @@
             <tbody id="pending-volunteers-tbody">
               <tr>
                 <td colspan="6" class="empty-state">Loading pending volunteers...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Approved Community Volunteers -->
+      <section class="admin-card">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <h2 class="admin-card-title" style="margin: 0;">
+            <span class="material-symbols-rounded" style="color: #2E7D32;">group</span>
+            Approved Community Volunteers
+          </h2>
+          <span id="approved-volunteers-badge" style="font-size: 11px; background: #E8F5E9; color: #2E7D32; font-weight: 600; padding: 3px 8px; border-radius: 4px;">0 Approved</span>
+        </div>
+        
+        <div class="table-wrap">
+          <table class="plain-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Availability</th>
+                <th>Last GPS</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="approved-volunteers-tbody">
+              <tr>
+                <td colspan="7" class="empty-state">Loading approved volunteers...</td>
               </tr>
             </tbody>
           </table>
@@ -425,6 +462,7 @@
             showDashboard();
             renderStats(res.json.data);
             loadPendingVolunteers();
+            loadApprovedVolunteers();
             loadSystemLogs();
           }
         }).catch(function(err) {
@@ -443,6 +481,7 @@
         clearBanner();
         loadStats();
         loadPendingVolunteers();
+        loadApprovedVolunteers();
         loadSystemLogs();
       };
 
@@ -543,11 +582,90 @@
             showBanner('Volunteer #' + id + ' rejected.', false);
             loadStats();
             loadPendingVolunteers();
+            loadApprovedVolunteers();
           } else {
             showBanner(res.json.error || 'Failed to reject volunteer', true);
           }
         });
       };
+
+      window.approveAllVolunteers = function() {
+        adminFetch('/api/admin/volunteers/approve-all', { method: 'POST' }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            var count = res.json.data && res.json.data.approved_count !== undefined ? res.json.data.approved_count : 0;
+            showBanner('Successfully approved ' + count + ' volunteer(s).', false);
+            loadStats();
+            loadPendingVolunteers();
+            loadApprovedVolunteers();
+          } else {
+            showBanner(res.json.error || 'Failed to approve all volunteers', true);
+          }
+        });
+      };
+
+      window.revokeVolunteer = function(id) {
+        if (!confirm('Revert volunteer #' + id + ' back to pending?')) return;
+        adminFetch('/api/admin/volunteers/' + id + '/revoke', { method: 'POST' }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            showBanner('Volunteer #' + id + ' reverted to pending.', false);
+            loadStats();
+            loadPendingVolunteers();
+            loadApprovedVolunteers();
+          } else {
+            showBanner(res.json.error || 'Failed to revoke volunteer', true);
+          }
+        });
+      };
+
+      function renderApprovedVolunteers(list) {
+        var tbody = document.getElementById('approved-volunteers-tbody');
+        var badge = document.getElementById('approved-volunteers-badge');
+        if (!tbody) return;
+
+        var approvedList = (list || []).filter(function(v) { return v.status === 'approved'; });
+        if (badge) badge.textContent = approvedList.length + ' Approved';
+
+        if (approvedList.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No approved volunteers yet.</td></tr>';
+          return;
+        }
+
+        var html = '';
+        for (var i = 0; i < approvedList.length; i++) {
+          var v = approvedList[i];
+          var isAvail = !!v.available;
+          var availHtml = isAvail
+            ? '<span style="color:#2e7d32;font-weight:600;">🟢 Online (Available)</span>'
+            : '<span style="color:#777;">⚪ Offline</span>';
+          var gpsHtml = (v.lat && v.lng)
+            ? ('<a href="https://www.google.com/maps?q=' + v.lat + ',' + v.lng + '" target="_blank" style="color:#A80F3C;text-decoration:none;">' + Number(v.lat).toFixed(4) + ', ' + Number(v.lng).toFixed(4) + '</a>')
+            : '<span style="color:#999;">No GPS</span>';
+
+          html += '<tr>' +
+            '<td>#' + escapeHtml(v.id) + '</td>' +
+            '<td><strong>' + escapeHtml(v.name || 'Volunteer') + '</strong></td>' +
+            '<td><a href="tel:' + escapeHtml(v.phone) + '" style="color:#A80F3C;text-decoration:none;">' + escapeHtml(v.phone) + '</a></td>' +
+            '<td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">Approved</span></td>' +
+            '<td>' + availHtml + '</td>' +
+            '<td>' + gpsHtml + '</td>' +
+            '<td>' +
+              '<button type="button" class="btn-admin btn-reject" onclick="revokeVolunteer(' + v.id + ')" style="font-size:11px;padding:4px 8px;">' +
+                'Revoke' +
+              '</button>' +
+            '</td>' +
+          '</tr>';
+        }
+        tbody.innerHTML = html;
+      }
+
+      function loadApprovedVolunteers() {
+        adminFetch('/api/admin/volunteers').then(function(res) {
+          if (res.ok && res.json.ok) {
+            renderApprovedVolunteers(res.json.data);
+          }
+        });
+      }
+      window.loadApprovedVolunteers = loadApprovedVolunteers;
 
       function loadSystemLogs() {
         var logsEl = document.getElementById('admin-logs-viewer');
@@ -577,6 +695,7 @@
             showDashboard();
             renderStats(res.json.data);
             loadPendingVolunteers();
+            loadApprovedVolunteers();
             loadSystemLogs();
             loadSystemLogs();
           } else {
