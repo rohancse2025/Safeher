@@ -26,6 +26,7 @@ SafeHer.profile = (function() {
     renderUserCard();
     renderNotifications();
     renderAlertHistory();
+    updateBackendBadge();
   }
 
   function renderUserCard() {
@@ -492,6 +493,62 @@ SafeHer.profile = (function() {
     }
   }
 
+  function updateBackendBadge() {
+    var badge = document.getElementById('backend-status-badge');
+    if (!badge) return;
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
+    fetch(base.replace(/\/+$/, '') + '/api/health', { method: 'GET' })
+      .then(function(res) {
+        if (res.ok) {
+          badge.textContent = 'Connected';
+          badge.style.background = '#e8f5e9';
+          badge.style.color = '#2e7d32';
+        } else {
+          badge.textContent = 'Server Error';
+          badge.style.background = '#ffebee';
+          badge.style.color = '#c62828';
+        }
+      })
+      .catch(function() {
+        badge.textContent = 'Offline';
+        badge.style.background = '#fff3e0';
+        badge.style.color = '#e65100';
+      });
+  }
+
+  function copyQuickTriggerUrl() {
+    var user = SafeHer.api.getUser() || {};
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || window.location.origin;
+    var url = base.replace(/\/+$/, '') + '/api/alerts/quick?user_id=' + (user.id || 10000);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        SafeHer.toast('1-Tap Quick SOS URL copied to clipboard!');
+      }).catch(function() {
+        window.prompt('Copy your 1-Tap Quick SOS URL:', url);
+      });
+    } else {
+      window.prompt('Copy your 1-Tap Quick SOS URL:', url);
+    }
+  }
+
+  function testBackgroundAlert() {
+    var user = SafeHer.api.getUser() || {};
+    SafeHer.toast('Sending automated background alert...');
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
+    fetch(base.replace(/\/+$/, '') + '/api/alerts/quick?user_id=' + (user.id || 10000), { method: 'POST' })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (json.ok) {
+          SafeHer.toast('Email & WhatsApp alerts dispatched successfully!');
+        } else {
+          SafeHer.toast('Test failed: ' + (json.error || 'Server error'));
+        }
+      })
+      .catch(function(err) {
+        SafeHer.toast('Server unreachable: ' + err.message);
+      });
+  }
+
   function init() {
     SafeHer.router.onShow('profile', function() {
       render();
@@ -521,6 +578,9 @@ SafeHer.profile = (function() {
     openAlertDetails: openAlertDetails,
     backFromDetails: backFromDetails,
     deleteAccountAndData: deleteAccountAndData,
-    confirmClearAllData: confirmClearAllData
+    confirmClearAllData: confirmClearAllData,
+    updateBackendBadge: updateBackendBadge,
+    copyQuickTriggerUrl: copyQuickTriggerUrl,
+    testBackgroundAlert: testBackgroundAlert
   };
 })();

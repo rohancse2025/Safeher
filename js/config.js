@@ -3,11 +3,12 @@ window.SafeHer = window.SafeHer || {};
 
 (function() {
   var defaultApiBase = 'http://localhost:5000';
-  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-    var host = window.location.hostname;
-    // When accessed from a phone or other device over the local network (e.g. 192.168.x.x, 10.x.x.x)
-    if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.github.io')) {
-      defaultApiBase = window.location.protocol + '//' + host + ':5000';
+  if (typeof window !== 'undefined' && window.location) {
+    // If running on port 5000 directly from Flask server (e.g. http://192.168.x.x:5000 or http://localhost:5000)
+    if (window.location.port === '5000' || (window.location.origin && window.location.origin.indexOf(':5000') !== -1)) {
+      defaultApiBase = window.location.origin;
+    } else if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.endsWith('.github.io')) {
+      defaultApiBase = window.location.protocol + '//' + window.location.hostname + ':5000';
     }
   }
 

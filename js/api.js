@@ -430,8 +430,9 @@ SafeHer.api = (function() {
         return (c.userId || 'guest') === userId;
       });
 
-      if (useBackend() && getToken()) {
-        apiFetch('/api/contacts', { method: 'GET' })
+      if (useBackend()) {
+        var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
+        apiFetch('/api/contacts' + query, { method: 'GET' })
           .then(function(json) {
             var serverContacts = (json.data || []).map(function(c) {
               return {
@@ -464,14 +465,17 @@ SafeHer.api = (function() {
       all.push(contact);
       SafeHer.storage.set('contacts', all);
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
+        var currentUser = this.getUser() || {};
         apiFetch('/api/contacts', {
           method: 'POST',
           body: JSON.stringify({
             name: contact.name,
             phone: contact.phone,
             email: contact.email || '',
-            relationship: contact.relation || contact.relationship || 'Other'
+            relationship: contact.relation || contact.relationship || 'Other',
+            user_id: currentUser.id,
+            phone_auth: currentUser.phone
           })
         }).then(function(json) {
           if (json.data && json.data.id) {
@@ -782,9 +786,10 @@ SafeHer.api = (function() {
       all.unshift(alertData);
       SafeHer.storage.set('alerts', all);
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
         var maxRetries = 3;
         var attempt = 0;
+        var currentUser = self.getUser() || {};
 
         function attemptCreateAlert() {
           attempt++;
@@ -793,7 +798,9 @@ SafeHer.api = (function() {
             body: JSON.stringify({
               mode: alertData.mode || 'normal',
               lat: alertData.lat || 12.9716,
-              lng: alertData.lng || 77.5946
+              lng: alertData.lng || 77.5946,
+              user_id: currentUser.id || userId,
+              phone: currentUser.phone || ''
             }),
             _silent: true // SOS has dedicated retry & fallback UI
           }).then(function(json) {
@@ -1034,12 +1041,15 @@ SafeHer.api = (function() {
     setSafeTimer: function(data, callback) {
       SafeHer.storage.set('safe_timer', data);
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
+        var currentUser = this.getUser() || {};
         apiFetch('/api/timers', {
           method: 'POST',
           body: JSON.stringify({
             minutes: data.minutes || (data.totalSeconds ? (data.totalSeconds / 60) : 5),
-            contact_id: data.contactId || null
+            contact_id: data.contactId || null,
+            user_id: currentUser.id,
+            phone: currentUser.phone
           })
         }).then(function(json) {
           if (json.data && json.data.id) {

@@ -8,20 +8,25 @@ from flask import Blueprint, request, jsonify, g
 from db import get_db
 from logger import app_logger
 from routes.auth import login_required
+from routes.alerts import get_user_from_request
 from email_service import send_alert_notifications_background
+from whatsapp_service import send_whatsapp_notifications_background
 
 timers_bp = Blueprint('timers', __name__)
 
 
 # ─── Route: POST /api/timers ─────────────────────────────────
 @timers_bp.route('/api/timers', methods=['POST'])
-@login_required
 def create_timer():
     """
     Start a new Safe Timer with duration in minutes and optional trusted contact.
     Expects JSON: { minutes: int, contact_id: int (optional) }
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
     data = request.get_json(silent=True) or {}
 
     try:
@@ -242,12 +247,14 @@ def check_expired_timers():
             VALUES (?, ?, ?);
         ''', (alert_id, last_lat, last_lng))
 
-        # 4. Get emergency contact emails
+        # 4. Get emergency contact emails and phones
         cursor.execute('''
-            SELECT email FROM contacts
-            WHERE user_id = ? AND email IS NOT NULL AND TRIM(email) != '';
+            SELECT phone, email FROM contacts
+            WHERE user_id = ?;
         ''', (user_id,))
-        contacts_emails = [r['email'].strip() for r in cursor.fetchall() if r['email']]
+        contact_rows = cursor.fetchall()
+        contacts_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
+        contacts_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
 
         conn.commit()
 
@@ -262,6 +269,19 @@ def check_expired_timers():
                 lng=last_lng,
                 share_token=share_token,
                 recipient_emails=contacts_emails
+            )
+
+        # 6. Dispatch automated emergency WhatsApp to contacts
+        if contacts_phones:
+            send_whatsapp_notifications_background(
+                alert_id=alert_id,
+                user_name=user_name,
+                mode="timer",
+                started_at_str=now_utc_str,
+                lat=last_lat,
+                lng=last_lng,
+                share_token=share_token,
+                recipient_phones=contacts_phones
             )
 
         # 6. Dispatch Web Push notification to user

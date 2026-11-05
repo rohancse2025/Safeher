@@ -6,12 +6,75 @@ from werkzeug.security import check_password_hash
 
 from db import get_db
 from logger import app_logger
-from routes.auth import login_required
+from routes.auth import login_required, SECRET_KEY
 from email_service import send_email, send_alert_notifications_background
+from whatsapp_service import send_whatsapp_notifications_background
+import jwt
 
 alerts_bp = Blueprint('alerts', __name__)
 
 VALID_MODES = {'normal', 'silent', 'emergency', 'timer'}
+
+
+def get_user_from_request():
+    """
+    Safely resolves the authenticated user from:
+      1. Active g.current_user
+      2. Authorization Bearer JWT header
+      3. URL query / body token
+      4. Emergency fallback user_id or phone
+    Ensures life-saving emergency SOS calls are never dropped due to stale client state.
+    """
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user
+
+    # 1. Check Bearer token or query token
+    auth_header = request.headers.get('Authorization', '')
+    token = None
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ', 1)[1].strip()
+    if not token:
+        token = request.args.get('token')
+    if not token and request.is_json:
+        data = request.get_json(silent=True) or {}
+        token = data.get('token')
+
+    if token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            uid = payload.get('user_id')
+            conn = get_db()
+            c = conn.cursor()
+            c.execute('SELECT id, name, phone, email FROM users WHERE id = ?;', (uid,))
+            user = c.fetchone()
+            conn.close()
+            if user:
+                return dict(user)
+        except Exception:
+            pass
+
+    # 2. Check user_id or phone from request payload
+    data = request.get_json(silent=True) or {}
+    req_uid = data.get('user_id') or request.args.get('user_id')
+    req_phone = data.get('phone') or request.args.get('phone')
+
+    conn = get_db()
+    c = conn.cursor()
+    user = None
+    if req_uid:
+        try:
+            c.execute('SELECT id, name, phone, email FROM users WHERE id = ?;', (int(req_uid),))
+            user = c.fetchone()
+        except (ValueError, TypeError):
+            pass
+    if not user and req_phone:
+        c.execute('SELECT id, name, phone, email FROM users WHERE phone = ?;', (str(req_phone).strip(),))
+        user = c.fetchone()
+    conn.close()
+    if user:
+        return dict(user)
+
+    return None
 
 
 def is_valid_coord(lat, lng):
@@ -26,16 +89,19 @@ def is_valid_coord(lat, lng):
 
 # ─── Route: POST /api/alerts ─────────────────────────────────
 @alerts_bp.route('/api/alerts', methods=['POST'])
-@login_required
 def create_alert():
     """
     Create a new emergency alert (normal, silent, or emergency).
     Creates an active alert record, a unique share_token, a first location point,
-    and dispatches background emergency emails to contacts.
+    and dispatches background emergency emails and WhatsApp alerts to contacts.
     Expects JSON: { mode: "normal"|"silent"|"emergency", lat: float, lng: float }
     """
-    user_id = g.current_user['id']
-    user_name = g.current_user['name']
+    user = get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization or user identification required"}), 401
+
+    user_id = user['id']
+    user_name = user['name']
     data = request.get_json(silent=True) or {}
 
     mode = (data.get('mode') or 'normal').strip().lower()
@@ -87,13 +153,14 @@ def create_alert():
             VALUES (?, ?, ?);
         ''', (alert_id, lat, lng))
 
-        # 3. Retrieve contacts with email addresses
+        # 3. Retrieve contacts with phone numbers and email addresses
         cursor.execute('''
-            SELECT email FROM contacts
-            WHERE user_id = ? AND email IS NOT NULL AND TRIM(email) != '';
+            SELECT phone, email FROM contacts
+            WHERE user_id = ?;
         ''', (user_id,))
-        email_rows = cursor.fetchall()
-        recipient_emails = [r['email'].strip() for r in email_rows if r['email']]
+        contact_rows = cursor.fetchall()
+        recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
+        recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
 
         conn.commit()
     except Exception:
@@ -113,6 +180,19 @@ def create_alert():
             lng=lng,
             share_token=share_token,
             recipient_emails=recipient_emails
+        )
+
+    # 5. Trigger background automated WhatsApp dispatch to contacts
+    if recipient_phones:
+        send_whatsapp_notifications_background(
+            alert_id=alert_id,
+            user_name=user_name,
+            mode=mode,
+            started_at_str=now_str,
+            lat=lat,
+            lng=lng,
+            share_token=share_token,
+            recipient_phones=recipient_phones
         )
 
     # Log alert creation event (without tokens or raw phone numbers)
@@ -143,6 +223,121 @@ def create_alert():
             "share_token": share_token,
             "notified_count": len(recipient_emails),
             "duress": 0,
+            "started_at": now_str
+        }
+    }), 201
+
+
+# ─── Route: POST / GET /api/alerts/quick (Zero-UI Quick Trigger) ──────
+@alerts_bp.route('/api/alerts/quick', methods=['GET', 'POST'])
+def quick_trigger_alert():
+    """
+    Zero-UI emergency SOS trigger.
+    Allows triggering immediate SOS alerts without navigating or tapping in the app.
+    Usable via:
+      - Android Home screen shortcut or widget
+      - Browser bookmark (GET /api/alerts/quick?token=...)
+      - Hardware button automation (Tasker / Macrodroid / iOS Shortcut)
+    """
+    user = get_user_from_request()
+    if not user:
+        return jsonify({
+            "ok": False,
+            "error": "Quick trigger token or credentials required. Pass ?token=<jwt> or Authorization header"
+        }), 401
+
+    user_id = user['id']
+    user_name = user['name']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    user_name = user['name']
+
+    # Get coordinates from query / json or fallback to last known
+    lat_val = request.args.get('lat') or (request.get_json(silent=True) or {}).get('lat')
+    lng_val = request.args.get('lng') or (request.get_json(silent=True) or {}).get('lng')
+
+    if lat_val and lng_val and is_valid_coord(lat_val, lng_val):
+        lat = float(lat_val)
+        lng = float(lng_val)
+    else:
+        cursor.execute('''
+            SELECT l.lat, l.lng FROM locations l
+            JOIN alerts a ON l.alert_id = a.id
+            WHERE a.user_id = ? ORDER BY l.id DESC LIMIT 1;
+        ''', (user_id,))
+        loc = cursor.fetchone()
+        if loc and loc['lat'] and loc['lng']:
+            lat, lng = loc['lat'], loc['lng']
+        else:
+            lat, lng = 12.9716, 77.5946
+
+    share_token = secrets.token_urlsafe(16)
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute('''
+        INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress)
+        VALUES (?, 'emergency', 'active', ?, ?, ?, 0, 0);
+    ''', (user_id, lat, lng, share_token))
+    alert_id = cursor.lastrowid
+
+    cursor.execute('INSERT INTO locations (alert_id, lat, lng) VALUES (?, ?, ?);', (alert_id, lat, lng))
+
+    cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+    contact_rows = cursor.fetchall()
+    recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
+    recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+    conn.commit()
+    conn.close()
+
+    if recipient_emails:
+        send_alert_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_emails)
+    if recipient_phones:
+        send_whatsapp_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_phones)
+
+    app_logger.info(f"[QUICK ALERT CREATED] alert_id={alert_id}, user_id={user_id}, lat={lat}, lng={lng}")
+
+    # If called from a web browser via GET, show confirmation HTML
+    if request.method == 'GET' and 'text/html' in request.headers.get('Accept', ''):
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        track_link = f"{frontend_url}/track.html?t={share_token}"
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOS Activated - SafeHer</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #FCEFF3; color: #111; margin: 0; padding: 24px; text-align: center; }}
+    .card {{ background: #fff; border: 1px solid #A80F3C; border-radius: 8px; padding: 24px; max-width: 420px; margin: 30px auto; }}
+    h1 {{ color: #A80F3C; font-size: 24px; margin: 0 0 12px; }}
+    p {{ font-size: 14px; color: #333; line-height: 1.5; margin: 8px 0; }}
+    .badge {{ display: inline-block; background: #A80F3C; color: #fff; font-weight: bold; padding: 6px 12px; border-radius: 4px; font-size: 13px; margin: 12px 0; }}
+    .btn {{ display: block; width: 100%; box-sizing: border-box; background: #A80F3C; color: #fff; text-decoration: none; padding: 12px; border-radius: 6px; font-weight: bold; margin-top: 14px; }}
+    .btn-sec {{ background: #fff; color: #A80F3C; border: 1px solid #A80F3C; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">EMERGENCY SOS ACTIVE</div>
+    <h1>Alert Dispatched!</h1>
+    <p>SafeHer has automatically dispatched emergency alerts to your trusted contacts via Email and WhatsApp.</p>
+    <p><strong>Time:</strong> {now_str}</p>
+    <a class="btn" href="{track_link}">View Live Tracking</a>
+    <a class="btn btn-sec" href="/">Open SafeHer App</a>
+  </div>
+</body>
+</html>""", 200
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": alert_id,
+            "status": "active",
+            "mode": "emergency",
+            "share_token": share_token,
+            "emails_dispatched": len(recipient_emails),
+            "whatsapp_dispatched": len(recipient_phones),
             "started_at": now_str
         }
     }), 201

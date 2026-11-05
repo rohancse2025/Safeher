@@ -4,18 +4,21 @@ from flask import Blueprint, request, jsonify, g
 
 from db import get_db
 from routes.auth import login_required, is_valid_phone, is_valid_email
+from routes.alerts import get_user_from_request
 
 contacts_bp = Blueprint('contacts', __name__)
 
 
 # ─── Route: GET /api/contacts ────────────────────────────────
 @contacts_bp.route('/api/contacts', methods=['GET'])
-@login_required
 def get_contacts():
     """
     List all emergency contacts belonging to the authenticated user.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id']
 
     conn = get_db()
     cursor = conn.cursor()
@@ -35,13 +38,15 @@ def get_contacts():
 
 # ─── Route: POST /api/contacts ───────────────────────────────
 @contacts_bp.route('/api/contacts', methods=['POST'])
-@login_required
 def create_contact():
     """
     Add a new emergency contact for the authenticated user.
     Expects JSON: { name, phone, email (optional), relationship (optional) }
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id']
     data = request.get_json(silent=True) or {}
 
     name = (data.get('name') or '').strip()

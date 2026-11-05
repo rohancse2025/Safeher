@@ -159,12 +159,22 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Check for SOS shortcut launch (?sos=1) or notification screen launch (?screen=...)
+  // Check for SOS shortcut launch (?sos=1 or ?sos=quick) or notification screen launch (?screen=...)
   var urlParams = new URLSearchParams(window.location.search);
-  var isSosShortcut = urlParams.get('sos') === '1';
+  var sosParam = urlParams.get('sos');
   var targetScreen = urlParams.get('screen');
 
-  if (isSosShortcut) {
+  if (sosParam === 'quick') {
+    SafeHer.router.go('home');
+    if (SafeHer.sos && SafeHer.sos.startEmergencyMode) {
+      SafeHer.sos.startEmergencyMode();
+    } else if (SafeHer.sos && SafeHer.sos.startCountdown) {
+      SafeHer.sos.startCountdown();
+    }
+    return;
+  }
+
+  if (sosParam === '1') {
     SafeHer.router.go('home');
     SafeHer.sos.startCountdown();
     return;

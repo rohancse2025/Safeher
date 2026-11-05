@@ -1582,6 +1582,44 @@
         <div id="profile-alert-history" class="alert-history-list"></div>
       </div>
 
+      <!-- Automated Emergency Dispatch & Backend Service -->
+      <div class="settings-section">
+        <p class="settings-section-title">Automated Emergency Dispatch</p>
+        <div class="settings-card" style="padding: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">dns</span>
+              <span style="font-weight: 600; font-size: 14px;">Backend Server</span>
+            </div>
+            <span id="backend-status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #e8f5e9; color: #2e7d32; font-weight: 600;">Connected</span>
+          </div>
+
+          <div style="font-size: 12px; color: var(--text-dark); line-height: 1.5; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="material-symbols-rounded" style="color: #2e7d32; font-size: 16px;">mark_email_read</span>
+              <span><strong>Automated Background Email:</strong> Dispatched instantly via Gmail SMTP to emergency contacts.</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="material-symbols-rounded" style="color: #2e7d32; font-size: 16px;">chat</span>
+              <span><strong>Automated Background WhatsApp:</strong> Dispatched instantly from server to contact phone numbers.</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 16px;">timer</span>
+              <span><strong>Safe Timer (Zero-UI):</strong> Runs on server daemon; escalates to SOS even if phone is turned off or locked.</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="SafeHer.profile.copyQuickTriggerUrl()" style="flex: 1; min-width: 140px; font-size: 12px; padding: 8px 10px;">
+              <span class="material-symbols-rounded" style="font-size: 16px;">link</span>Copy 1-Tap SOS URL
+            </button>
+            <button class="btn btn-secondary" onclick="SafeHer.profile.testBackgroundAlert()" style="flex: 1; min-width: 140px; font-size: 12px; padding: 8px 10px; color: var(--crimson); border-color: var(--crimson);">
+              <span class="material-symbols-rounded" style="font-size: 16px;">send</span>Send Test Alert
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Administration (Volunteer Approvals & System Stats) -->
       <div class="settings-section">
         <p class="settings-section-title">Administration</p>
