@@ -125,24 +125,6 @@ def create_alert():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Abuse limit: normal and silent SOS alerts are limited to 5 per user per hour (emergency mode is never limited)
-    if mode in ('normal', 'silent'):
-        cursor.execute('''
-            SELECT COUNT(*) AS alert_count
-            FROM alerts
-            WHERE user_id = ?
-              AND mode IN ('normal', 'silent')
-              AND started_at >= datetime('now', '-1 hour');
-        ''', (user_id,))
-        count_row = cursor.fetchone()
-        if count_row and count_row['alert_count'] >= 5:
-            conn.close()
-            return jsonify({
-                "ok": False,
-                "error": "Too many alerts, call 112 directly",
-                "call_112": True
-            }), 429
-
     try:
         # 1. Insert alert record
         cursor.execute('''
