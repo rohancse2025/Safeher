@@ -54,7 +54,34 @@ def send_whatsapp(to_phone, message_text):
     if not normalized:
         return False, "Invalid phone number"
 
-    # ─── Option 1: Twilio WhatsApp REST API ───────────────────
+    # ─── Option 1: Green-API (WhatsApp QR Linked Devices) ───────
+    green_id = (os.getenv('GREEN_API_ID_INSTANCE') or os.getenv('idInstance') or '').strip()
+    green_token = (os.getenv('GREEN_API_TOKEN_INSTANCE') or os.getenv('apiTokenInstance') or '').strip()
+    green_host = (os.getenv('GREEN_API_HOST_URL') or os.getenv('hostUrl') or '').strip().rstrip('/')
+    if not green_host and green_id:
+        cluster = green_id[:4]
+        green_host = f"https://{cluster}.api.greenapi.com"
+
+    if green_id and green_token:
+        try:
+            clean_digits = re.sub(r'\D', '', normalized)
+            if len(clean_digits) == 10:
+                clean_digits = '91' + clean_digits
+            chat_id = f"{clean_digits}@c.us"
+            url = f"{green_host}/waInstance{green_id}/sendMessage/{green_token}"
+            payload = {
+                'chatId': chat_id,
+                'message': message_text
+            }
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code in (200, 201):
+                app_logger.info(f"[GREEN-API WHATSAPP DELIVERED] to={mask_phone(normalized)}")
+                return True, None
+            return False, f"Green-API error {resp.status_code}: {resp.text}"
+        except Exception as e:
+            return False, f"Green-API exception: {str(e)}"
+
+    # ─── Option 2: Twilio WhatsApp REST API ───────────────────
     twilio_sid = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
     twilio_token = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
     twilio_from = os.getenv('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886').strip()
