@@ -67,6 +67,19 @@ def send_whatsapp(to_phone, message_text):
             clean_digits = re.sub(r'\D', '', normalized)
             if len(clean_digits) == 10:
                 clean_digits = '91' + clean_digits
+
+            # Verify if recipient is registered on WhatsApp
+            try:
+                chk_url = f"{green_host}/waInstance{green_id}/checkWhatsapp/{green_token}"
+                chk_resp = requests.post(chk_url, json={'phoneNumber': clean_digits}, timeout=5)
+                if chk_resp.status_code == 200:
+                    chk_data = chk_resp.json()
+                    if not chk_data.get('existsWhatsapp', True):
+                        app_logger.warning(f"[WHATSAPP NOT DELIVERED: {mask_phone(normalized)} is not registered on WhatsApp]")
+                        return False, f"Phone number {clean_digits} does not have a WhatsApp account"
+            except Exception:
+                pass
+
             chat_id = f"{clean_digits}@c.us"
             url = f"{green_host}/waInstance{green_id}/sendMessage/{green_token}"
             payload = {
