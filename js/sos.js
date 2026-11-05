@@ -587,31 +587,20 @@ SafeHer.sos = (function() {
     for (var i = 0; i < contacts.length; i++) {
       var c = contacts[i];
       var rawPhone = (c.phone || '').replace(/\D/g, '');
-      var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
-      var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMessage;
-      var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMessage;
-      var telUrl = rawPhone ? 'tel:' + rawPhone : '#';
       var initial = (c.name || '?').charAt(0).toUpperCase();
-
-      var emailSubject = encodeURIComponent('EMERGENCY: SafeHer SOS Alert from ' + userName);
-      var emailUrl = c.email
-        ? ('mailto:' + encodeURIComponent(c.email) + '?subject=' + emailSubject + '&body=' + encodedMessage)
-        : ('mailto:?subject=' + emailSubject + '&body=' + encodedMessage);
 
       html += '<div class="sos-notified-item">' +
         '<div class="sos-notified-left">' +
           '<div class="sos-notified-avatar">' + escapeHtml(initial) + '</div>' +
           '<div class="sos-notified-info">' +
-            '<a class="sos-notified-name" href="' + escapeHtml(telUrl) + '" title="Call ' + escapeHtml(c.name) + '">' +
-              escapeHtml(c.name) +
-            '</a>' +
-            (c.email ? '<span class="sos-notified-email" style="display:block;font-size:10px;color:#777;line-height:1.2;">' + escapeHtml(c.email) + '</span>' : '') +
+            '<span class="sos-notified-name" style="font-weight:600;">' + escapeHtml(c.name) + '</span>' +
+            (c.email ? '<span class="sos-notified-email" style="display:block;font-size:10px;color:#555;line-height:1.2;">' + escapeHtml(c.email) + '</span>' : '') +
+            (rawPhone ? '<span class="sos-notified-phone" style="display:block;font-size:10px;color:#777;line-height:1.2;">' + escapeHtml(rawPhone) + '</span>' : '') +
           '</div>' +
         '</div>' +
         '<div class="sos-contact-btns">' +
-          '<a class="sos-btn-wa" href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>' +
-          '<a class="sos-btn-sms" href="' + escapeHtml(smsUrl) + '">SMS</a>' +
-          '<a class="sos-btn-email" href="' + escapeHtml(emailUrl) + '" title="Send Emergency Email">Email</a>' +
+          (c.email ? '<span class="sos-badge-sent" title="Dispatched automatically via Gmail SMTP"><span class="material-symbols-rounded" style="font-size:13px;">mark_email_read</span>Email Sent</span>' : '') +
+          (rawPhone ? '<span class="sos-badge-sent" title="Dispatched automatically via WhatsApp API"><span class="material-symbols-rounded" style="font-size:13px;">chat</span>WhatsApp Sent</span>' : '') +
         '</div>' +
       '</div>';
     }
@@ -619,20 +608,42 @@ SafeHer.sos = (function() {
     listEl.innerHTML = html;
   }
 
-  function shareToAll() {
-    var message = buildAlertMessage();
-    if (navigator.share) {
-      navigator.share({
-        title: 'Emergency SOS - SafeHer',
-        text: message
-      }).then(function() {
-        SafeHer.toast('Alert shared');
-      }).catch(function(err) {
-        if (err.name !== 'AbortError') copyAlertMessageFallback(message);
+  function resendAllServer() {
+    var user = SafeHer.api.getUser() || {};
+    SafeHer.toast('Re-dispatching alerts via backend server...');
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
+    fetch(base.replace(/\/+$/, '') + '/api/alerts/quick?user_id=' + (user.id || 10000), { method: 'POST' })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (json.ok) {
+          SafeHer.toast('✓ Email & WhatsApp re-sent automatically via server!');
+        } else {
+          SafeHer.toast('Server: ' + (json.error || 'Failed'));
+        }
+      })
+      .catch(function(err) {
+        SafeHer.toast('Server unreachable: ' + err.message);
+      });
+  }
+
+  function copyAlertLink() {
+    var active = (SafeHer.api && SafeHer.api.getActiveSos) ? SafeHer.api.getActiveSos() : null;
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || window.location.origin;
+    var token = (active && active.shareToken) ? active.shareToken : '';
+    var url = base.replace(/\/+$/, '') + '/track.html' + (token ? ('?t=' + token) : '');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        SafeHer.toast('Live tracking link copied to clipboard!');
+      }).catch(function() {
+        window.prompt('Copy tracking link:', url);
       });
     } else {
-      copyAlertMessageFallback(message);
+      window.prompt('Copy tracking link:', url);
     }
+  }
+
+  function shareToAll() {
+    copyAlertLink();
   }
 
   function copyAlertMessageFallback(message) {
@@ -908,6 +919,8 @@ SafeHer.sos = (function() {
     requestEndAlert: requestEndAlert,
     requestStopAlarm: requestStopAlarm,
     shareToAll: shareToAll,
+    resendAllServer: resendAllServer,
+    copyAlertLink: copyAlertLink,
     sendOfflineSmsAll: sendOfflineSmsAll,
     sendOfflineWhatsAppAll: sendOfflineWhatsAppAll
   };

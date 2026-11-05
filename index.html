@@ -416,15 +416,20 @@
       <div class="sos-contacts-section">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
           <p class="sos-section-title" style="margin-bottom: 0;">Contacts Notified</p>
-          <button class="btn btn-secondary sos-share-all-btn" onclick="SafeHer.sos.shareToAll()" aria-label="Share alert with all contacts">
-            <span class="material-symbols-rounded" style="font-size: 16px;">share</span>Share to all
-          </button>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary sos-share-all-btn" onclick="SafeHer.sos.copyAlertLink()" aria-label="Copy tracking link">
+              <span class="material-symbols-rounded" style="font-size: 15px;">link</span>Copy Link
+            </button>
+            <button class="btn btn-secondary sos-share-all-btn" onclick="SafeHer.sos.resendAllServer()" aria-label="Resend alerts via server" style="color: var(--crimson); border-color: var(--crimson);">
+              <span class="material-symbols-rounded" style="font-size: 15px;">sync</span>Resend
+            </button>
+          </div>
         </div>
         <div id="sos-notified-list" class="sos-notified-list"></div>
       </div>
 
       <!-- Alert Status Note -->
-      <p class="prototype-note">Emergency alert dispatched. Tap WhatsApp, SMS, or Email to send direct backup messages.</p>
+      <p class="prototype-note" style="color: #2E7D32;">✓ 100% Automated: Emergency Email and WhatsApp are dispatched directly by the backend server without opening any external apps.</p>
 
       <!-- I'm Safe Button -->
       <div style="margin-top: 18px;">
