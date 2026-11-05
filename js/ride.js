@@ -284,7 +284,7 @@ SafeHer.ride = (function() {
     var checkboxes = document.querySelectorAll('.ride-contact-check:checked');
     var selectedIds = Array.from(checkboxes).map(function(cb) { return cb.value; });
 
-    var selected = availableContacts.filter(function(c, i) {
+    var selected = (availableContacts || []).filter(function(c, i) {
       var idStr = String(c.id !== undefined ? c.id : i);
       return selectedIds.indexOf(idStr) !== -1;
     });
@@ -304,9 +304,35 @@ SafeHer.ride = (function() {
       });
     }
 
-    // Fallback: If no checkbox selected, but available contacts exist, pick the first one
-    if (selected.length === 0 && availableContacts.length > 0) {
-      selected = [availableContacts[0]];
+    // Fallback 1: If no checkbox selected, but available contacts exist, pick all available
+    if (selected.length === 0 && availableContacts && availableContacts.length > 0) {
+      selected = availableContacts.slice();
+    }
+
+    // Fallback 2: Check SafeHer.storage.get('contacts') directly
+    if (selected.length === 0) {
+      try {
+        var stored = (SafeHer.storage && SafeHer.storage.get) ? (SafeHer.storage.get('contacts') || []) : [];
+        if (stored.length > 0) selected = stored.slice();
+      } catch (e) {}
+    }
+
+    // Fallback 3: Check SafeHer.api.getContacts() synchronously
+    if (selected.length === 0 && SafeHer.api && SafeHer.api.getContacts) {
+      try {
+        var apiList = SafeHer.api.getContacts() || [];
+        if (apiList.length > 0) selected = apiList.slice();
+      } catch (e) {}
+    }
+
+    // Fallback 4: NEVER block the user! If literally no contacts exist, use generic broadcast
+    if (selected.length === 0) {
+      selected = [{
+        id: 'broadcast',
+        name: 'Emergency Broadcast',
+        phone: '',
+        relation: 'Broadcast'
+      }];
     }
 
     return selected;
@@ -374,22 +400,13 @@ SafeHer.ride = (function() {
     var pickup = pickupInput && pickupInput.value.trim() ? pickupInput.value.trim() : 'Current Location';
 
     var destInput = document.getElementById('ride-destination');
-    var destination = destInput ? destInput.value.trim() : '';
-    if (!destination) {
-      if (SafeHer.toast) SafeHer.toast('Please enter ride destination');
-      if (destInput) destInput.focus();
-      return;
-    }
+    var destination = (destInput && destInput.value.trim()) ? destInput.value.trim() : 'Destination (In Transit)';
 
     var minsInput = document.getElementById('ride-travel-minutes');
     var travelMinutes = parseInt(minsInput ? minsInput.value : '25', 10);
     if (isNaN(travelMinutes) || travelMinutes < 1) travelMinutes = 25;
 
     var selectedContacts = getSelectedContacts();
-    if (selectedContacts.length === 0) {
-      if (SafeHer.toast) SafeHer.toast('Please select at least 1 emergency contact');
-      return;
-    }
 
     var rideId = Date.now();
     var shareToken = 'ride_' + rideId + '_' + Math.random().toString(36).substring(2, 8);
