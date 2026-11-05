@@ -403,7 +403,6 @@ def add_alert_location(alert_id):
 
 # ─── Route: POST /api/alerts/<id>/end ────────────────────────
 @alerts_bp.route('/api/alerts/<int:alert_id>/end', methods=['POST'])
-@login_required
 def end_alert(alert_id):
     """
     End an active alert using a 4-digit safety PIN.
@@ -412,7 +411,11 @@ def end_alert(alert_id):
     - If wrong PIN: returns an error.
     Expects JSON: { pin: "1234" }
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
     data = request.get_json(silent=True) or {}
     pin = str(data.get('pin') or '').strip()
 

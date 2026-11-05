@@ -140,12 +140,9 @@ SafeHer.sos = (function() {
 
   // ─── 5-4-3-2-1 Countdown (Normal Mode) ────────────────────
   function startCountdown() {
-    // If no PIN set, prompt to set one first
+    // If no PIN set, set default PIN '1234' so emergency SOS trigger is NEVER blocked
     if (!SafeHer.api.hasPin()) {
-      SafeHer.pin.openSetPin('home', function() {
-        startCountdown();
-      });
-      return;
+      SafeHer.api.setPin('1234');
     }
 
     var overlay = document.getElementById('sos-countdown-overlay');

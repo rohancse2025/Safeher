@@ -562,7 +562,7 @@ SafeHer.api = (function() {
 
     hasPin: function() {
       var user = this.getUser();
-      if (user && user.has_pin !== undefined) return bool(user.has_pin);
+      if (user && user.has_pin !== undefined) return Boolean(user.has_pin);
       return !!this.getPinData();
     },
 
@@ -789,7 +789,7 @@ SafeHer.api = (function() {
       if (useBackend()) {
         var maxRetries = 3;
         var attempt = 0;
-        var currentUser = self.getUser() || {};
+        var currentUser = user || {};
 
         function attemptCreateAlert() {
           attempt++;
@@ -881,12 +881,13 @@ SafeHer.api = (function() {
         }
       }
       SafeHer.storage.set('alerts', all);
-      self.clearActiveSos();
+      this.clearActiveSos();
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
+        var u = this.getUser() || {};
         apiFetch('/api/alerts/' + id + '/end', {
           method: 'POST',
-          body: JSON.stringify({ pin: pin })
+          body: JSON.stringify({ pin: pin, user_id: u.id || null })
         }).then(function(json) {
           if (callback) callback(null, json.data);
         }).catch(function(err) {
