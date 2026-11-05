@@ -185,40 +185,131 @@ SafeHer.ride = (function() {
     return loosePattern.test(clean) || (clean.length >= 6 && clean.length <= 12 && /^[A-Z]{2}[A-Z0-9]+$/.test(clean));
   }
 
-  // ─── Contact Selection Rendering ──────────────────────────
+  var availableContacts = [];
+
+  // ─── Contact Loading & Rendering ──────────────────────────
+  function loadContacts(callback) {
+    var stored = (SafeHer.storage && SafeHer.storage.get) ? (SafeHer.storage.get('contacts') || []) : [];
+
+    if (SafeHer.api && SafeHer.api.getContacts) {
+      SafeHer.api.getContacts(function(err, serverContacts) {
+        if (!err && serverContacts && serverContacts.length > 0) {
+          availableContacts = serverContacts;
+          if (callback) callback(availableContacts);
+          return;
+        }
+        fallback();
+      });
+    } else {
+      fallback();
+    }
+
+    function fallback() {
+      var list = [];
+      try {
+        if (SafeHer.api && SafeHer.api.getContacts) {
+          list = SafeHer.api.getContacts() || [];
+        }
+      } catch (e) {}
+
+      if (!list || list.length === 0) {
+        list = stored;
+      }
+      availableContacts = list || [];
+      if (callback) callback(availableContacts);
+    }
+  }
+
   function renderContactSelection() {
     var listEl = document.getElementById('ride-contacts-list');
     if (!listEl) return;
-    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
 
-    if (contacts.length === 0) {
-      listEl.innerHTML = '<p style="font-size:12px;color:var(--text-gray);margin:4px 0;">No saved contacts found. <a href="javascript:void(0)" onclick="SafeHer.router.go(\'contacts\')" style="color:var(--crimson);font-weight:600;">Add emergency contacts &rarr;</a></p>';
-      return;
-    }
+    loadContacts(function(contacts) {
+      if (!contacts || contacts.length === 0) {
+        listEl.innerHTML = '<div style="background:#FFF5F7;border:1px dashed var(--crimson);border-radius:var(--radius-btn);padding:12px;margin-bottom:8px;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+            '<span style="font-size:12px;font-weight:600;color:var(--crimson);">No emergency contacts saved yet</span>' +
+            '<button type="button" class="btn btn-secondary" onclick="SafeHer.router.go(\'contacts\')" style="font-size:11px;padding:3px 8px;min-height:28px;">+ Manage</button>' +
+          '</div>' +
+          '<p style="font-size:11px;color:var(--text-gray);margin:0 0 8px 0;">Enter an emergency number for this ride:</p>' +
+          '<div style="display:flex;gap:6px;">' +
+            '<input type="text" id="ride-direct-name" class="form-input" placeholder="Name (e.g. Dad)" style="width:110px;font-size:12px;padding:6px 8px;" />' +
+            '<input type="tel" id="ride-direct-phone" class="form-input" placeholder="10-digit WhatsApp/SMS number" style="flex:1;font-size:12px;padding:6px 8px;" />' +
+          '</div>' +
+        '</div>';
+        return;
+      }
 
-    var html = '';
-    for (var i = 0; i < contacts.length; i++) {
-      var c = contacts[i];
-      var cid = 'ride-contact-' + (c.id || i);
-      html += '<label class="ride-contact-checkbox-item" for="' + cid + '">' +
-        '<input type="checkbox" id="' + cid + '" class="ride-contact-check" value="' + (c.id || i) + '" checked />' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(c.name) + '</div>' +
-          '<div style="font-size:11px;color:var(--text-gray);">' + escapeHtml(c.phone || c.email || '') + ' (' + escapeHtml(c.relation || 'Contact') + ')</div>' +
+      var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+        '<span style="font-size:11px;color:var(--text-gray);">Select contacts to notify:</span>' +
+        '<button type="button" class="btn-text-link" onclick="SafeHer.ride.toggleAllContactsSelection()" style="font-size:11px;">Select All</button>' +
+      '</div>';
+
+      for (var i = 0; i < contacts.length; i++) {
+        var c = contacts[i];
+        var cid = 'ride-contact-' + (c.id !== undefined ? c.id : i);
+        var initial = (c.name || '?').charAt(0).toUpperCase();
+
+        html += '<label class="ride-contact-checkbox-item" for="' + cid + '" style="margin-bottom:8px;">' +
+          '<input type="checkbox" id="' + cid + '" class="ride-contact-check" value="' + (c.id !== undefined ? c.id : i) + '" checked />' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:#FCEFF3;color:var(--crimson);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">' + escapeHtml(initial) + '</div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(c.name) + '</div>' +
+            '<div style="font-size:11px;color:var(--text-gray);">' + escapeHtml(c.phone || c.email || '') + ' (' + escapeHtml(c.relation || 'Contact') + ')</div>' +
+          '</div>' +
+        '</label>';
+      }
+
+      // Also allow adding a temporary extra contact for this ride
+      html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">' +
+        '<p style="font-size:11px;color:var(--text-gray);margin:0 0 6px 0;">+ Add an additional contact for this ride (optional):</p>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<input type="text" id="ride-direct-name" class="form-input" placeholder="Name" style="width:100px;font-size:12px;padding:6px 8px;" />' +
+          '<input type="tel" id="ride-direct-phone" class="form-input" placeholder="Phone number" style="flex:1;font-size:12px;padding:6px 8px;" />' +
         '</div>' +
-      '</label>';
-    }
-    listEl.innerHTML = html;
+      '</div>';
+
+      listEl.innerHTML = html;
+    });
+  }
+
+  function toggleAllContactsSelection() {
+    var checkboxes = document.querySelectorAll('.ride-contact-check');
+    if (checkboxes.length === 0) return;
+    var allChecked = Array.from(checkboxes).every(function(cb) { return cb.checked; });
+    checkboxes.forEach(function(cb) { cb.checked = !allChecked; });
   }
 
   function getSelectedContacts() {
-    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
     var checkboxes = document.querySelectorAll('.ride-contact-check:checked');
     var selectedIds = Array.from(checkboxes).map(function(cb) { return cb.value; });
-    return contacts.filter(function(c, i) {
+
+    var selected = availableContacts.filter(function(c, i) {
       var idStr = String(c.id !== undefined ? c.id : i);
       return selectedIds.indexOf(idStr) !== -1;
     });
+
+    // Check if user entered a direct phone
+    var directPhoneEl = document.getElementById('ride-direct-phone');
+    var directNameEl = document.getElementById('ride-direct-name');
+    var directPhone = directPhoneEl ? directPhoneEl.value.trim() : '';
+    var directName = directNameEl ? directNameEl.value.trim() : '';
+
+    if (directPhone) {
+      selected.push({
+        id: 'direct_' + Date.now(),
+        name: directName || 'Emergency Contact',
+        phone: directPhone,
+        relation: 'Direct'
+      });
+    }
+
+    // Fallback: If no checkbox selected, but available contacts exist, pick the first one
+    if (selected.length === 0 && availableContacts.length > 0) {
+      selected = [availableContacts[0]];
+    }
+
+    return selected;
   }
 
   // ─── Message Construction ─────────────────────────────────
@@ -833,6 +924,8 @@ SafeHer.ride = (function() {
     userNeedsHelp: userNeedsHelp,
     selectVehicleType: selectVehicleType,
     selectApp: selectApp,
+    renderContactSelection: renderContactSelection,
+    toggleAllContactsSelection: toggleAllContactsSelection,
     renderHistory: renderHistory,
     clearHistory: clearHistory,
     closeReachedSafelyModal: closeReachedSafelyModal
