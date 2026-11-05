@@ -500,7 +500,7 @@ SafeHer.profile = (function() {
     fetch(base.replace(/\/+$/, '') + '/api/health', { method: 'GET' })
       .then(function(res) {
         if (res.ok) {
-          badge.textContent = 'Connected';
+          badge.textContent = 'Connected (' + base.replace(/^https?:\/\//, '') + ')';
           badge.style.background = '#e8f5e9';
           badge.style.color = '#2e7d32';
         } else {
@@ -510,10 +510,29 @@ SafeHer.profile = (function() {
         }
       })
       .catch(function() {
-        badge.textContent = 'Offline';
+        badge.textContent = 'Offline (Tap to set IP)';
         badge.style.background = '#fff3e0';
         badge.style.color = '#e65100';
+        badge.style.cursor = 'pointer';
+        badge.onclick = changeServerUrl;
       });
+  }
+
+  function changeServerUrl() {
+    var current = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://10.44.69.36:5000';
+    var newUrl = window.prompt(
+      'Enter your Laptop Backend Server URL:\n(Your laptop IP is http://10.44.69.36:5000)',
+      current
+    );
+    if (newUrl && newUrl.trim()) {
+      var trimmed = newUrl.trim().replace(/\/+$/, '');
+      try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
+      if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = trimmed;
+      if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = trimmed;
+      SafeHer.toast('Server URL updated! Checking...');
+      updateBackendBadge();
+      setTimeout(function() { window.location.reload(); }, 1200);
+    }
   }
 
   function copyQuickTriggerUrl() {
@@ -580,6 +599,7 @@ SafeHer.profile = (function() {
     deleteAccountAndData: deleteAccountAndData,
     confirmClearAllData: confirmClearAllData,
     updateBackendBadge: updateBackendBadge,
+    changeServerUrl: changeServerUrl,
     copyQuickTriggerUrl: copyQuickTriggerUrl,
     testBackgroundAlert: testBackgroundAlert
   };
