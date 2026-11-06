@@ -320,16 +320,10 @@
           <button class="chip" onclick="SafeHer.router.go('fake-call')">
             <span class="material-symbols-rounded">phone</span><span data-i18n="homeFakeCall">Fake Call</span>
           </button>
-          <button class="chip" onclick="SafeHer.router.go('tips')">
-            <span class="material-symbols-rounded">lightbulb</span><span data-i18n="homeTips">Tips</span>
-          </button>
-          <button class="chip" onclick="SafeHer.router.go('record-evidence')">
-            <span class="material-symbols-rounded">mic</span><span data-i18n="homeEvidence">Evidence</span>
-          </button>
         </div>
       </div>
 
-      <!-- Tile grid: 9 Balanced Tiles (3x3) -->
+      <!-- Tile grid: 6 Core Safety Tools (2x3) -->
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.router.go('ride')">
           <span class="material-symbols-rounded">local_taxi</span>
@@ -354,18 +348,6 @@
         <button class="tile" onclick="if(SafeHer.helpRights && SafeHer.helpRights.render){SafeHer.helpRights.render();}SafeHer.router.go('help-rights')">
           <span class="material-symbols-rounded">local_police</span>
           <span class="tile-label" data-i18n="homeHelpRights">Help &amp; Rights</span>
-        </button>
-        <button class="tile" onclick="SafeHer.vault.openVaultScreen()">
-          <span class="material-symbols-rounded">lock</span>
-          <span class="tile-label">Evidence Vault</span>
-        </button>
-        <button class="tile" onclick="SafeHer.router.go('complaint-letter')">
-          <span class="material-symbols-rounded">description</span>
-          <span class="tile-label">Complaint</span>
-        </button>
-        <button class="tile" onclick="SafeHer.router.go('history')">
-          <span class="material-symbols-rounded">history</span>
-          <span class="tile-label" data-i18n="homeHistory">Alert History</span>
         </button>
       </div>
 
