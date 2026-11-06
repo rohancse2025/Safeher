@@ -199,14 +199,19 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT v.user_id, v.lat, v.lng
+                SELECT v.user_id, v.lat, v.lng, v.level, v.valid_until
                 FROM volunteers v
-                WHERE v.available = 1 AND v.status = 'approved' AND v.user_id != ?
+                WHERE v.available = 1 AND v.status = 'approved'
+                  AND (v.valid_until IS NULL OR v.valid_until > CURRENT_TIMESTAMP)
+                  AND v.user_id != ?
                   AND v.lat IS NOT NULL AND v.lng IS NOT NULL;
             ''', (exclude_user_id,))
             volunteers = cursor.fetchall()
 
             for vol in volunteers:
+                # Provisional volunteers never receive silent-mode alerts
+                if alert_mode == 'silent' and vol['level'] != 'trusted':
+                    continue
                 v_lat = vol['lat']
                 v_lng = vol['lng']
                 # Haversine distance

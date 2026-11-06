@@ -323,6 +323,11 @@ SafeHer.volunteer = (function() {
     // Render verification state
     renderVerificationBadge(profile.status || 'pending');
 
+    // Trigger volunteer 5-step wizard or status screen
+    if (SafeHer.volunteerApply && SafeHer.volunteerApply.initOrRender) {
+      SafeHer.volunteerApply.initOrRender();
+    }
+
     // Query backend for latest profile status
     if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
       SafeHer.api.getVolunteerServerProfile(function(err, serverProf) {

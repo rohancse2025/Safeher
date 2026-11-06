@@ -1066,3 +1066,158 @@ def test_email():
             "message": f"Test email sent successfully to {user_email}"
         }
     }), 200
+
+
+# ─── Route: GET /api/alerts/<id>/responder-selfie/<vol_id> ───
+@alerts_bp.route('/api/alerts/<int:alert_id>/responder-selfie/<int:volunteer_id>', methods=['GET'])
+def get_responder_selfie(alert_id, volunteer_id):
+    """
+    Serves the selfie of a responding volunteer ONLY to the authenticated alert owner.
+    """
+    import os
+    from flask import send_file
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. Verify alert exists and current user is the alert owner
+    cursor.execute('SELECT id, user_id FROM alerts WHERE id = ?;', (alert_id,))
+    alert = cursor.fetchone()
+    if not alert:
+        conn.close()
+        return jsonify({"ok": False, "error": "Alert not found"}), 404
+
+    if alert['user_id'] != user['id']:
+        conn.close()
+        return jsonify({"ok": False, "error": "Forbidden: Only the alert owner can view responder selfies"}), 403
+
+    # 2. Verify volunteer actually responded 'coming' to this alert
+    cursor.execute('''
+        SELECT r.id FROM responses r
+        WHERE r.alert_id = ? AND r.volunteer_id = ? AND r.status = 'coming';
+    ''', (alert_id, volunteer_id))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Volunteer has not responded 'coming' to this alert"}), 404
+
+    # 3. Retrieve selfie path
+    cursor.execute('SELECT selfie_path FROM volunteers WHERE id = ?;', (volunteer_id,))
+    vol = cursor.fetchone()
+    conn.close()
+
+    if not vol or not vol['selfie_path']:
+        return jsonify({"ok": False, "error": "No selfie on file for this volunteer"}), 404
+
+    selfie_path = vol['selfie_path']
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    full_path = os.path.join(backend_dir, selfie_path) if not os.path.isabs(selfie_path) else selfie_path
+
+    if not os.path.exists(full_path):
+        return jsonify({"ok": False, "error": "Selfie file not found on disk"}), 404
+
+    mime = 'image/jpeg' if full_path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'
+    return send_file(full_path, mimetype=mime)
+
+
+# ─── Route: POST /api/alerts/<id>/volunteer-feedback ─────────
+@alerts_bp.route('/api/alerts/<int:alert_id>/volunteer-feedback', methods=['POST'])
+def submit_volunteer_feedback(alert_id):
+    """
+    POST /api/alerts/<id>/volunteer-feedback
+    {volunteer_id, helpful, respectful, report_type: none|unsafe|inappropriate|other, comment}
+    (alert owner only, once per volunteer per alert).
+    Any report_type of "unsafe" or "inappropriate" sets volunteer to "suspended" immediately.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. Verify alert and ownership
+    cursor.execute('SELECT id, user_id FROM alerts WHERE id = ?;', (alert_id,))
+    alert = cursor.fetchone()
+    if not alert:
+        conn.close()
+        return jsonify({"ok": False, "error": "Alert not found"}), 404
+
+    if alert['user_id'] != user['id']:
+        conn.close()
+        return jsonify({"ok": False, "error": "Forbidden: Only the alert owner can submit volunteer feedback"}), 403
+
+    data = request.get_json(silent=True) or {}
+    volunteer_id = data.get('volunteer_id')
+    if not volunteer_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "volunteer_id is required"}), 400
+
+    helpful = bool(data.get('helpful', True))
+    respectful = bool(data.get('respectful', True))
+    report_type = (data.get('report_type') or 'none').strip().lower()
+    comment = (data.get('comment') or '').strip()
+
+    valid_reports = {"none", "unsafe", "inappropriate", "other"}
+    if report_type not in valid_reports:
+        conn.close()
+        return jsonify({"ok": False, "error": f"Invalid report_type '{report_type}'. Choose from: {', '.join(sorted(valid_reports))}"}), 400
+
+    # 2. Verify volunteer responded to this alert
+    cursor.execute('SELECT id FROM responses WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Volunteer did not respond to this alert"}), 400
+
+    # 3. Check if feedback already submitted (once per volunteer per alert)
+    cursor.execute('SELECT id FROM volunteer_feedback WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Feedback already submitted for this volunteer on this alert"}), 400
+
+    # 4. Insert feedback
+    cursor.execute('''
+        INSERT INTO volunteer_feedback (alert_id, volunteer_id, user_id, helpful, respectful, report_type, comment)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+    ''', (alert_id, volunteer_id, user['id'], 1 if helpful else 0, 1 if respectful else 0, report_type, comment))
+
+    # 5. Check if unsafe or inappropriate report -> immediately suspend volunteer
+    suspended = False
+    if report_type in ("unsafe", "inappropriate"):
+        cursor.execute('''
+            UPDATE volunteers
+            SET status = 'suspended',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        ''', (volunteer_id,))
+        suspended = True
+
+        # Audit row in volunteer_reviews
+        cursor.execute('''
+            INSERT INTO volunteer_reviews (volunteer_id, reviewer, action, note)
+            VALUES (?, 'system', 'suspend', ?);
+        ''', (volunteer_id, f"Volunteer suspended immediately due to {report_type} feedback on alert #{alert_id}. Comment: {comment}"))
+
+        # Log in incident_events (anonymously)
+        cursor.execute('''
+            INSERT INTO incident_events (alert_id, event_type, actor_label, details)
+            VALUES (?, 'volunteer_reported', 'Alert Owner', ?);
+        ''', (alert_id, f"Alert owner reported responder for {report_type} conduct. Volunteer suspended."))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "alert_id": alert_id,
+            "volunteer_id": volunteer_id,
+            "helpful": helpful,
+            "respectful": respectful,
+            "report_type": report_type,
+            "volunteer_suspended": suspended,
+            "message": "Feedback submitted successfully" + (" and volunteer suspended pending admin review." if suspended else ".")
+        }
+    }), 200

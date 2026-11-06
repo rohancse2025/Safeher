@@ -3,62 +3,114 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>SafeHer – Admin Dashboard</title>
+  <title>SafeHer – Volunteer Review &amp; Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="./css/style.css?v=16" />
+  <link rel="stylesheet" href="./css/style.css?v=17" />
   <style>
+    :root {
+      --color-crimson: #A80F3C;
+      --color-crimson-dark: #870B30;
+      --color-crimson-light: #FCEFF3;
+      --color-border: #EAD3DA;
+      --color-text-main: #333333;
+      --color-text-muted: #666666;
+      --color-bg-page: #FCEFF3;
+      --color-bg-card: #FFFFFF;
+      --color-high-risk: #A80F3C;
+      --color-info-risk: #555555;
+      --color-success: #2E7D32;
+    }
+
     body {
-      background: #FCEFF3;
+      background: var(--color-bg-page);
       margin: 0;
       padding: 16px;
       font-family: 'Poppins', sans-serif;
       min-height: 100vh;
       box-sizing: border-box;
-      color: #333333;
+      color: var(--color-text-main);
     }
+
     .admin-container {
       width: 100%;
-      max-width: 900px;
+      max-width: 1100px;
       margin: 0 auto;
     }
+
+    /* Header */
     .admin-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 20px;
       padding-bottom: 14px;
-      border-bottom: 1px solid #EAD3DA;
+      border-bottom: 1px solid var(--color-border);
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 12px;
     }
     .admin-brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
     .admin-brand-icon {
-      width: 36px;
-      height: 36px;
-      background: #A80F3C;
+      width: 40px;
+      height: 40px;
+      background: var(--color-crimson);
       color: #FFFFFF;
-      border-radius: 6px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
+      font-size: 24px;
     }
     .admin-brand-title {
-      font-size: 19px;
+      font-size: 20px;
       font-weight: 700;
-      color: #A80F3C;
+      color: var(--color-crimson);
       margin: 0;
+      line-height: 1.2;
     }
-    .admin-card {
+    .admin-brand-sub {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      font-weight: 500;
+    }
+    .reviewer-identity-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       background: #FFFFFF;
-      border: 1px solid #EAD3DA;
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-main);
+    }
+    .reviewer-identity-pill strong {
+      color: var(--color-crimson);
+    }
+    .policy-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #FFF8E1;
+      border: 1px solid #FFE082;
+      color: #B78103;
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Cards */
+    .admin-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       padding: 20px;
       margin-bottom: 20px;
@@ -67,44 +119,162 @@
       font-size: 16px;
       font-weight: 700;
       margin: 0 0 14px;
-      color: #333333;
+      color: var(--color-text-main);
       display: flex;
       align-items: center;
       gap: 8px;
     }
+
     /* Stats Grid */
     .admin-stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
     .admin-stat-card {
-      background: #FFFFFF;
-      border: 1px solid #EAD3DA;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
-      padding: 14px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
       gap: 4px;
     }
     .admin-stat-label {
       font-size: 12px;
-      color: #777777;
+      color: var(--color-text-muted);
       margin: 0;
       font-weight: 500;
     }
     .admin-stat-value {
       font-size: 24px;
       font-weight: 700;
-      color: #A80F3C;
+      color: var(--color-crimson);
       margin: 0;
     }
-    /* Plain Table Layout */
+
+    /* Buttons */
+    .btn-admin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      border: 1px solid transparent;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .btn-crimson {
+      background: var(--color-crimson);
+      color: #FFFFFF;
+      border-color: var(--color-crimson);
+    }
+    .btn-crimson:hover {
+      background: var(--color-crimson-dark);
+    }
+    .btn-crimson:disabled {
+      background: #D98299;
+      border-color: #D98299;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .btn-outline-crimson {
+      background: #FFFFFF;
+      color: var(--color-crimson);
+      border: 1px solid var(--color-border);
+    }
+    .btn-outline-crimson:hover {
+      background: var(--color-crimson-light);
+      border-color: var(--color-crimson);
+    }
+    .btn-neutral {
+      background: #FFFFFF;
+      color: var(--color-text-main);
+      border: 1px solid #CCCCCC;
+    }
+    .btn-neutral:hover {
+      background: #F5F5F5;
+      color: #111111;
+    }
+    .btn-danger {
+      background: #FFFFFF;
+      color: #C62828;
+      border: 1px solid #FFCDD2;
+    }
+    .btn-danger:hover {
+      background: #FFEBEE;
+    }
+    .btn-success {
+      background: var(--color-success);
+      color: #FFFFFF;
+      border-color: var(--color-success);
+    }
+    .btn-success:hover {
+      background: #1B5E20;
+    }
+
+    /* Tabs */
+    .queue-tabs-bar {
+      display: flex;
+      gap: 6px;
+      border-bottom: 2px solid var(--color-border);
+      margin-bottom: 16px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .queue-tab-btn {
+      background: none;
+      border: none;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .queue-tab-btn:hover {
+      color: var(--color-crimson);
+    }
+    .queue-tab-btn.active {
+      color: var(--color-crimson);
+      border-bottom-color: var(--color-crimson);
+    }
+    .tab-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 12px;
+      background: #F0E6E9;
+      color: var(--color-text-muted);
+    }
+    .queue-tab-btn.active .tab-badge {
+      background: var(--color-crimson-light);
+      color: var(--color-crimson);
+    }
+    .tab-badge-flag {
+      background: #FFEBEE !important;
+      color: #C62828 !important;
+      border: 1px solid #FFCDD2;
+    }
+
+    /* Table */
     .table-wrap {
       width: 100%;
       overflow-x: auto;
-      border: 1px solid #EAD3DA;
+      border: 1px solid var(--color-border);
       border-radius: 6px;
     }
     .plain-table {
@@ -115,18 +285,18 @@
       background: #FFFFFF;
     }
     .plain-table th {
-      background: #FCEFF3;
-      color: #A80F3C;
+      background: var(--color-crimson-light);
+      color: var(--color-crimson);
       font-weight: 600;
-      padding: 10px 12px;
-      border-bottom: 1px solid #EAD3DA;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--color-border);
       white-space: nowrap;
     }
     .plain-table td {
       padding: 12px;
-      border-bottom: 1px solid #EAD3DA;
+      border-bottom: 1px solid var(--color-border);
       vertical-align: middle;
-      color: #333333;
+      color: var(--color-text-main);
     }
     .plain-table tr:last-child td {
       border-bottom: none;
@@ -134,99 +304,252 @@
     .plain-table tr:hover {
       background: #FAF5F7;
     }
-    .btn-action-group {
-      display: flex;
-      gap: 6px;
-      white-space: nowrap;
-    }
-    .btn-admin {
+
+    /* Badges */
+    .badge {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
       gap: 4px;
-      padding: 6px 12px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
+      padding: 3px 8px;
       border-radius: 4px;
-      cursor: pointer;
-      font-family: inherit;
-      border: 1px solid transparent;
-      text-decoration: none;
+      white-space: nowrap;
     }
-    .btn-approve {
-      background: #A80F3C;
-      color: #FFFFFF;
-      border-color: #A80F3C;
+    .badge-status-submitted {
+      background: #FFF3E0;
+      color: #E65100;
+      border: 1px solid #FFE0B2;
     }
-    .btn-approve:hover {
-      background: #870b30;
+    .badge-status-in_review {
+      background: #E3F2FD;
+      color: #0D47A1;
+      border: 1px solid #BBDEFB;
     }
-    .btn-reject {
-      background: #FFFFFF;
-      color: #777777;
-      border-color: #CCCCCC;
+    .badge-status-approved {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #C8E6C9;
     }
-    .btn-reject:hover {
+    .badge-status-suspended {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #FFCDD2;
+    }
+    .badge-status-rejected {
+      background: #ECEFF1;
+      color: #455A64;
+      border: 1px solid #CFD8DC;
+    }
+    .badge-status-revoked {
+      background: #FBE9E7;
+      color: #D84315;
+      border: 1px solid #FFCCBC;
+    }
+    .badge-flag-high {
+      background: var(--color-crimson-light);
+      color: var(--color-crimson);
+      border: 1px solid var(--color-crimson);
+      font-weight: 700;
+    }
+    .badge-flag-info {
       background: #F5F5F5;
-      color: #333333;
+      color: #555555;
+      border: 1px solid #CCCCCC;
     }
-    .btn-lock {
-      background: #FFFFFF;
-      color: #A80F3C;
-      border: 1px solid #EAD3DA;
-      padding: 7px 14px;
-      font-size: 13px;
-      border-radius: 6px;
+    .badge-flag-clean {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #C8E6C9;
     }
-    .btn-lock:hover {
-      background: #FCEFF3;
-    }
-    /* Auth Form */
+
+    /* Auth Box */
     .admin-auth-card {
-      max-width: 420px;
+      max-width: 440px;
       margin: 60px auto 0;
       background: #FFFFFF;
-      border: 1px solid #EAD3DA;
+      border: 1px solid var(--color-border);
       border-radius: 8px;
-      padding: 28px 24px;
+      padding: 32px 28px;
       text-align: center;
     }
-    .admin-input {
+    .admin-input, .admin-textarea, .admin-select {
       width: 100%;
-      padding: 12px;
-      font-size: 14px;
+      padding: 10px 12px;
+      font-size: 13px;
       font-family: inherit;
-      border: 1px solid #EAD3DA;
+      border: 1px solid var(--color-border);
       border-radius: 6px;
       box-sizing: border-box;
-      margin: 14px 0;
       outline: none;
+      background: #FFFFFF;
+      color: var(--color-text-main);
     }
-    .admin-input:focus {
-      border-color: #A80F3C;
+    .admin-input:focus, .admin-textarea:focus, .admin-select:focus {
+      border-color: var(--color-crimson);
     }
+
+    /* Banners */
     .admin-msg-box {
       font-size: 13px;
-      padding: 10px 14px;
+      padding: 12px 16px;
       border-radius: 6px;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
       display: none;
-      text-align: left;
+      line-height: 1.4;
     }
     .admin-msg-error {
-      background: #FCEFF3;
-      color: #A80F3C;
-      border: 1px solid #EAD3DA;
+      background: var(--color-crimson-light);
+      color: var(--color-crimson);
+      border: 1px solid var(--color-crimson);
+      font-weight: 500;
     }
     .admin-msg-success {
       background: #E8F5E9;
       color: #2E7D32;
       border: 1px solid #C8E6C9;
+      font-weight: 500;
     }
-    .empty-state {
-      padding: 30px 16px;
+
+    /* Packet Layout */
+    .packet-header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .packet-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 860px) {
+      .packet-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .field-pair {
+      margin-bottom: 10px;
+    }
+    .field-label {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .field-val {
+      font-size: 13px;
+      color: var(--color-text-main);
+      font-weight: 500;
+      word-break: break-word;
+    }
+
+    /* Risk Flags Box */
+    .risk-flag-item {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .risk-flag-high {
+      background: var(--color-crimson-light);
+      border: 1px solid var(--color-crimson);
+      color: var(--color-crimson);
+    }
+    .risk-flag-info {
+      background: #F5F5F5;
+      border: 1px solid #CCCCCC;
+      color: #444444;
+    }
+
+    /* Comparison Photos */
+    .photos-comparison-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .photo-preview-box {
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 8px;
+      background: #FAF5F7;
       text-align: center;
-      color: #777777;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .photo-preview-img {
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      object-fit: contain;
+      background: #000000;
+    }
+
+    /* Decision Checklist */
+    .decision-checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #FAF5F7;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .decision-checklist-item input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--color-crimson);
+      cursor: pointer;
+    }
+
+    /* Audit Timeline */
+    .audit-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .audit-entry {
+      background: #FAF5F7;
+      border-left: 3px solid var(--color-crimson);
+      padding: 8px 12px;
+      border-radius: 0 4px 4px 0;
+      font-size: 12px;
+    }
+    .audit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--color-text-muted);
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+
+    .empty-state {
+      padding: 36px 16px;
+      text-align: center;
+      color: var(--color-text-muted);
       font-size: 13px;
     }
   </style>
@@ -237,18 +560,26 @@
     <header class="admin-header">
       <div class="admin-brand">
         <div class="admin-brand-icon">
-          <span class="material-symbols-rounded">admin_panel_settings</span>
+          <span class="material-symbols-rounded">security</span>
         </div>
         <div>
-          <h1 class="admin-brand-title">SafeHer Admin</h1>
-          <span style="font-size: 11px; color: #777777;">Volunteer Verification & Platform Stats</span>
+          <h1 class="admin-brand-title">SafeHer Volunteer Review</h1>
+          <span class="admin-brand-sub">Community Safety &amp; Applicant Verification Portal</span>
         </div>
       </div>
-      <div id="admin-header-actions" style="display: none; gap: 8px;">
-        <button type="button" class="btn-admin btn-lock" onclick="refreshAdminData()">
+      <div id="admin-header-actions" style="display: none; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <div id="admin-reviewer-badge" class="reviewer-identity-pill">
+          <span class="material-symbols-rounded" style="font-size: 16px; color: var(--color-crimson);">person</span>
+          Signed in as <strong id="reviewer-name-display">Admin</strong>
+        </div>
+        <div id="two-reviewer-mode-pill" class="policy-pill" style="display: none;">
+          <span class="material-symbols-rounded" style="font-size: 15px;">verified</span>
+          Dual-Reviewer Mode Active
+        </div>
+        <button type="button" class="btn-admin btn-outline-crimson" onclick="refreshAdminData()">
           <span class="material-symbols-rounded" style="font-size: 16px;">refresh</span>Refresh
         </button>
-        <button type="button" class="btn-admin btn-lock" onclick="logoutAdmin()">
+        <button type="button" class="btn-admin btn-neutral" onclick="logoutAdmin()">
           <span class="material-symbols-rounded" style="font-size: 16px;">lock</span>Lock
         </button>
       </div>
@@ -259,19 +590,19 @@
 
     <!-- 1. Authentication View -->
     <div id="admin-auth-view" class="admin-auth-card">
-      <span class="material-symbols-rounded" style="font-size: 44px; color: #A80F3C; margin-bottom: 8px;">key</span>
-      <h2 style="font-size: 18px; margin: 0 0 6px; color: #333333;">Admin Authentication</h2>
-      <p style="font-size: 13px; color: #777777; margin: 0 0 16px;">Enter the ADMIN_KEY to access volunteer verification and system statistics.</p>
+      <span class="material-symbols-rounded" style="font-size: 48px; color: var(--color-crimson); margin-bottom: 8px;">verified_user</span>
+      <h2 style="font-size: 19px; margin: 0 0 6px; color: var(--color-text-main);">Admin &amp; Reviewer Authentication</h2>
+      <p style="font-size: 13px; color: var(--color-text-muted); margin: 0 0 20px;">Enter your Reviewer Key from <code>ADMIN_REVIEWERS</code> to sign in.</p>
       
       <form onsubmit="handleAuthSubmit(event)">
-        <input type="password" id="admin-key-input" class="admin-input" placeholder="Enter ADMIN_KEY" autocomplete="current-password" required />
-        <button type="submit" class="btn btn-primary btn-crimson" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; border-radius: 6px; background: #A80F3C; color: #FFFFFF;">
-          Unlock Dashboard
+        <input type="password" id="admin-key-input" class="admin-input" placeholder="Enter Reviewer Key (e.g. key_rev1_2026)" autocomplete="current-password" required />
+        <button type="submit" class="btn-admin btn-crimson" style="width: 100%; padding: 12px; font-size: 14px; margin-top: 14px;">
+          <span class="material-symbols-rounded" style="font-size: 18px;">key</span>Unlock Review Dashboard
         </button>
       </form>
     </div>
 
-    <!-- 2. Dashboard View -->
+    <!-- 2. Main Dashboard View -->
     <div id="admin-dashboard-view" style="display: none;">
       <!-- Stats Block -->
       <section class="admin-stats-grid">
@@ -293,83 +624,333 @@
         </div>
       </section>
 
-      <!-- Pending Volunteers List -->
-      <section class="admin-card">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-          <h2 class="admin-card-title" style="margin: 0;">
-            <span class="material-symbols-rounded" style="color: #A80F3C;">verified_user</span>
-            Pending Volunteer Verification
-          </h2>
-          <button type="button" class="btn-admin btn-approve" onclick="approveAllVolunteers()" style="font-size: 12px; padding: 6px 12px;">
-            <span class="material-symbols-rounded" style="font-size: 16px;">done_all</span>Approve All Pending
-          </button>
-        </div>
-        
-        <div class="table-wrap">
-          <table class="plain-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Note</th>
-                <th>Registered</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="pending-volunteers-tbody">
-              <tr>
-                <td colspan="6" class="empty-state">Loading pending volunteers...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <!-- Queue View (Filter Tabs & Volunteers List) -->
+      <div id="volunteer-queue-view">
+        <section class="admin-card">
+          <!-- Filter Tabs Bar -->
+          <div class="queue-tabs-bar">
+            <button type="button" class="queue-tab-btn active" data-tab="submitted" onclick="switchQueueTab('submitted')">
+              Submitted <span id="tab-count-submitted" class="tab-badge">0</span>
+              <span id="tab-flags-submitted" class="tab-badge tab-badge-flag" style="display: none;">! 0</span>
+            </button>
+            <button type="button" class="queue-tab-btn" data-tab="in_review" onclick="switchQueueTab('in_review')">
+              In Review <span id="tab-count-in_review" class="tab-badge">0</span>
+              <span id="tab-flags-in_review" class="tab-badge tab-badge-flag" style="display: none;">! 0</span>
+            </button>
+            <button type="button" class="queue-tab-btn" data-tab="approved" onclick="switchQueueTab('approved')">
+              Approved <span id="tab-count-approved" class="tab-badge">0</span>
+            </button>
+            <button type="button" class="queue-tab-btn" data-tab="suspended" onclick="switchQueueTab('suspended')">
+              Suspended <span id="tab-count-suspended" class="tab-badge">0</span>
+            </button>
+            <button type="button" class="queue-tab-btn" data-tab="rejected" onclick="switchQueueTab('rejected')">
+              Rejected <span id="tab-count-rejected" class="tab-badge">0</span>
+            </button>
+            <button type="button" class="queue-tab-btn" data-tab="all" onclick="switchQueueTab('all')">
+              All <span id="tab-count-all" class="tab-badge">0</span>
+            </button>
+          </div>
 
-      <!-- Approved Community Volunteers -->
-      <section class="admin-card">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-          <h2 class="admin-card-title" style="margin: 0;">
-            <span class="material-symbols-rounded" style="color: #2E7D32;">group</span>
-            Approved Community Volunteers
-          </h2>
-          <span id="approved-volunteers-badge" style="font-size: 11px; background: #E8F5E9; color: #2E7D32; font-weight: 600; padding: 3px 8px; border-radius: 4px;">0 Approved</span>
-        </div>
-        
-        <div class="table-wrap">
-          <table class="plain-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Status</th>
-                <th>Availability</th>
-                <th>Last GPS</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="approved-volunteers-tbody">
-              <tr>
-                <td colspan="7" class="empty-state">Loading approved volunteers...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <!-- Table of Volunteers -->
+          <div class="table-wrap">
+            <table class="plain-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Applicant</th>
+                  <th>Phone / Locality</th>
+                  <th>ID Type &amp; Last 4</th>
+                  <th>Training</th>
+                  <th>Risk Flags</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="volunteers-tbody">
+                <tr>
+                  <td colspan="8" class="empty-state">Loading volunteers queue...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
 
-      <!-- System Logs (Last 100 Lines) -->
-      <section class="admin-card">
+      <!-- Applicant Review Packet View (Single Applicant Deep-Dive) -->
+      <div id="applicant-packet-view" style="display: none;">
+        <section class="admin-card">
+          <!-- Packet Header Bar -->
+          <div class="packet-header-bar">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <button type="button" class="btn-admin btn-outline-crimson" onclick="closeReviewPacket()">
+                <span class="material-symbols-rounded" style="font-size: 16px;">arrow_back</span>Back to Queue
+              </button>
+              <div>
+                <h2 id="packet-applicant-name" style="font-size: 18px; margin: 0; color: var(--color-text-main);">Volunteer Application</h2>
+                <span id="packet-applicant-sub" style="font-size: 12px; color: var(--color-text-muted);">Application #0</span>
+              </div>
+            </div>
+            <div id="packet-status-pill"></div>
+          </div>
+
+          <!-- Refusal / Action Error Banner -->
+          <div id="packet-error-banner" class="admin-msg-box admin-msg-error"></div>
+
+          <!-- Risk Flags Section -->
+          <div id="packet-flags-container" style="margin-bottom: 16px;"></div>
+
+          <!-- Grid: Details & Identity Photos -->
+          <div class="packet-grid">
+            <!-- Left Card: Applicant Profile & Declaration -->
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 14px;">
+                <h3 class="admin-card-title" style="margin: 0 0 12px; font-size: 14px;">
+                  <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">badge</span>
+                  Applicant Details
+                </h3>
+                <div class="field-pair">
+                  <div class="field-label">Full Name &amp; DOB</div>
+                  <div id="field-fullname-dob" class="field-val">-</div>
+                </div>
+                <div class="field-pair">
+                  <div class="field-label">Phone &amp; Locality</div>
+                  <div id="field-phone-locality" class="field-val">-</div>
+                </div>
+                <div class="field-pair">
+                  <div class="field-label">Motivation</div>
+                  <div id="field-motivation" class="field-val" style="font-style: italic; color: #555;">-</div>
+                </div>
+                <div class="field-pair">
+                  <div class="field-label">Availability</div>
+                  <div id="field-availability" class="field-val">-</div>
+                </div>
+              </div>
+
+              <!-- Safety Training & Declaration -->
+              <div style="background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 14px;">
+                <h3 class="admin-card-title" style="margin: 0 0 12px; font-size: 14px;">
+                  <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">school</span>
+                  Safety Training &amp; Declaration
+                </h3>
+                <div class="field-pair">
+                  <div class="field-label">Training Score</div>
+                  <div id="field-training-score" class="field-val">-</div>
+                </div>
+                <div class="field-pair">
+                  <div class="field-label">Declaration Accepted</div>
+                  <div id="field-declaration-info" class="field-val">-</div>
+                </div>
+                <div class="field-pair">
+                  <div class="field-label">Typed Signature</div>
+                  <div id="field-typed-signature" class="field-val">-</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Card: Photo Comparison & ID Document -->
+            <div style="background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 14px;">
+              <h3 class="admin-card-title" style="margin: 0 0 8px; font-size: 14px;">
+                <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">face</span>
+                Identity Document &amp; Live Selfie Comparison
+              </h3>
+              <p style="font-size: 11px; color: var(--color-text-muted); margin: 0 0 10px;">
+                Compare applicant's live selfie against government ID. ID photo is securely wiped 7 days after decision.
+              </p>
+              
+              <div class="field-pair" style="margin-bottom: 12px;">
+                <div class="field-label">ID Type &amp; Number</div>
+                <div id="field-id-type-last4" class="field-val" style="font-weight: 700; color: var(--color-crimson);">-</div>
+              </div>
+
+              <div class="photos-comparison-wrap">
+                <!-- Selfie Container -->
+                <div class="photo-preview-box">
+                  <div style="font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px;">Live Selfie Photo</div>
+                  <img id="packet-selfie-img" class="photo-preview-img" alt="Applicant Selfie" style="display: none;" />
+                  <div id="packet-selfie-loading" style="font-size: 11px; color: #888;">Loading selfie...</div>
+                </div>
+
+                <!-- ID Document Container -->
+                <div class="photo-preview-box">
+                  <div style="font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px;">ID Photo (Encrypted)</div>
+                  <img id="packet-id-img" class="photo-preview-img" alt="Applicant ID Document" style="display: none;" />
+                  <div id="packet-id-hidden-notice" style="padding: 10px;">
+                    <span class="material-symbols-rounded" style="font-size: 32px; color: #999;">visibility_off</span>
+                    <p style="font-size: 11px; color: #777; margin: 4px 0 10px;">Photo hidden for privacy. Viewing writes an audit log row.</p>
+                    <button type="button" class="btn-admin btn-outline-crimson" onclick="revealCurrentIdImage()">
+                      <span class="material-symbols-rounded" style="font-size: 16px;">visibility</span>Reveal ID Photo
+                    </button>
+                  </div>
+                  <div id="packet-id-audit-msg" style="display: none; font-size: 10px; color: var(--color-success); margin-top: 6px;">
+                    ✓ Audit row logged
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- References Verification Section -->
+          <div style="margin-top: 16px; background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 16px;">
+            <h3 class="admin-card-title" style="margin: 0 0 10px; font-size: 14px;">
+              <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">contacts</span>
+              Reference Check Verification (2 Confirmed Required)
+            </h3>
+            <p style="font-size: 12px; color: var(--color-text-muted); margin: 0 0 14px;">
+              Reviewer must call both references to confirm applicant trust and background.
+            </p>
+            <div id="packet-references-list" style="display: flex; flex-direction: column; gap: 12px;"></div>
+          </div>
+
+          <!-- Phone Interview Verification Section -->
+          <div style="margin-top: 16px; background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 16px;">
+            <h3 class="admin-card-title" style="margin: 0 0 10px; font-size: 14px;">
+              <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">phone_in_talk</span>
+              Applicant Phone Interview (Verifies Phone Ownership)
+            </h3>
+            <p style="font-size: 12px; color: var(--color-text-muted); margin: 0 0 14px;">
+              The reviewer must call the applicant's own registered phone number to verify phone ownership and identity.
+            </p>
+
+            <form id="interview-form" onsubmit="submitInterviewForm(event)">
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;">
+                <label class="decision-checklist-item" style="flex: 1; min-width: 240px;">
+                  <input type="checkbox" id="interview-check-phone" />
+                  <span>Called applicant's registered number (<span id="interview-phone-target">-</span>)</span>
+                </label>
+                <label class="decision-checklist-item" style="flex: 1; min-width: 240px;">
+                  <input type="checkbox" id="interview-check-identity" />
+                  <span>Confirmed applicant identity on call</span>
+                </label>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <textarea id="interview-notes-input" class="admin-textarea" rows="2" placeholder="Record interview notes (applicant demeanor, availability confirmation, safety questions)..."></textarea>
+              </div>
+              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                <span id="interview-saved-badge" style="font-size: 11px; color: var(--color-success); font-weight: 600; display: none;">✓ Interview recorded</span>
+                <button type="submit" class="btn-admin btn-outline-crimson">
+                  <span class="material-symbols-rounded" style="font-size: 16px;">save</span>Save Interview Record
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Gated Review Decision Panel -->
+          <div style="margin-top: 16px; background: #FFFFFF; border: 2px solid var(--color-border); border-radius: 8px; padding: 18px;">
+            <h3 class="admin-card-title" style="margin: 0 0 12px; font-size: 15px; color: var(--color-crimson);">
+              <span class="material-symbols-rounded" style="font-size: 20px;">gavel</span>
+              Application Decision &amp; Verification Gates
+            </h3>
+
+            <!-- 4 Required Checklist Items -->
+            <div style="margin-bottom: 14px;">
+              <div class="field-label" style="margin-bottom: 6px;">Required Verification Checklist (All 4 must hold for approval):</div>
+              <label class="decision-checklist-item">
+                <input type="checkbox" id="gate-check-photo" onchange="validateDecisionGates()" />
+                <span>1. <strong>Identity matches photo</strong> – Selfie photo verified against revealed ID photo.</span>
+              </label>
+              <label class="decision-checklist-item">
+                <input type="checkbox" id="gate-check-phone" onchange="validateDecisionGates()" />
+                <span>2. <strong>Phone verified by call</strong> – Reviewer called applicant's registered phone.</span>
+              </label>
+              <label class="decision-checklist-item">
+                <input type="checkbox" id="gate-check-interview" onchange="validateDecisionGates()" />
+                <span>3. <strong>Interview done</strong> – Phone interview completed and recorded.</span>
+              </label>
+              <label class="decision-checklist-item">
+                <input type="checkbox" id="gate-check-declaration" onchange="validateDecisionGates()" />
+                <span>4. <strong>Declaration checked</strong> – Terms, code of conduct and signature verified.</span>
+              </label>
+            </div>
+
+            <!-- High Flag Override (Only shown if high flags exist) -->
+            <div id="gate-override-wrap" style="display: none; margin-bottom: 14px; background: var(--color-crimson-light); border: 1px dashed var(--color-crimson); border-radius: 6px; padding: 12px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-crimson); cursor: pointer;">
+                <input type="checkbox" id="gate-check-override" onchange="validateDecisionGates()" style="width: 17px; height: 17px; accent-color: var(--color-crimson);" />
+                <span>Override High-Risk Flags</span>
+              </label>
+              <p style="font-size: 11px; color: var(--color-crimson); margin: 6px 0 0 25px;">
+                High-severity risk flags are detected. To override, check this box AND explicitly mention 'override' or the flag codes in the review note below.
+              </p>
+            </div>
+
+            <!-- Review Note (Minimum 20 Chars) -->
+            <div style="margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div class="field-label">Review Decision Rationale / Notes:</div>
+                <div id="gate-note-counter" style="font-size: 11px; color: var(--color-text-muted); font-weight: 600;">0 / 20 characters min</div>
+              </div>
+              <textarea id="gate-decision-note" class="admin-textarea" rows="3" placeholder="Enter detailed review justification (minimum 20 characters required for approval)..." oninput="validateDecisionGates()"></textarea>
+            </div>
+
+            <!-- Rejection Reason Dropdown (for Reject Action) -->
+            <div id="gate-reject-reason-wrap" style="margin-bottom: 16px;">
+              <div class="field-label" style="margin-bottom: 4px;">Rejection Reason Code (Required if rejecting):</div>
+              <select id="gate-reject-reason-select" class="admin-select">
+                <option value="">Select rejection reason...</option>
+                <option value="id_mismatch">ID Mismatch or Invalid Document (id_mismatch)</option>
+                <option value="references_negative">Negative Reference Outcome (references_negative)</option>
+                <option value="references_unreachable">References Unreachable (references_unreachable)</option>
+                <option value="training_not_passed">Training Score Below 80% (training_not_passed)</option>
+                <option value="incomplete">Incomplete Application or Documentation (incomplete)</option>
+                <option value="safety_concern">Safety or Behavioral Concern (safety_concern)</option>
+                <option value="underage">Applicant Under 18 Years Old (underage)</option>
+                <option value="other">Other Policy Violation (other)</option>
+              </select>
+            </div>
+
+            <!-- Action Buttons Group -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <button type="button" id="btn-decision-approve" class="btn-admin btn-crimson" onclick="handleDecisionAction('approve')" disabled>
+                <span class="material-symbols-rounded" style="font-size: 18px;">verified</span>Approve Volunteer (12 Mos)
+              </button>
+              <button type="button" id="btn-decision-recommend" class="btn-admin btn-outline-crimson" onclick="handleDecisionAction('recommend')">
+                <span class="material-symbols-rounded" style="font-size: 18px;">thumb_up</span>Recommend for Approval
+              </button>
+              <button type="button" id="btn-decision-request-info" class="btn-admin btn-neutral" onclick="handleDecisionAction('request_info')">
+                <span class="material-symbols-rounded" style="font-size: 18px;">help_outline</span>Request Info
+              </button>
+              <button type="button" id="btn-decision-reject" class="btn-admin btn-danger" onclick="handleDecisionAction('reject')">
+                <span class="material-symbols-rounded" style="font-size: 18px;">block</span>Reject Application
+              </button>
+              <button type="button" id="btn-decision-resolve" class="btn-admin btn-success" style="display: none;" onclick="handleDecisionAction('resolve')">
+                <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>Resolve &amp; Restore
+              </button>
+              <button type="button" id="btn-decision-revoke" class="btn-admin btn-danger" style="display: none; margin-left: auto;" onclick="handleRevokeCurrentVolunteer()">
+                <span class="material-symbols-rounded" style="font-size: 18px;">cancel</span>Revoke Privileges
+              </button>
+            </div>
+          </div>
+
+          <!-- Chronological Audit Trail Card -->
+          <div style="margin-top: 16px; background: #FFFFFF; border: 1px solid var(--color-border); border-radius: 8px; padding: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <h3 class="admin-card-title" style="margin: 0; font-size: 14px;">
+                <span class="material-symbols-rounded" style="color: var(--color-crimson); font-size: 18px;">history</span>
+                Audit Trail &amp; Verification Log
+              </h3>
+              <button type="button" class="btn-admin btn-outline-crimson" style="padding: 4px 8px; font-size: 11px;" onclick="reloadPacketAuditTrail()">
+                <span class="material-symbols-rounded" style="font-size: 14px;">sync</span>Refresh Trail
+              </button>
+            </div>
+            <div id="packet-audit-list" class="audit-timeline">
+              <div style="font-size: 12px; color: #888;">Loading audit history...</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Collapsible System Logs Viewer -->
+      <section class="admin-card" style="margin-top: 20px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
           <h2 class="admin-card-title" style="margin: 0;">
-            <span class="material-symbols-rounded" style="color: #A80F3C;">terminal</span>
+            <span class="material-symbols-rounded" style="color: var(--color-crimson);">terminal</span>
             System Logs (Last 100 Lines)
           </h2>
-          <button type="button" class="btn-admin btn-lock" onclick="loadSystemLogs()">
+          <button type="button" class="btn-admin btn-outline-crimson" onclick="loadSystemLogs()">
             <span class="material-symbols-rounded" style="font-size: 16px;">sync</span>Refresh Logs
           </button>
         </div>
-        <div id="admin-logs-viewer" style="background: #FAF5F7; border: 1px solid #EAD3DA; border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 320px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #333333;">Loading system logs...</div>
+        <div id="admin-logs-viewer" style="background: #FAF5F7; border: 1px solid var(--color-border); border-radius: 6px; padding: 14px; font-family: monospace; font-size: 11px; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--color-text-main);">Loading system logs...</div>
       </section>
     </div>
   </div>
@@ -378,6 +959,17 @@
   <script>
     (function() {
       var STORAGE_KEY = 'safeher_admin_key';
+      var state = {
+        key: '',
+        reviewerName: 'Admin',
+        requireTwoReviewers: false,
+        currentTab: 'submitted',
+        volunteers: [],
+        counts: {},
+        selectedVolId: null,
+        currentPacket: null,
+        revealedImageUrls: {}
+      };
 
       function escapeHtml(str) {
         if (str === null || str === undefined) return '';
@@ -401,6 +993,7 @@
       }
 
       function setSavedKey(key) {
+        state.key = key;
         if (key) {
           sessionStorage.setItem(STORAGE_KEY, key);
         } else {
@@ -414,33 +1007,74 @@
         banner.textContent = msg;
         banner.className = 'admin-msg-box ' + (isError ? 'admin-msg-error' : 'admin-msg-success');
         banner.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         if (!isError) {
-          setTimeout(function() {
-            banner.style.display = 'none';
-          }, 4000);
+          setTimeout(function() { banner.style.display = 'none'; }, 4500);
         }
       }
 
       function clearBanner() {
         var banner = document.getElementById('admin-banner');
         if (banner) banner.style.display = 'none';
+        var packetError = document.getElementById('packet-error-banner');
+        if (packetError) packetError.style.display = 'none';
+      }
+
+      function showPacketError(msg) {
+        var packetError = document.getElementById('packet-error-banner');
+        if (!packetError) return;
+        packetError.textContent = msg;
+        packetError.style.display = 'block';
+        packetError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
 
       function adminFetch(endpoint, options) {
         options = options || {};
         options.headers = options.headers || {};
-        var key = getSavedKey();
+        var key = state.key || getSavedKey();
         if (key) {
           options.headers['X-Admin-Key'] = key;
         }
-        options.headers['Content-Type'] = 'application/json';
+        if (!options.headers['Content-Type'] && options.body && typeof options.body === 'string') {
+          options.headers['Content-Type'] = 'application/json';
+        }
 
         var url = getApiBase() + endpoint;
         return fetch(url, options).then(function(res) {
           return res.json().then(function(json) {
             return { ok: res.ok, status: res.status, json: json };
+          }).catch(function() {
+            return { ok: res.ok, status: res.status, json: {} };
           });
         });
+      }
+
+      function adminFetchBlob(endpoint) {
+        var key = state.key || getSavedKey();
+        var headers = {};
+        if (key) {
+          headers['X-Admin-Key'] = key;
+        }
+        var url = getApiBase() + endpoint;
+        return fetch(url, { headers: headers }).then(function(res) {
+          if (!res.ok) {
+            return res.json().then(function(j) { throw new Error(j.error || 'Failed fetching image'); });
+          }
+          return res.blob();
+        });
+      }
+
+      // --- AUTH VIEW & DASHBOARD TOGGLES ---
+      function showAuthView() {
+        document.getElementById('admin-auth-view').style.display = 'block';
+        document.getElementById('admin-dashboard-view').style.display = 'none';
+        document.getElementById('admin-header-actions').style.display = 'none';
+      }
+
+      function showDashboard() {
+        document.getElementById('admin-auth-view').style.display = 'none';
+        document.getElementById('admin-dashboard-view').style.display = 'block';
+        document.getElementById('admin-header-actions').style.display = 'flex';
       }
 
       window.handleAuthSubmit = function(e) {
@@ -452,17 +1086,15 @@
 
         setSavedKey(key);
 
-        // Verify key by fetching stats
         adminFetch('/api/admin/stats').then(function(res) {
           if (!res.ok || !res.json.ok) {
             setSavedKey('');
-            showBanner(res.json.error || 'Invalid Admin Key. Access denied.', true);
+            showBanner(res.json.error || 'Invalid Admin / Reviewer Key. Access denied.', true);
           } else {
-            document.getElementById('admin-key-input').value = '';
+            if (input) input.value = '';
             showDashboard();
-            renderStats(res.json.data);
-            loadPendingVolunteers();
-            loadApprovedVolunteers();
+            applyStatsData(res.json.data);
+            loadVolunteers();
             loadSystemLogs();
           }
         }).catch(function(err) {
@@ -480,193 +1112,710 @@
       window.refreshAdminData = function() {
         clearBanner();
         loadStats();
-        loadPendingVolunteers();
-        loadApprovedVolunteers();
+        if (state.selectedVolId) {
+          openReviewPacket(state.selectedVolId);
+        } else {
+          loadVolunteers();
+        }
         loadSystemLogs();
       };
 
-      function showAuthView() {
-        document.getElementById('admin-auth-view').style.display = 'block';
-        document.getElementById('admin-dashboard-view').style.display = 'none';
-        document.getElementById('admin-header-actions').style.display = 'none';
-      }
+      function applyStatsData(data) {
+        if (!data) return;
+        document.getElementById('stat-total-users').textContent = data.total_users || 0;
+        document.getElementById('stat-active-alerts').textContent = data.active_alerts || 0;
+        document.getElementById('stat-alerts-today').textContent = data.alerts_today || 0;
+        document.getElementById('stat-approved-volunteers').textContent = data.approved_volunteers || 0;
 
-      function showDashboard() {
-        document.getElementById('admin-auth-view').style.display = 'none';
-        document.getElementById('admin-dashboard-view').style.display = 'block';
-        document.getElementById('admin-header-actions').style.display = 'flex';
-      }
+        state.reviewerName = data.reviewer_name || 'Admin';
+        state.requireTwoReviewers = !!data.require_two_reviewers;
 
-      function renderStats(stats) {
-        if (!stats) return;
-        document.getElementById('stat-total-users').textContent = stats.total_users || 0;
-        document.getElementById('stat-active-alerts').textContent = stats.active_alerts || 0;
-        document.getElementById('stat-alerts-today').textContent = stats.alerts_today || 0;
-        document.getElementById('stat-approved-volunteers').textContent = stats.approved_volunteers || 0;
+        var nameEl = document.getElementById('reviewer-name-display');
+        if (nameEl) nameEl.textContent = state.reviewerName;
+
+        var policyPill = document.getElementById('two-reviewer-mode-pill');
+        if (policyPill) {
+          policyPill.style.display = state.requireTwoReviewers ? 'inline-flex' : 'none';
+        }
       }
 
       function loadStats() {
         adminFetch('/api/admin/stats').then(function(res) {
           if (res.ok && res.json.ok) {
-            renderStats(res.json.data);
+            applyStatsData(res.json.data);
           } else if (res.status === 401) {
             logoutAdmin();
           }
         });
       }
 
-      function renderPendingVolunteers(list) {
-        var tbody = document.getElementById('pending-volunteers-tbody');
+      // --- VOLUNTEERS QUEUE & FILTER TABS ---
+      function switchQueueTab(tab) {
+        state.currentTab = tab;
+        var tabBtns = document.querySelectorAll('.queue-tab-btn');
+        tabBtns.forEach(function(btn) {
+          if (btn.getAttribute('data-tab') === tab) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+        renderVolunteersTable();
+      }
+      window.switchQueueTab = switchQueueTab;
+
+      function updateTabBadges(volunteers, counts) {
+        var submittedCount = 0;
+        var inReviewCount = 0;
+        var approvedCount = 0;
+        var suspendedCount = 0;
+        var rejectedCount = 0;
+
+        var submittedHighFlags = 0;
+        var inReviewHighFlags = 0;
+
+        (volunteers || []).forEach(function(v) {
+          var st = (v.status || '').toLowerCase();
+          var highFlags = v.high_flags_count || 0;
+
+          if (st === 'submitted' || st === 'pending') {
+            submittedCount++;
+            if (highFlags > 0) submittedHighFlags += highFlags;
+          } else if (st === 'in_review') {
+            inReviewCount++;
+            if (highFlags > 0) inReviewHighFlags += highFlags;
+          } else if (st === 'approved') {
+            approvedCount++;
+          } else if (st === 'suspended') {
+            suspendedCount++;
+          } else if (st === 'rejected' || st === 'revoked') {
+            rejectedCount++;
+          }
+        });
+
+        document.getElementById('tab-count-submitted').textContent = submittedCount;
+        document.getElementById('tab-count-in_review').textContent = inReviewCount;
+        document.getElementById('tab-count-approved').textContent = approvedCount;
+        document.getElementById('tab-count-suspended').textContent = suspendedCount;
+        document.getElementById('tab-count-rejected').textContent = rejectedCount;
+        document.getElementById('tab-count-all').textContent = volunteers ? volunteers.length : 0;
+
+        var flagSubEl = document.getElementById('tab-flags-submitted');
+        if (flagSubEl) {
+          if (submittedHighFlags > 0) {
+            flagSubEl.textContent = '! ' + submittedHighFlags;
+            flagSubEl.style.display = 'inline-block';
+          } else {
+            flagSubEl.style.display = 'none';
+          }
+        }
+
+        var flagInRevEl = document.getElementById('tab-flags-in_review');
+        if (flagInRevEl) {
+          if (inReviewHighFlags > 0) {
+            flagInRevEl.textContent = '! ' + inReviewHighFlags;
+            flagInRevEl.style.display = 'inline-block';
+          } else {
+            flagInRevEl.style.display = 'none';
+          }
+        }
+      }
+
+      function loadVolunteers() {
+        adminFetch('/api/admin/volunteers').then(function(res) {
+          if (res.ok && res.json.ok) {
+            state.volunteers = (res.json.data && res.json.data.volunteers) || res.json.volunteers || [];
+            state.counts = (res.json.data && res.json.data.counts) || res.json.counts || {};
+            updateTabBadges(state.volunteers, state.counts);
+            renderVolunteersTable();
+          } else if (res.status === 401) {
+            logoutAdmin();
+          } else {
+            showBanner(res.json.error || 'Failed loading volunteers', true);
+          }
+        }).catch(function(err) {
+          showBanner('Network error loading volunteers: ' + err.message, true);
+        });
+      }
+
+      function renderVolunteersTable() {
+        var tbody = document.getElementById('volunteers-tbody');
         if (!tbody) return;
 
-        if (!list || list.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No pending volunteers waiting for approval.</td></tr>';
+        var filtered = (state.volunteers || []).filter(function(v) {
+          var st = (v.status || '').toLowerCase();
+          if (state.currentTab === 'all') return true;
+          if (state.currentTab === 'submitted') return st === 'submitted' || st === 'pending';
+          if (state.currentTab === 'in_review') return st === 'in_review';
+          if (state.currentTab === 'approved') return st === 'approved';
+          if (state.currentTab === 'suspended') return st === 'suspended';
+          if (state.currentTab === 'rejected') return st === 'rejected' || st === 'revoked';
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No volunteers found under <strong>' + escapeHtml(state.currentTab) + '</strong>.</td></tr>';
           return;
         }
 
         var html = '';
-        for (var i = 0; i < list.length; i++) {
-          var v = list[i];
-          var dateStr = v.updated_at ? v.updated_at.replace('T', ' ').slice(0, 19) : 'Recently';
+        for (var i = 0; i < filtered.length; i++) {
+          var v = filtered[i];
+          var st = (v.status || 'draft').toLowerCase();
+          var badgeClass = 'badge-status-' + st;
+
+          // Training Score Badge
+          var scoreHtml = '-';
+          if (v.training_score !== null && v.training_score !== undefined) {
+            var scoreVal = Number(v.training_score);
+            scoreHtml = scoreVal >= 80
+              ? '<span class="badge" style="background:#E8F5E9;color:#2E7D32;">' + scoreVal.toFixed(0) + '% Passed</span>'
+              : '<span class="badge" style="background:#FFEBEE;color:#C62828;">' + scoreVal.toFixed(0) + '% Failed</span>';
+          }
+
+          // Risk Flags Badges
+          var flagsHtml = '<span class="badge badge-flag-clean">Clear</span>';
+          var highCount = v.high_flags_count || 0;
+          var infoCount = v.info_flags_count || 0;
+          if (highCount > 0 || infoCount > 0) {
+            flagsHtml = '';
+            if (highCount > 0) {
+              flagsHtml += '<span class="badge badge-flag-high" title="' + highCount + ' High Risk Flags">! ' + highCount + ' High</span> ';
+            }
+            if (infoCount > 0) {
+              flagsHtml += '<span class="badge badge-flag-info" title="' + infoCount + ' Info Flags">i ' + infoCount + ' Info</span>';
+            }
+          }
+
+          // ID Display
+          var idDisplay = v.id_type ? (escapeHtml(v.id_type) + ' •••• ' + escapeHtml(v.id_last4 || '')) : '<span style="color:#999;">Not uploaded</span>';
+
+          // Action buttons
+          var actionsHtml = '<div style="display:flex;gap:6px;align-items:center;">';
+          actionsHtml += '<button type="button" class="btn-admin btn-crimson" onclick="openReviewPacket(' + v.id + ')" style="padding:5px 10px;font-size:12px;">' +
+            '<span class="material-symbols-rounded" style="font-size:15px;">visibility</span>Review' +
+            '</button>';
+
+          if (st === 'approved') {
+            actionsHtml += '<button type="button" class="btn-admin btn-danger" onclick="revokeVolunteerPrompt(' + v.id + ')" style="padding:5px 8px;font-size:11px;">' +
+              'Revoke' +
+              '</button>';
+          } else if (st === 'suspended') {
+            actionsHtml += '<button type="button" class="btn-admin btn-success" onclick="openReviewPacket(' + v.id + ')" style="padding:5px 8px;font-size:11px;">' +
+              'Resolve' +
+              '</button>';
+          }
+          actionsHtml += '</div>';
+
           html += '<tr>' +
-            '<td>#' + escapeHtml(v.id) + '</td>' +
-            '<td><strong>' + escapeHtml(v.name || 'Volunteer') + '</strong></td>' +
-            '<td><a href="tel:' + escapeHtml(v.phone) + '" style="color: #A80F3C; text-decoration: none;">' + escapeHtml(v.phone) + '</a></td>' +
-            '<td>' + (v.note ? escapeHtml(v.note) : '<span style="color:#999;font-style:italic;">No note</span>') + '</td>' +
-            '<td>' + escapeHtml(dateStr) + '</td>' +
-            '<td>' +
-              '<div class="btn-action-group">' +
-                '<button type="button" class="btn-admin btn-approve" onclick="approveVolunteer(' + v.id + ')">' +
-                  '<span class="material-symbols-rounded" style="font-size: 15px;">check</span>Approve' +
-                '</button>' +
-                '<button type="button" class="btn-admin btn-reject" onclick="rejectVolunteer(' + v.id + ')">' +
-                  '<span class="material-symbols-rounded" style="font-size: 15px;">close</span>Reject' +
-                '</button>' +
-              '</div>' +
+            '<td><strong>#' + escapeHtml(v.id) + '</strong></td>' +
+            '<td><strong>' + escapeHtml(v.full_name || v.name || 'Applicant') + '</strong>' +
+              (v.level === 'trusted' ? ' <span class="badge" style="background:#E8F5E9;color:#2E7D32;font-size:10px;">Trusted</span>' : '') +
             '</td>' +
+            '<td>' +
+              '<div><a href="tel:' + escapeHtml(v.phone) + '" style="color:var(--color-crimson);text-decoration:none;font-weight:600;">' + escapeHtml(v.phone) + '</a></div>' +
+              '<div style="font-size:11px;color:#777;">' + escapeHtml(v.locality || 'Locality not specified') + '</div>' +
+            '</td>' +
+            '<td>' + idDisplay + '</td>' +
+            '<td>' + scoreHtml + '</td>' +
+            '<td>' + flagsHtml + '</td>' +
+            '<td><span class="badge ' + badgeClass + '">' + escapeHtml(v.status || 'unknown') + '</span></td>' +
+            '<td>' + actionsHtml + '</td>' +
           '</tr>';
         }
+
         tbody.innerHTML = html;
       }
 
-      function loadPendingVolunteers() {
-        adminFetch('/api/admin/volunteers/pending').then(function(res) {
-          if (res.ok && res.json.ok) {
-            renderPendingVolunteers(res.json.data);
-          } else if (res.status === 401) {
-            logoutAdmin();
-          } else {
-            showBanner(res.json.error || 'Failed to load volunteers', true);
+      // --- APPLICANT REVIEW PACKET VIEW ---
+      function openReviewPacket(volId) {
+        clearBanner();
+        state.selectedVolId = volId;
+
+        // Hide queue, show packet
+        document.getElementById('volunteer-queue-view').style.display = 'none';
+        document.getElementById('applicant-packet-view').style.display = 'block';
+
+        // Reset fields
+        document.getElementById('packet-applicant-name').textContent = 'Loading applicant packet...';
+        document.getElementById('packet-applicant-sub').textContent = 'Application #' + volId;
+        document.getElementById('packet-flags-container').innerHTML = '';
+        document.getElementById('packet-references-list').innerHTML = '<div style="font-size:12px;color:#777;">Loading references...</div>';
+        document.getElementById('packet-audit-list').innerHTML = '<div style="font-size:12px;color:#777;">Loading audit...</div>';
+
+        // Reset ID reveal state
+        var idImg = document.getElementById('packet-id-img');
+        var hiddenNotice = document.getElementById('packet-id-hidden-notice');
+        var auditNotice = document.getElementById('packet-id-audit-msg');
+        if (idImg) idImg.style.display = 'none';
+        if (hiddenNotice) hiddenNotice.style.display = 'block';
+        if (auditNotice) auditNotice.style.display = 'none';
+
+        // Reset Selfie
+        var selfieImg = document.getElementById('packet-selfie-img');
+        var selfieLoad = document.getElementById('packet-selfie-loading');
+        if (selfieImg) selfieImg.style.display = 'none';
+        if (selfieLoad) { selfieLoad.style.display = 'block'; selfieLoad.textContent = 'Loading selfie...'; }
+
+        // Reset Decision form inputs
+        document.getElementById('gate-check-photo').checked = false;
+        document.getElementById('gate-check-phone').checked = false;
+        document.getElementById('gate-check-interview').checked = false;
+        document.getElementById('gate-check-declaration').checked = false;
+        document.getElementById('gate-check-override').checked = false;
+        document.getElementById('gate-decision-note').value = '';
+        document.getElementById('gate-reject-reason-select').value = '';
+        validateDecisionGates();
+
+        // Fetch packet
+        adminFetch('/api/admin/volunteers/' + volId).then(function(res) {
+          if (!res.ok || !res.json.ok) {
+            showBanner(res.json.error || 'Failed to load volunteer packet', true);
+            closeReviewPacket();
+            return;
           }
+
+          var packet = res.json.data;
+          state.currentPacket = packet;
+          renderPacket(packet);
         }).catch(function(err) {
-          showBanner('Network error: ' + err.message, true);
+          showBanner('Error loading packet: ' + err.message, true);
+          closeReviewPacket();
+        });
+      }
+      window.openReviewPacket = openReviewPacket;
+
+      function closeReviewPacket() {
+        state.selectedVolId = null;
+        state.currentPacket = null;
+        document.getElementById('applicant-packet-view').style.display = 'none';
+        document.getElementById('volunteer-queue-view').style.display = 'block';
+        loadVolunteers();
+        loadStats();
+      }
+      window.closeReviewPacket = closeReviewPacket;
+
+      function renderPacket(packet) {
+        var v = packet.volunteer;
+        var refs = packet.references || [];
+        var interview = packet.interview || {};
+        var flags = packet.flags || [];
+
+        // Header info
+        document.getElementById('packet-applicant-name').textContent = v.full_name || v.name || 'Volunteer Applicant';
+        document.getElementById('packet-applicant-sub').textContent = 'Application #' + v.id + ' • User #' + v.user_id + ' • Submitted: ' + (v.updated_at || 'Recently');
+        
+        var statusBadge = document.getElementById('packet-status-pill');
+        if (statusBadge) {
+          statusBadge.innerHTML = '<span class="badge badge-status-' + (v.status || '').toLowerCase() + '" style="font-size:13px;padding:6px 12px;">' +
+            escapeHtml((v.status || 'unknown').toUpperCase()) + (v.level ? ' (' + escapeHtml(v.level) + ')' : '') +
+            '</span>';
+        }
+
+        // Action buttons visibility according to status
+        var btnResolve = document.getElementById('btn-decision-resolve');
+        var btnRevoke = document.getElementById('btn-decision-revoke');
+        if (btnResolve) btnResolve.style.display = (v.status === 'suspended') ? 'inline-flex' : 'none';
+        if (btnRevoke) btnRevoke.style.display = (v.status === 'approved') ? 'inline-flex' : 'none';
+
+        // Render Risk Flags
+        var flagsContainer = document.getElementById('packet-flags-container');
+        var highFlagsCount = 0;
+        if (!flags || flags.length === 0) {
+          flagsContainer.innerHTML = '<div class="risk-flag-item" style="background:#E8F5E9;border:1px solid #C8E6C9;color:#2E7D32;">' +
+            '<span class="material-symbols-rounded">verified</span>' +
+            '<div><strong>Clean Application:</strong> No automatic risk flags detected for this applicant.</div>' +
+            '</div>';
+        } else {
+          var flagsHtml = '';
+          flags.forEach(function(f) {
+            var isHigh = f.severity === 'high';
+            if (isHigh) highFlagsCount++;
+            var cls = isHigh ? 'risk-flag-high' : 'risk-flag-info';
+            var icon = isHigh ? 'warning' : 'info';
+            flagsHtml += '<div class="risk-flag-item ' + cls + '">' +
+              '<span class="material-symbols-rounded">' + icon + '</span>' +
+              '<div>' +
+                '<strong>' + (isHigh ? 'HIGH RISK FLAG' : 'INFO FLAG') + ' [' + escapeHtml(f.code) + ']:</strong> ' +
+                escapeHtml(f.message) +
+              '</div>' +
+            '</div>';
+          });
+          flagsContainer.innerHTML = flagsHtml;
+        }
+
+        // Show/hide override checkbox based on high flags existence
+        var overrideWrap = document.getElementById('gate-override-wrap');
+        if (overrideWrap) {
+          overrideWrap.style.display = (highFlagsCount > 0) ? 'block' : 'none';
+        }
+
+        // Calculate age from dob
+        var ageStr = 'Age not specified';
+        if (v.dob) {
+          try {
+            var birthDate = new Date(v.dob);
+            var today = new Date();
+            var age = today.getFullYear() - birthDate.getFullYear();
+            var m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+            ageStr = escapeHtml(v.dob) + ' (' + age + ' yrs old' + (age < 18 ? ' - UNDERAGE' : '') + ')';
+          } catch(e) {
+            ageStr = escapeHtml(v.dob);
+          }
+        }
+
+        document.getElementById('field-fullname-dob').innerHTML = '<strong>' + escapeHtml(v.full_name || v.name) + '</strong> • ' + ageStr;
+        document.getElementById('field-phone-locality').innerHTML = '<a href="tel:' + escapeHtml(v.phone || v.user_phone) + '" style="color:var(--color-crimson);font-weight:600;text-decoration:none;">' + escapeHtml(v.phone || v.user_phone) + '</a>' +
+          ' (' + escapeHtml(v.user_email || 'No email') + ') • ' + escapeHtml(v.locality || 'Locality not specified');
+        document.getElementById('field-motivation').textContent = v.motivation || 'No motivation statement submitted.';
+        document.getElementById('field-availability').textContent = v.availability_text || 'Standard evening & weekend response.';
+
+        // Training
+        var tScore = v.training_score !== null && v.training_score !== undefined ? Number(v.training_score) : null;
+        var tScoreHtml = tScore !== null
+          ? ('<strong>' + tScore.toFixed(0) + '%</strong> (' + (tScore >= 80 ? '<span style="color:#2E7D32;">Passed</span>' : '<span style="color:#C62828;">Failed</span>') + ') • Taken: ' + (v.training_passed_at || 'Recently'))
+          : '<span style="color:#999;">Safety training pending</span>';
+        document.getElementById('field-training-score').innerHTML = tScoreHtml;
+
+        // Declaration & Typed signature
+        document.getElementById('field-declaration-info').textContent = (v.declaration_version ? ('Accepted ' + v.declaration_version + ' at ' + (v.declaration_accepted_at || '')) : 'Pending acceptance');
+        
+        var sigMatch = v.typed_signature && v.full_name && (v.typed_signature.trim().toLowerCase() === v.full_name.trim().toLowerCase());
+        var sigHtml = v.typed_signature
+          ? ('"<em>' + escapeHtml(v.typed_signature) + '</em>" ' + (sigMatch ? '<span class="badge" style="background:#E8F5E9;color:#2E7D32;">✓ Matches full name</span>' : '<span class="badge" style="background:#FFEBEE;color:#C62828;">⚠ Mismatch</span>'))
+          : '<span style="color:#999;">Not signed</span>';
+        document.getElementById('field-typed-signature').innerHTML = sigHtml;
+
+        // ID display
+        document.getElementById('field-id-type-last4').textContent = (v.id_type || 'ID') + ' •••••••••••• ' + (v.id_last4 || '••••');
+
+        // Load Selfie Authenticated
+        loadApplicantSelfie(v.id);
+
+        // References List
+        renderReferencesList(v.id, refs);
+
+        // Phone Interview Form state
+        document.getElementById('interview-phone-target').textContent = v.phone || v.user_phone || 'Applicant Phone';
+        document.getElementById('interview-check-phone').checked = !!interview.called_applicant_number;
+        document.getElementById('interview-check-identity').checked = !!interview.confirmed_identity;
+        document.getElementById('interview-notes-input').value = interview.notes || '';
+
+        var savedBadge = document.getElementById('interview-saved-badge');
+        if (savedBadge) {
+          if (interview.by || interview.at) {
+            savedBadge.textContent = '✓ Recorded by ' + (interview.by || 'Reviewer') + ' at ' + (interview.at || '');
+            savedBadge.style.display = 'inline';
+          } else {
+            savedBadge.style.display = 'none';
+          }
+        }
+
+        // Render Audit Trail
+        renderAuditTrail(packet.reviews || []);
+      }
+
+      function loadApplicantSelfie(volId) {
+        var selfieImg = document.getElementById('packet-selfie-img');
+        var selfieLoad = document.getElementById('packet-selfie-loading');
+        if (!selfieImg) return;
+
+        adminFetchBlob('/api/admin/volunteers/' + volId + '/selfie').then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          selfieImg.src = url;
+          selfieImg.style.display = 'block';
+          if (selfieLoad) selfieLoad.style.display = 'none';
+        }).catch(function(err) {
+          if (selfieLoad) {
+            selfieLoad.textContent = 'No selfie uploaded (' + err.message + ')';
+            selfieLoad.style.color = '#999';
+          }
         });
       }
 
-      window.approveVolunteer = function(id) {
-        adminFetch('/api/admin/volunteers/' + id + '/approve', { method: 'POST' }).then(function(res) {
-          if (res.ok && res.json.ok) {
-            showBanner('Volunteer #' + id + ' approved successfully.', false);
-            loadStats();
-            loadPendingVolunteers();
-          } else {
-            showBanner(res.json.error || 'Failed to approve volunteer', true);
+      function revealCurrentIdImage() {
+        if (!state.selectedVolId) return;
+        var volId = state.selectedVolId;
+        var idImg = document.getElementById('packet-id-img');
+        var hiddenNotice = document.getElementById('packet-id-hidden-notice');
+        var auditNotice = document.getElementById('packet-id-audit-msg');
+
+        hiddenNotice.innerHTML = '<span style="font-size:12px;color:var(--color-crimson);">Streaming decrypted document...</span>';
+
+        adminFetchBlob('/api/admin/volunteers/' + volId + '/id-image').then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          idImg.src = url;
+          idImg.style.display = 'block';
+          hiddenNotice.style.display = 'none';
+          if (auditNotice) {
+            auditNotice.style.display = 'block';
+            auditNotice.textContent = '✓ Audit log row written (Reviewer ' + state.reviewerName + ' viewed ID image)';
           }
+          // Reload audit trail to display the new view event
+          reloadPacketAuditTrail();
+        }).catch(function(err) {
+          hiddenNotice.innerHTML = '<span style="font-size:12px;color:#C62828;">Failed loading ID image: ' + escapeHtml(err.message) + '</span>';
+        });
+      }
+      window.revealCurrentIdImage = revealCurrentIdImage;
+
+      function renderReferencesList(volId, refs) {
+        var container = document.getElementById('packet-references-list');
+        if (!container) return;
+
+        if (!refs || refs.length === 0) {
+          container.innerHTML = '<div style="font-size:12px;color:#777;">No references submitted.</div>';
+          return;
+        }
+
+        var html = '';
+        refs.forEach(function(r) {
+          var outcomeBadge = 'badge-flag-info';
+          if (r.outcome === 'confirmed') outcomeBadge = 'badge-flag-clean';
+          if (r.outcome === 'negative') outcomeBadge = 'badge-flag-high';
+
+          html += '<div style="background:#FAF5F7;border:1px solid var(--color-border);border-radius:6px;padding:12px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">' +
+              '<div>' +
+                '<strong style="font-size:14px;color:var(--color-text-main);">' + escapeHtml(r.name) + '</strong> ' +
+                '<span style="font-size:12px;color:#777;">(' + escapeHtml(r.relation || 'Reference') + ')</span> • ' +
+                '<a href="tel:' + escapeHtml(r.phone) + '" style="color:var(--color-crimson);font-weight:600;text-decoration:none;">' + escapeHtml(r.phone) + '</a>' +
+              '</div>' +
+              '<span class="badge ' + outcomeBadge + '" style="font-size:12px;">Outcome: ' + escapeHtml(r.outcome || 'pending').toUpperCase() + '</span>' +
+            '</div>' +
+            '<div style="font-size:12px;color:#666;margin-bottom:8px;">' +
+              (r.notes ? ('<em>"' + escapeHtml(r.notes) + '"</em> • ') : '') +
+              (r.contacted_at ? ('Contacted by ' + escapeHtml(r.reviewer || 'Admin') + ' at ' + escapeHtml(r.contacted_at)) : 'Not contacted yet') +
+            '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">' +
+              '<select id="ref-outcome-' + r.id + '" class="admin-select" style="width:auto;min-width:140px;padding:6px 10px;">' +
+                '<option value="confirmed"' + (r.outcome === 'confirmed' ? ' selected' : '') + '>Confirmed</option>' +
+                '<option value="not_reachable"' + (r.outcome === 'not_reachable' ? ' selected' : '') + '>Not Reachable</option>' +
+                '<option value="negative"' + (r.outcome === 'negative' ? ' selected' : '') + '>Negative</option>' +
+                '<option value="pending"' + (r.outcome === 'pending' ? ' selected' : '') + '>Pending</option>' +
+              '</select>' +
+              '<input type="text" id="ref-notes-' + r.id + '" class="admin-input" style="flex:1;min-width:200px;margin:0;padding:6px 10px;" placeholder="Call notes (e.g. Known for 3 years, highly responsible)..." value="' + escapeHtml(r.notes || '') + '" />' +
+              '<button type="button" class="btn-admin btn-outline-crimson" onclick="saveReferenceCall(' + volId + ',' + r.id + ')" style="padding:6px 12px;">' +
+                '<span class="material-symbols-rounded" style="font-size:15px;">call</span>Save Call' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+        });
+
+        container.innerHTML = html;
+      }
+
+      window.saveReferenceCall = function(volId, rid) {
+        clearBanner();
+        var outcomeSelect = document.getElementById('ref-outcome-' + rid);
+        var notesInput = document.getElementById('ref-notes-' + rid);
+        var outcome = outcomeSelect ? outcomeSelect.value : 'confirmed';
+        var notes = notesInput ? notesInput.value.trim() : '';
+
+        adminFetch('/api/admin/volunteers/' + volId + '/references/' + rid, {
+          method: 'POST',
+          body: JSON.stringify({ outcome: outcome, notes: notes })
+        }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            showBanner('Reference call recorded successfully.', false);
+            // Refresh packet details and audit
+            adminFetch('/api/admin/volunteers/' + volId).then(function(pRes) {
+              if (pRes.ok && pRes.json.ok) {
+                state.currentPacket = pRes.json.data;
+                renderReferencesList(volId, state.currentPacket.references);
+                renderAuditTrail(state.currentPacket.reviews);
+              }
+            });
+          } else {
+            showPacketError(res.json.error || 'Failed saving reference call');
+          }
+        }).catch(function(err) {
+          showPacketError('Network error saving reference call: ' + err.message);
         });
       };
 
-      window.rejectVolunteer = function(id) {
-        if (!confirm('Are you sure you want to reject volunteer #' + id + '?')) return;
-        adminFetch('/api/admin/volunteers/' + id + '/reject', { method: 'POST' }).then(function(res) {
+      window.submitInterviewForm = function(e) {
+        if (e) e.preventDefault();
+        clearBanner();
+        if (!state.selectedVolId) return;
+        var volId = state.selectedVolId;
+
+        var phoneChecked = document.getElementById('interview-check-phone').checked;
+        var idChecked = document.getElementById('interview-check-identity').checked;
+        var notes = document.getElementById('interview-notes-input').value.trim();
+
+        adminFetch('/api/admin/volunteers/' + volId + '/interview', {
+          method: 'POST',
+          body: JSON.stringify({
+            called_applicant_number: phoneChecked,
+            confirmed_identity: idChecked,
+            notes: notes
+          })
+        }).then(function(res) {
           if (res.ok && res.json.ok) {
-            showBanner('Volunteer #' + id + ' rejected.', false);
-            loadStats();
-            loadPendingVolunteers();
-            loadApprovedVolunteers();
+            showBanner('Applicant interview recorded successfully.', false);
+            var savedBadge = document.getElementById('interview-saved-badge');
+            if (savedBadge) {
+              savedBadge.textContent = '✓ Recorded by ' + state.reviewerName + ' just now';
+              savedBadge.style.display = 'inline';
+            }
+            reloadPacketAuditTrail();
           } else {
-            showBanner(res.json.error || 'Failed to reject volunteer', true);
+            showPacketError(res.json.error || 'Failed recording interview');
           }
+        }).catch(function(err) {
+          showPacketError('Network error saving interview: ' + err.message);
         });
       };
 
-      window.approveAllVolunteers = function() {
-        adminFetch('/api/admin/volunteers/approve-all', { method: 'POST' }).then(function(res) {
-          if (res.ok && res.json.ok) {
-            var count = res.json.data && res.json.data.approved_count !== undefined ? res.json.data.approved_count : 0;
-            showBanner('Successfully approved ' + count + ' volunteer(s).', false);
-            loadStats();
-            loadPendingVolunteers();
-            loadApprovedVolunteers();
+      // --- GATED DECISION PANEL LOGIC ---
+      function validateDecisionGates() {
+        var checkPhoto = document.getElementById('gate-check-photo').checked;
+        var checkPhone = document.getElementById('gate-check-phone').checked;
+        var checkInterview = document.getElementById('gate-check-interview').checked;
+        var checkDeclaration = document.getElementById('gate-check-declaration').checked;
+        var note = (document.getElementById('gate-decision-note').value || '').trim();
+
+        var counterEl = document.getElementById('gate-note-counter');
+        if (counterEl) {
+          counterEl.textContent = note.length + ' / 20 characters min';
+          counterEl.style.color = (note.length >= 20) ? 'var(--color-success)' : 'var(--color-text-muted)';
+        }
+
+        var allChecks = checkPhoto && checkPhone && checkInterview && checkDeclaration;
+        var noteValid = note.length >= 20;
+
+        var approveBtn = document.getElementById('btn-decision-approve');
+        if (approveBtn) {
+          approveBtn.disabled = !(allChecks && noteValid);
+          if (approveBtn.disabled) {
+            approveBtn.title = 'Approval requires all 4 checklist items checked and a note of at least 20 characters.';
           } else {
-            showBanner(res.json.error || 'Failed to approve all volunteers', true);
+            approveBtn.title = 'Click to verify and approve volunteer.';
           }
+        }
+      }
+      window.validateDecisionGates = validateDecisionGates;
+
+      window.handleDecisionAction = function(action) {
+        clearBanner();
+        if (!state.selectedVolId) return;
+        var volId = state.selectedVolId;
+
+        var checklist = {
+          identity_matches_photo: document.getElementById('gate-check-photo').checked,
+          phone_verified_by_call: document.getElementById('gate-check-phone').checked,
+          interview_done: document.getElementById('gate-check-interview').checked,
+          declaration_checked: document.getElementById('gate-check-declaration').checked
+        };
+        var overrideFlags = document.getElementById('gate-check-override').checked;
+        var note = (document.getElementById('gate-decision-note').value || '').trim();
+        var reasonCode = (document.getElementById('gate-reject-reason-select').value || '').trim();
+
+        if (action === 'reject') {
+          if (!reasonCode) {
+            showPacketError('Please select a valid Rejection Reason Code before rejecting.');
+            return;
+          }
+          if (note.length < 5) {
+            showPacketError('Please enter an explanatory note of at least 5 characters for rejection.');
+            return;
+          }
+        }
+
+        var payload = {
+          action: action,
+          checklist: checklist,
+          note: note,
+          reason_code: reasonCode,
+          override_flags: overrideFlags
+        };
+
+        adminFetch('/api/admin/volunteers/' + volId + '/decision', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            var msg = res.json.data && res.json.data.message ? res.json.data.message : ('Action ' + action + ' completed.');
+            showBanner(msg, false);
+            // Refresh packet
+            openReviewPacket(volId);
+            loadStats();
+          } else {
+            // Display exact refusal reason from backend in plain words
+            showPacketError(res.json.error || 'Decision action failed');
+          }
+        }).catch(function(err) {
+          showPacketError('Network error executing decision: ' + err.message);
         });
       };
 
-      window.revokeVolunteer = function(id) {
-        if (!confirm('Revert volunteer #' + id + ' back to pending?')) return;
-        adminFetch('/api/admin/volunteers/' + id + '/revoke', { method: 'POST' }).then(function(res) {
+      window.handleRevokeCurrentVolunteer = function() {
+        if (!state.selectedVolId) return;
+        revokeVolunteerPrompt(state.selectedVolId);
+      };
+
+      function revokeVolunteerPrompt(volId) {
+        var reason = prompt('Enter revocation reason (will be logged in the permanent audit trail):', 'Safety policy non-compliance');
+        if (reason === null) return;
+        if (!reason.trim()) reason = 'Volunteer privileges revoked by administrator';
+
+        adminFetch('/api/admin/volunteers/' + volId + '/revoke', {
+          method: 'POST',
+          body: JSON.stringify({ note: reason })
+        }).then(function(res) {
           if (res.ok && res.json.ok) {
-            showBanner('Volunteer #' + id + ' reverted to pending.', false);
+            showBanner('Volunteer #' + volId + ' revoked successfully.', false);
+            if (state.selectedVolId === volId) {
+              openReviewPacket(volId);
+            } else {
+              loadVolunteers();
+            }
             loadStats();
-            loadPendingVolunteers();
-            loadApprovedVolunteers();
           } else {
             showBanner(res.json.error || 'Failed to revoke volunteer', true);
           }
         });
-      };
+      }
+      window.revokeVolunteerPrompt = revokeVolunteerPrompt;
 
-      function renderApprovedVolunteers(list) {
-        var tbody = document.getElementById('approved-volunteers-tbody');
-        var badge = document.getElementById('approved-volunteers-badge');
-        if (!tbody) return;
+      function renderAuditTrail(reviews) {
+        var list = document.getElementById('packet-audit-list');
+        if (!list) return;
 
-        var approvedList = (list || []).filter(function(v) { return v.status === 'approved'; });
-        if (badge) badge.textContent = approvedList.length + ' Approved';
-
-        if (approvedList.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No approved volunteers yet.</td></tr>';
+        if (!reviews || reviews.length === 0) {
+          list.innerHTML = '<div style="font-size:12px;color:#888;">No audit entries logged yet.</div>';
           return;
         }
 
         var html = '';
-        for (var i = 0; i < approvedList.length; i++) {
-          var v = approvedList[i];
-          var isAvail = !!v.available;
-          var availHtml = isAvail
-            ? '<span style="color:#2e7d32;font-weight:600;">🟢 Online (Available)</span>'
-            : '<span style="color:#777;">⚪ Offline</span>';
-          var gpsHtml = (v.lat && v.lng)
-            ? ('<a href="https://www.google.com/maps?q=' + v.lat + ',' + v.lng + '" target="_blank" style="color:#A80F3C;text-decoration:none;">' + Number(v.lat).toFixed(4) + ', ' + Number(v.lng).toFixed(4) + '</a>')
-            : '<span style="color:#999;">No GPS</span>';
-
-          html += '<tr>' +
-            '<td>#' + escapeHtml(v.id) + '</td>' +
-            '<td><strong>' + escapeHtml(v.name || 'Volunteer') + '</strong></td>' +
-            '<td><a href="tel:' + escapeHtml(v.phone) + '" style="color:#A80F3C;text-decoration:none;">' + escapeHtml(v.phone) + '</a></td>' +
-            '<td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">Approved</span></td>' +
-            '<td>' + availHtml + '</td>' +
-            '<td>' + gpsHtml + '</td>' +
-            '<td>' +
-              '<button type="button" class="btn-admin btn-reject" onclick="revokeVolunteer(' + v.id + ')" style="font-size:11px;padding:4px 8px;">' +
-                'Revoke' +
-              '</button>' +
-            '</td>' +
-          '</tr>';
+        for (var i = reviews.length - 1; i >= 0; i--) {
+          var r = reviews[i];
+          var dateStr = r.ts ? r.ts.replace('T', ' ').slice(0, 19) : 'Recently';
+          html += '<div class="audit-entry">' +
+            '<div class="audit-header">' +
+              '<strong>' + escapeHtml((r.action || 'action').toUpperCase()) + '</strong>' +
+              '<span>' + escapeHtml(r.reviewer || 'System') + ' • ' + escapeHtml(dateStr) + '</span>' +
+            '</div>' +
+            '<div style="color:var(--color-text-main);">' + escapeHtml(r.note || 'No notes') + '</div>' +
+          '</div>';
         }
-        tbody.innerHTML = html;
+        list.innerHTML = html;
       }
 
-      function loadApprovedVolunteers() {
-        adminFetch('/api/admin/volunteers').then(function(res) {
+      function reloadPacketAuditTrail() {
+        if (!state.selectedVolId) return;
+        adminFetch('/api/admin/volunteers/' + state.selectedVolId + '/audit').then(function(res) {
           if (res.ok && res.json.ok) {
-            renderApprovedVolunteers(res.json.data);
+            var trail = (res.json.data && res.json.data.audit_trail) || res.json.audit || [];
+            renderAuditTrail(trail);
           }
         });
       }
-      window.loadApprovedVolunteers = loadApprovedVolunteers;
+      window.reloadPacketAuditTrail = reloadPacketAuditTrail;
 
+      // --- SYSTEM LOGS VIEWER ---
       function loadSystemLogs() {
         var logsEl = document.getElementById('admin-logs-viewer');
         if (!logsEl) return;
@@ -680,7 +1829,7 @@
               logsEl.scrollTop = logsEl.scrollHeight;
             }
           } else {
-            logsEl.textContent = 'Failed to load logs: ' + (res.json.error || 'Server error');
+            logsEl.textContent = 'Failed loading logs: ' + (res.json.error || 'Server error');
           }
         }).catch(function(err) {
           logsEl.textContent = 'Error loading logs: ' + err.message;
@@ -688,15 +1837,15 @@
       }
       window.loadSystemLogs = loadSystemLogs;
 
-      // Check saved key on boot
-      if (getSavedKey()) {
+      // --- BOOTSTRAP ---
+      var savedKey = getSavedKey();
+      if (savedKey) {
+        state.key = savedKey;
         adminFetch('/api/admin/stats').then(function(res) {
           if (res.ok && res.json.ok) {
             showDashboard();
-            renderStats(res.json.data);
-            loadPendingVolunteers();
-            loadApprovedVolunteers();
-            loadSystemLogs();
+            applyStatsData(res.json.data);
+            loadVolunteers();
             loadSystemLogs();
           } else {
             logoutAdmin();

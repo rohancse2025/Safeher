@@ -13,7 +13,7 @@ load_dotenv()
 
 admin_bp = Blueprint('admin', __name__)
 
-VALID_DECISION_ACTIONS = {"approve", "recommend", "reject", "request_info"}
+VALID_DECISION_ACTIONS = {"approve", "recommend", "reject", "request_info", "resolve"}
 VALID_REJECT_REASONS = {
     "id_mismatch",
     "references_negative",
@@ -342,6 +342,36 @@ def stream_volunteer_id_image(volunteer_id):
     record_review_audit(cursor, actual_vol_id, reviewer, 'view_id_image', None, f"Admin {reviewer} viewed applicant ID image document")
     conn.commit()
     conn.close()
+
+    mime = 'image/jpeg' if full_path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'
+    return send_file(full_path, mimetype=mime)
+
+
+# ─── Route: GET /api/admin/volunteers/<id>/selfie ────────────
+@admin_bp.route('/api/admin/volunteers/<int:volunteer_id>/selfie', methods=['GET'])
+@admin_required
+def stream_volunteer_selfie(volunteer_id):
+    """
+    GET /api/admin/volunteers/<id>/selfie
+    Streams the applicant selfie photo for admin verification against ID photo.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    vol = find_volunteer(cursor, volunteer_id)
+    conn.close()
+    if not vol:
+        return jsonify({"ok": False, "error": "Volunteer not found"}), 404
+
+    selfie_path = vol.get('selfie_path')
+    if not selfie_path:
+        return jsonify({"ok": False, "error": "No selfie uploaded for this volunteer"}), 404
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.abspath(os.path.join(base_dir, '..', selfie_path)) if not os.path.isabs(selfie_path) else selfie_path
+
+    if not os.path.exists(full_path):
+        return jsonify({"ok": False, "error": "Selfie file missing from storage"}), 404
 
     mime = 'image/jpeg' if full_path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'
     return send_file(full_path, mimetype=mime)
@@ -740,6 +770,39 @@ def review_volunteer_decision(volunteer_id):
             }
         }), 200
 
+    # ─────────────────────────────────────────────────────────────
+    # ACTION: RESOLVE (Un-suspend volunteer after review)
+    # ─────────────────────────────────────────────────────────────
+    elif action == 'resolve':
+        if not note or len(note) < 5:
+            conn.close()
+            return jsonify({
+                "ok": False,
+                "error": "Resolve action requires an explanatory note explaining how the incident was reviewed."
+            }), 400
+
+        cursor.execute('''
+            UPDATE volunteers
+            SET status = 'approved',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        ''', (actual_vol_id,))
+
+        record_review_audit(cursor, actual_vol_id, reviewer, 'resolve', checklist, note)
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "ok": True,
+            "data": {
+                "volunteer_id": actual_vol_id,
+                "status": "approved",
+                "resolved_by": reviewer,
+                "note": note,
+                "message": "Volunteer suspension resolved. Status restored to approved."
+            }
+        }), 200
+
 
 # ─── Route: GET /api/admin/volunteers/<id>/audit ──────────────
 @admin_bp.route('/api/admin/volunteers/<int:volunteer_id>/audit', methods=['GET'])
@@ -1016,7 +1079,9 @@ def get_admin_stats():
             "total_users": total_users,
             "active_alerts": active_alerts,
             "alerts_today": alerts_today,
-            "approved_volunteers": approved_volunteers
+            "approved_volunteers": approved_volunteers,
+            "reviewer_name": getattr(g, 'admin_reviewer', 'Admin'),
+            "require_two_reviewers": is_require_two_reviewers()
         }
     }), 200
 

@@ -220,11 +220,17 @@ def init_db():
             alert_id INTEGER NOT NULL,
             volunteer_id INTEGER NOT NULL,
             status TEXT NOT NULL,
+            verification_code TEXT,
             time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
             FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE
         );
     ''')
+
+    cursor.execute("PRAGMA table_info(responses);")
+    existing_resp_cols = {col['name'] for col in cursor.fetchall()}
+    if 'verification_code' not in existing_resp_cols:
+        cursor.execute("ALTER TABLE responses ADD COLUMN verification_code TEXT;")
 
     # 6a. Alert contacts table (one unique token per contact per alert)
     cursor.execute('''
@@ -249,6 +255,60 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
             FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 6c. Volunteer precise view log table (audit every exact coordinate view)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_view_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volunteer_id INTEGER NOT NULL,
+            alert_id INTEGER NOT NULL,
+            time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 6d. Volunteer feedback table (submitted by alert owner)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id INTEGER NOT NULL,
+            volunteer_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            helpful BOOLEAN NOT NULL DEFAULT 1,
+            respectful BOOLEAN NOT NULL DEFAULT 1,
+            report_type TEXT NOT NULL DEFAULT 'none',
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(alert_id, volunteer_id)
+        );
+    ''')
+
+    # 6e. Incident events table (logged with anonymous labels like 'Volunteer 1')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS incident_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            actor_label TEXT,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 6f. Volunteer nearby alert query rate limit tracking (max 20 per hour)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_query_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volunteer_id INTEGER NOT NULL,
+            query_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE
         );
     ''')
 
@@ -343,6 +403,10 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_sessions_user ON evidence_sessions(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_chunks_session ON evidence_chunks(session_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_chunks_session_idx ON evidence_chunks(session_id, idx);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_view_log_vol ON volunteer_view_log(volunteer_id, alert_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_feedback_vol ON volunteer_feedback(volunteer_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_alert ON incident_events(alert_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_query_log_vol_time ON volunteer_query_log(volunteer_id, query_time);')
 
     conn.commit()
     conn.close()

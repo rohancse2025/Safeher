@@ -104,6 +104,151 @@ def cleanup_old_volunteer_id_images():
         return 0
 
 
+def promote_eligible_volunteers_to_trusted():
+    """
+    Promote a volunteer to "trusted" when:
+      - at least 3 completed responses
+      - every feedback entry helpful and respectful
+      - no reports (report_type == 'none' for all)
+      - at least 30 days since approval (approved_at <= 30 days ago)
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT id, user_id, full_name, approved_at
+            FROM volunteers
+            WHERE status = 'approved'
+              AND level = 'provisional'
+              AND approved_at IS NOT NULL
+              AND approved_at <= datetime('now', '-30 days');
+        ''')
+        candidates = cursor.fetchall()
+        promoted_count = 0
+
+        for vol in candidates:
+            v_id = vol['id']
+
+            # 1. At least 3 completed responses (alert resolved / not active)
+            cursor.execute('''
+                SELECT COUNT(*) AS cnt
+                FROM responses r
+                JOIN alerts a ON r.alert_id = a.id
+                WHERE r.volunteer_id = ? AND r.status = 'coming' AND a.status != 'active';
+            ''', (v_id,))
+            comp_row = cursor.fetchone()
+            comp_cnt = comp_row['cnt'] if comp_row else 0
+            if comp_cnt < 3:
+                continue
+
+            # 2. Check feedback: all helpful & respectful, no reports
+            cursor.execute('''
+                SELECT COUNT(*) AS total_fb,
+                       SUM(CASE WHEN helpful = 1 THEN 1 ELSE 0 END) AS helpful_cnt,
+                       SUM(CASE WHEN respectful = 1 THEN 1 ELSE 0 END) AS respectful_cnt,
+                       SUM(CASE WHEN report_type != 'none' THEN 1 ELSE 0 END) AS reports_cnt
+                FROM volunteer_feedback
+                WHERE volunteer_id = ?;
+            ''', (v_id,))
+            fb = cursor.fetchone()
+            total_fb = fb['total_fb'] if fb else 0
+            helpful_cnt = fb['helpful_cnt'] if fb else 0
+            respectful_cnt = fb['respectful_cnt'] if fb else 0
+            reports_cnt = fb['reports_cnt'] if fb else 0
+
+            # Must have no negative reports
+            if reports_cnt > 0:
+                continue
+
+            # If feedback exists, every entry must be helpful and respectful
+            if total_fb > 0:
+                if helpful_cnt < total_fb or respectful_cnt < total_fb:
+                    continue
+
+            # Promote to trusted
+            cursor.execute('''
+                UPDATE volunteers
+                SET level = 'trusted',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?;
+            ''', (v_id,))
+
+            cursor.execute('''
+                INSERT INTO volunteer_reviews (volunteer_id, reviewer, action, note)
+                VALUES (?, 'scheduler', 'promote', 'Promoted to Trusted: 3+ completed responses, exemplary feedback, 30+ days approved');
+            ''', (v_id,))
+
+            promoted_count += 1
+            print(f"[Scheduler] Promoted volunteer #{v_id} ({vol['full_name'] or 'Volunteer'}) to 'trusted' level")
+
+        conn.commit()
+        conn.close()
+        return promoted_count
+    except Exception as e:
+        print(f"[Scheduler Error] promote_eligible_volunteers_to_trusted: {e}")
+        return 0
+
+
+def expire_outdated_volunteer_validity():
+    """
+    Mark volunteers whose valid_until has passed as "expired" and send them a push or email to re-verify.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT v.id, v.user_id, v.full_name, v.valid_until, u.email, u.name
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE v.status = 'approved'
+              AND v.valid_until IS NOT NULL
+              AND v.valid_until <= CURRENT_TIMESTAMP;
+        ''')
+        expired_vols = cursor.fetchall()
+        expired_count = 0
+
+        for vol in expired_vols:
+            v_id = vol['id']
+            cursor.execute('''
+                UPDATE volunteers
+                SET status = 'expired',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?;
+            ''', (v_id,))
+
+            cursor.execute('''
+                INSERT INTO volunteer_reviews (volunteer_id, reviewer, action, note)
+                VALUES (?, 'scheduler', 'expire', 'Volunteer approval validity expired. Re-verification required.');
+            ''', (v_id,))
+
+            expired_count += 1
+            print(f"[Scheduler] Marked volunteer #{v_id} as 'expired' (validity ended {vol['valid_until']})")
+
+            # Send re-verification notification
+            try:
+                from email_service import send_email
+                if vol['email']:
+                    subj = "SafeHer – Volunteer Approval Expired (Re-verification Required)"
+                    body = (
+                        f"Hello {vol['name']},\n\n"
+                        "Your volunteer safety verification period has reached its 12-month renewal date.\n"
+                        "To continue receiving emergency alerts in your community, please log into SafeHer to re-verify your volunteer profile.\n\n"
+                        "SafeHer Team"
+                    )
+                    send_email(vol['email'], subj, body)
+            except Exception:
+                pass
+
+        conn.commit()
+        conn.close()
+        return expired_count
+    except Exception as e:
+        print(f"[Scheduler Error] expire_outdated_volunteer_validity: {e}")
+        return 0
+
+
 def start_scheduler():
     """
     Starts background maintenance thread running hourly.
@@ -112,6 +257,8 @@ def start_scheduler():
         # Run immediately upon server startup
         cleanup_old_evidence_sessions()
         cleanup_old_volunteer_id_images()
+        promote_eligible_volunteers_to_trusted()
+        expire_outdated_volunteer_validity()
 
         while True:
             # Check every hour (3600 seconds)
@@ -119,6 +266,8 @@ def start_scheduler():
             try:
                 cleanup_old_evidence_sessions()
                 cleanup_old_volunteer_id_images()
+                promote_eligible_volunteers_to_trusted()
+                expire_outdated_volunteer_validity()
             except Exception as e:
                 print(f"[Scheduler Loop Error] {e}")
 

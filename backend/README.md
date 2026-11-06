@@ -51,6 +51,8 @@ Edit `.env` to configure your settings:
 - `DATABASE_PATH`: SQLite database file path (defaults to `safeher.db`).
 - `PORT`: Server port (defaults to `5000`).
 - `ADMIN_KEY`: Admin secret key for volunteer approvals and platform metrics.
+- `ADMIN_REVIEWERS`: Comma-separated reviewer names and keys (e.g. `Admin:safeher-admin-secret-key-123,Reviewer1:key_rev1_2026`).
+- `REQUIRE_TWO_REVIEWERS`: Set to `true` to enforce two-reviewer recommendation and approval flow.
 - `VAPID_PUBLIC_KEY`: Base64url VAPID public key for Web Push.
 - `VAPID_PRIVATE_KEY`: Base64url raw 32-byte VAPID private key.
 - `VAPID_CLAIMS_SUB`: Contact email/subject for VAPID claims (e.g. `mailto:admin@safeher.local`).
@@ -65,7 +67,7 @@ Start the Flask application:
 python app.py
 ```
 
-The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `locations`, `volunteers`, `responses`, `timers`) will be **created automatically** on the first run.
+The database (`safeher.db`) and all tables (`users`, `contacts`, `alerts`, `locations`, `volunteers`, `responses`, `timers`, `volunteer_references`, `volunteer_training_attempts`, `volunteer_reviews`, `volunteer_view_log`, `volunteer_feedback`, `incident_events`, `volunteer_query_log`, `evidence_keys`, `evidence_sessions`, `evidence_chunks`) will be **created automatically** on the first run.
 
 ---
 
@@ -95,6 +97,9 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/alerts/<id>/location`** *(Auth required)* – Appends real-time coordinates to tracking history for an active alert.
 - **`POST /api/alerts/<id>/end`** *(Auth required)* – Ends alert with 4-digit PIN. If duress PIN is submitted, returns success to attacker while silently keeping alert active with `duress=1`.
 - **`GET /api/alerts`** *(Auth required)* – Returns full chronological alert history for current user.
+- **`GET /api/alerts/<id>/status`** – Returns `volunteers_coming`, `contact_responses`, and verified `responders` (volunteer first name, badge, completed response count, verification code, and authenticated selfie URL).
+- **`GET /api/alerts/<id>/responder-selfie/<volunteer_id>`** *(Auth required, Alert Owner only)* – Authenticated route streaming the responder volunteer's selfie only to the alert owner.
+- **`POST /api/alerts/<id>/volunteer-feedback`** *(Auth required, Alert Owner only)* – Submit feedback on a responder (`volunteer_id`, `helpful`, `respectful`, `report_type`: `"none"|"unsafe"|"inappropriate"|"other"`, `comment`). If report is `"unsafe"` or `"inappropriate"`, the volunteer is immediately suspended.
 
 ### 6. Public Tracking & Contact Responses (No Auth)
 - **`GET /api/track/<token>`** – Accepts either a general `share_token` (read-only) or a personalized `contact_token`.
@@ -111,8 +116,8 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 ### 7. Email Testing
 - **`POST /api/test-email`** *(Auth required)* – Sends a diagnostic test email to the user's registered address using Gmail SMTP.
 
-### 8. Volunteer Network & KYC Application System
-*Full-fledged multi-step volunteer onboarding with strict safety training, identity document verification, reference checks, and cooldowns.*
+### 8. Volunteer Network, KYC Application & Matching System
+*Full-fledged multi-step volunteer onboarding with strict safety training, identity document verification, reference checks, cooldowns, and secure location masking.*
 - **`GET /api/volunteers/application`** *(Auth required)* – Retrieves the volunteer's current application draft, KYC state, training status, and references.
 - **`PUT /api/volunteers/application`** *(Auth required)* – Saves or updates the volunteer application draft:
   - Details: `full_name`, `dob` (YYYY-MM-DD), `locality`, `id_type` ("Voter ID", "Driving Licence", "College ID", "Passport", "Other"), `id_last4` (strictly $\le 4$ digits, never full ID number).
@@ -133,9 +138,16 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
   - Validates declaration acceptance and typed signature matching full name.
   - Sets application status to `"submitted"` for administrator review.
 - **`POST /api/volunteers/status`** *(Auth required)* – Saves volunteer availability (`available`: true/false) and latest GPS coordinates for approved volunteers.
-- **`GET /api/volunteers/nearby-alerts`** *(Auth required)* – Finds active alerts within proximity of approved volunteer's position (excludes own alerts; hides names on silent alerts).
-- **`POST /api/alerts/<id>/respond`** *(Auth required)* – Approved volunteer responds to an alert with `"coming"` or `"cannot"`.
-- **`GET /api/alerts/<id>/status`** – Returns `volunteers_coming` and full chronological list of `contact_responses` (`name`, `status`, `time`).
+- **`GET /api/volunteers/nearby-alerts`** *(Auth required)*:
+  - Enforces status `"approved"` and `valid_until > CURRENT_TIMESTAMP`.
+  - Rate-limited to at most 20 queries per hour per volunteer.
+  - Provisional volunteers are excluded from silent-mode alerts and see only masked coordinates (rounded to 0.003 degrees) and distance band ("about 1 km").
+  - Trusted volunteers receive silent-mode alerts and see distance band only before responding.
+  - Exact coordinates returned only after volunteer taps "I'm coming", with audit logging in `volunteer_view_log`.
+- **`POST /api/alerts/<id>/respond`** *(Auth required)*:
+  - Approved volunteer responds with `"coming"` or `"cannot"`.
+  - Generates a random 4-digit verification code returned to the volunteer and alert owner.
+  - Logs anonymous responder labels in `incident_events` ("Volunteer 1", "Volunteer 2").
 - **`GET /api/volunteers/count`** – Returns the number of currently available approved volunteers.
 
 ### 9. Safe Timers & Background Escalation
@@ -150,7 +162,7 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/push/unsubscribe`** *(Auth required)* – Removes a subscription (`endpoint`).
 - **Automatic Triggers:**
   1. Nearby available approved volunteers within 2 km receive "Someone nearby needs help" (distance only, no name) when a normal or emergency alert starts.
-  2. Silent alerts notify nearby volunteers only, with `silent: true` (no sound).
+  2. Silent alerts notify nearby trusted volunteers only, with `silent: true` (no sound).
   3. Victim receives a push when a volunteer taps "I'm coming".
   4. User receives a push when their safe-arrival timer expires.
   5. Alert owner receives a push whenever an emergency contact responds from their tracking link ("Mom: I'm on my way").
@@ -171,9 +183,10 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
   - `name_signature_mismatch` *(high)*: Typed signature differs from declared full name.
   - `incomplete_profile` *(info)*: Motivation (< 15 chars) or availability (< 5 chars) is sparse.
 - **Review Routes**:
-  - **`GET /api/admin/volunteers?status=`**: Lists volunteers filtered by status with parsed flags, severity counts, and aggregate counts (`counts: {all, submitted, in_review, approved, rejected, ...}`).
+  - **`GET /api/admin/volunteers?status=`**: Lists volunteers filtered by status with parsed flags, severity counts, and aggregate counts (`counts: {all, submitted, in_review, approved, suspended, rejected, ...}`).
   - **`GET /api/admin/volunteers/<id>`**: Retrieves full application packet (details, references, training attempts, phone interview verification, flags) with sensitive `id_image_path` safely excluded.
   - **`GET /api/admin/volunteers/<id>/id-image`**: Streams the government ID image document and writes a persistent view audit row to `volunteer_reviews`.
+  - **`GET /api/admin/volunteers/<id>/selfie`**: Streams the applicant selfie for verification against the revealed ID document.
   - **`POST /api/admin/volunteers/<id>/references/<rid>`**: Records reference verification phone call (`outcome` in `"pending"`, `"confirmed"`, `"not_reachable"`, `"negative"`, `notes`, `reviewer`, `time`).
   - **`POST /api/admin/volunteers/<id>/interview`**: Records phone verification interview (`notes`, `confirmed_identity`, `called_applicant_number`), validating phone ownership.
   - **`POST /api/admin/volunteers/<id>/decision`**:
@@ -188,10 +201,11 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
     - **`recommend`**: Marks status `"in_review"` for secondary reviewer sign-off.
     - **`request_info`**: Marks status `"in_review"` and records audit note.
     - **`reject`**: Requires valid `reason_code` (`id_mismatch`, `references_negative`, `references_unreachable`, `training_not_passed`, `incomplete`, `safety_concern`, `underage`, `other`) and note. Sets status `"rejected"` and 30-day cooldown (`reapply_after`).
+    - **`resolve`**: Un-suspends a volunteer after incident investigation and restores status to `"approved"`.
   - **`GET /api/admin/volunteers/<id>/audit`**: Returns complete chronological audit trail from `volunteer_reviews`.
   - **`POST /api/admin/volunteers/<id>/revoke`**: Revokes volunteer privileges at any time with note and reviewer attribution.
 - **Platform Metrics & Logs**:
-  - **`GET /api/admin/stats`**: Platform metrics: total users, active alerts, alerts today, approved volunteers.
+  - **`GET /api/admin/stats`**: Platform metrics: total users, active alerts, alerts today, approved volunteers, active reviewer name, dual-reviewer mode.
   - **`GET /api/admin/logs`**: Last 100 log lines with masked sensitive data.
   - **`POST /api/admin/purge-test-data`**: Cleans dummy test users while preserving production accounts.
 
@@ -210,9 +224,11 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`GET /api/evidence/sessions/<id>/verify`** *(Auth required, owner only)* – Validates the cryptographic SHA-256 hash chain and on-disk file integrity across all session chunks. Returns `{"verified": true}` or reports the first `brokenIndex`.
 - **`GET /api/evidence/chunks/<id>`** *(Auth required, owner only)* – Streams/downloads the raw encrypted chunk binary file.
 - **`DELETE /api/evidence/sessions/<id>`** *(Auth required, owner only)* – Requires the user's 4-digit Safety PIN. Permanently deletes the session, its chunk records, and its on-disk files.
-- **Automated Retention Scheduler**:
+- **Automated Retention & Promotion Scheduler**:
   1. Purges evidence recording sessions and chunk files older than 30 days automatically.
   2. Permanently deletes volunteer ID image files from disk 7 days after any final decision (approved, rejected, revoked, expired) while preserving `id_last4` and `id_type` for audit integrity.
+  3. Promotes provisional volunteers to `"trusted"` if they have $\ge 3$ completed responses, clean feedback (all helpful & respectful, 0 reports), and $\ge 30$ days since approval.
+  4. Marks volunteers whose `valid_until` has passed as `"expired"`.
 
 ---
 
@@ -235,7 +251,12 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`volunteers`**: Extended volunteer records with KYC and lifecycle tracking (`id`, `user_id`, `full_name`, `dob`, `locality`, `id_type`, `id_last4`, `id_image_path`, `selfie_path`, `motivation`, `availability_text`, `declaration_accepted_at`, `declaration_version`, `typed_signature`, `training_score`, `training_passed_at`, `status` in draft/submitted/in_review/approved/rejected/suspended/revoked/expired, `level` in provisional/trusted, `approved_at`, `approved_by`, `valid_until`, `reject_reason_code`, `reapply_after`, `flags_json`, `available`, `lat`, `lng`, `updated_at`).
 - **`volunteer_references`**: Personal & professional references for background checks (`id`, `volunteer_id`, `name`, `phone`, `relation`, `contacted_at`, `outcome` in pending/confirmed/not_reachable/negative, `notes`, `reviewer`).
 - **`volunteer_training_attempts`**: Audit log of safety questionnaire attempts (`id`, `volunteer_id`, `score`, `taken_at`).
-- **`responses`**: Volunteer dispatch responses to active alerts.
+- **`volunteer_reviews`**: Immutable administrative review and decision audit trail (`id`, `volunteer_id`, `reviewer`, `action`, `checklist_json`, `note`, `ts`).
+- **`volunteer_view_log`**: Audit log of every exact location view by volunteers when responding to alerts (`id`, `volunteer_id`, `alert_id`, `time`).
+- **`volunteer_feedback`**: Alert owner feedback on volunteers (`id`, `alert_id`, `volunteer_id`, `helpful`, `respectful`, `report_type`, `comment`, `created_at`).
+- **`volunteer_query_log`**: Rate-limiting log for nearby alert requests per volunteer (`id`, `volunteer_id`, `created_at`).
+- **`incident_events`**: Anonymized incident and response timeline (`id`, `alert_id`, `event_type`, `actor_label`, `note`, `created_at`).
+- **`responses`**: Volunteer dispatch responses to active alerts with verification code (`id`, `alert_id`, `volunteer_id`, `status`, `verification_code`, `responded_at`).
 - **`alert_contacts`**: Unique personalized tracking tokens generated for each emergency contact when an alert is created (`id`, `alert_id`, `contact_id`, `token`).
 - **`contact_responses`**: Status responses submitted by contacts via their personalized tracking page (`id`, `alert_id`, `contact_id`, `status`, `created_at`).
 - **`timers`**: Safe Timer records and automatic escalation deadlines.

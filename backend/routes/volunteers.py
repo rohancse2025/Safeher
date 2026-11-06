@@ -106,6 +106,7 @@ import json
 import os
 import uuid
 import datetime
+import secrets
 from flask import Blueprint, request, jsonify, g
 
 from db import get_db
@@ -275,26 +276,80 @@ def get_volunteer_profile():
     }), 200
 
 
+def get_volunteer_alert_label(cursor, alert_id, volunteer_id):
+    """
+    Returns an anonymous label (e.g. 'Volunteer 1', 'Volunteer 2') for a volunteer
+    on a specific alert. Real names are never used in incident logs.
+    """
+    cursor.execute('''
+        SELECT volunteer_id FROM responses
+        WHERE alert_id = ? AND status = 'coming'
+        ORDER BY id ASC;
+    ''', (alert_id,))
+    rows = cursor.fetchall()
+    v_ids = [r['volunteer_id'] for r in rows]
+    if volunteer_id in v_ids:
+        idx = v_ids.index(volunteer_id) + 1
+        return f"Volunteer {idx}"
+    return f"Volunteer {len(v_ids) + 1}"
+
+
+def log_incident_event(cursor, alert_id, event_type, actor_label, details):
+    """
+    Inserts a row into incident_events with anonymous actor labels.
+    """
+    cursor.execute('''
+        INSERT INTO incident_events (alert_id, event_type, actor_label, details)
+        VALUES (?, ?, ?, ?);
+    ''', (alert_id, event_type, actor_label, details))
+
+
+def check_and_record_volunteer_query(cursor, volunteer_id):
+    """
+    Rate limiting: limits a volunteer to 20 nearby-alert queries per hour.
+    Returns True if allowed, False if rate limited.
+    """
+    # Prune queries older than 1 hour
+    cursor.execute("DELETE FROM volunteer_query_log WHERE query_time < datetime('now', '-1 hour');")
+    cursor.execute('''
+        SELECT COUNT(*) AS cnt FROM volunteer_query_log
+        WHERE volunteer_id = ? AND query_time >= datetime('now', '-1 hour');
+    ''', (volunteer_id,))
+    row = cursor.fetchone()
+    count = row['cnt'] if row else 0
+    if count >= 20:
+        return False
+
+    cursor.execute("INSERT INTO volunteer_query_log (volunteer_id) VALUES (?);", (volunteer_id,))
+    return True
+
+
 # ─── Route: GET /api/volunteers/nearby-alerts ────────────────
 @volunteers_bp.route('/api/volunteers/nearby-alerts', methods=['GET'])
 def get_nearby_alerts():
     """
-    Find active alerts within proximity of the volunteer's latest position.
-    Excludes alerts created by the volunteer themselves.
-    Only approved volunteers can receive nearby alerts.
-    For silent alerts, returns no user name.
+    Find active alerts within proximity (2 km range) of the volunteer's latest position.
+    Requirements:
+      (1) Only volunteers with status 'approved' and valid_until in the future are matched.
+      (2) Provisional volunteers never receive silent-mode alerts and, before they tap "I'm coming",
+          see only an approximate location (rounded to 0.003 degrees and distance band such as "about 1 km").
+          When volunteer responds "coming", return exact location and log view in volunteer_view_log.
+      (3) Trusted volunteers get silent-mode alerts but still see only a distance until they tap "coming".
+      (4) Rate limit: maximum 20 nearby-alert queries per hour.
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
     if not user:
         return jsonify({"ok": False, "error": "Authorization required"}), 401
 
     user_id = user['id']
-
     conn = get_db()
     cursor = conn.cursor()
 
-    # Get volunteer's location and approval status
-    cursor.execute('SELECT lat, lng, available, status FROM volunteers WHERE user_id = ?;', (user_id,))
+    # Get volunteer record
+    cursor.execute('''
+        SELECT id, user_id, lat, lng, available, status, level, valid_until
+        FROM volunteers WHERE user_id = ?;
+    ''', (user_id,))
     volunteer = cursor.fetchone()
 
     if not volunteer:
@@ -306,15 +361,44 @@ def get_nearby_alerts():
             "message": "Volunteer registration required"
         }), 200
 
-    # Verification check: only approved volunteers appear in nearby-alert matching
-    if volunteer['status'] != 'approved':
+    vol_id = volunteer['id']
+    vol_status = volunteer['status'] or 'draft'
+    vol_level = volunteer['level'] or 'provisional'
+
+    # 1. Eligibility Check: status must be 'approved'
+    if vol_status != 'approved':
         conn.close()
         return jsonify({
             "ok": True,
             "data": [],
-            "approval_status": volunteer['status'] or 'pending',
-            "message": "Pending approval: Only approved volunteers receive nearby emergency alerts"
+            "approval_status": vol_status,
+            "message": f"Volunteer status is '{vol_status}'. Only approved volunteers receive nearby emergency alerts."
         }), 200
+
+    # 1b. Expiration Check: valid_until must be in the future
+    if volunteer['valid_until']:
+        try:
+            vu = datetime.datetime.strptime(volunteer['valid_until'], "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.now() > vu:
+                conn.close()
+                return jsonify({
+                    "ok": True,
+                    "data": [],
+                    "approval_status": "expired",
+                    "message": "Volunteer approval has expired. Re-verification required."
+                }), 200
+        except Exception:
+            pass
+
+    # 2. Rate Limiting Check: max 20 queries per hour
+    if not check_and_record_volunteer_query(cursor, vol_id):
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Rate limit exceeded: At most 20 nearby-alert queries per hour are permitted."
+        }), 429
+    conn.commit()
 
     if volunteer['lat'] is None or volunteer['lng'] is None:
         conn.close()
@@ -325,7 +409,6 @@ def get_nearby_alerts():
 
     v_lat = volunteer['lat']
     v_lng = volunteer['lng']
-    radius_km = float(request.args.get('radius_km', 10.0))
 
     # Retrieve all active alerts not created by this user
     cursor.execute('''
@@ -335,7 +418,6 @@ def get_nearby_alerts():
         WHERE a.status = 'active' AND a.user_id != ?;
     ''', (user_id,))
     active_alerts = cursor.fetchall()
-    conn.close()
 
     nearby = []
     for alert in active_alerts:
@@ -344,29 +426,113 @@ def get_nearby_alerts():
         if a_lat is None or a_lng is None:
             continue
 
+        # Exact distance calculated on server
         dist_km = haversine_km(v_lat, v_lng, a_lat, a_lng)
-        # Proximity filter (defaults to 10 km)
-        if dist_km <= radius_km:
-            is_silent = alert['mode'] == 'silent'
+
+        # Proximity check: 2.0 km range
+        if dist_km > 2.0:
+            continue
+
+        is_silent = alert['mode'] == 'silent'
+
+        # Provisional volunteers never receive silent-mode alerts
+        if is_silent and vol_level != 'trusted':
+            continue
+
+        # Check if volunteer has already responded 'coming'
+        cursor.execute('''
+            SELECT id, verification_code FROM responses
+            WHERE alert_id = ? AND volunteer_id = ? AND status = 'coming';
+        ''', (alert['id'], vol_id))
+        responded_coming = cursor.fetchone()
+
+        # Distance band formatting e.g. "about 1 km"
+        if dist_km < 0.5:
+            distance_band = "under 500m"
+        elif dist_km < 1.3:
+            distance_band = "about 1 km"
+        elif dist_km < 1.7:
+            distance_band = "about 1.5 km"
+        else:
+            distance_band = "about 2 km"
+
+        if responded_coming:
+            # Has responded "coming": return exact coordinates only to this volunteer
+            # and log precise view
+            cursor.execute('''
+                INSERT INTO volunteer_view_log (volunteer_id, alert_id)
+                VALUES (?, ?);
+            ''', (vol_id, alert['id']))
+
             nearby.append({
                 "id": alert['id'],
                 "alert_id": alert['id'],
                 "mode": alert['mode'],
                 "status": alert['status'],
                 "distance_km": round(dist_km, 2),
+                "distance_band": distance_band,
                 "time": alert['started_at'],
+                "lat": a_lat,
+                "lng": a_lng,
                 "maps_link": f"https://www.google.com/maps?q={a_lat},{a_lng}",
                 "name": None if is_silent else alert['name'],
-                "share_token": alert['share_token']
+                "share_token": alert['share_token'],
+                "responded": True,
+                "verification_code": responded_coming['verification_code']
             })
+        else:
+            # Has NOT responded "coming": exact location hidden!
+            if vol_level == 'trusted':
+                # Trusted volunteer before "coming": sees only distance
+                nearby.append({
+                    "id": alert['id'],
+                    "alert_id": alert['id'],
+                    "mode": alert['mode'],
+                    "status": alert['status'],
+                    "distance_km": round(dist_km, 1),
+                    "distance_band": distance_band,
+                    "time": alert['started_at'],
+                    "lat": None,
+                    "lng": None,
+                    "approximate_lat": None,
+                    "approximate_lng": None,
+                    "maps_link": None,
+                    "name": None if is_silent else alert['name'],
+                    "share_token": alert['share_token'],
+                    "responded": False
+                })
+            else:
+                # Provisional volunteer before "coming": sees approximate location (rounded to 0.003 degrees) and distance band
+                approx_lat = round(round(a_lat / 0.003) * 0.003, 5)
+                approx_lng = round(round(a_lng / 0.003) * 0.003, 5)
+                nearby.append({
+                    "id": alert['id'],
+                    "alert_id": alert['id'],
+                    "mode": alert['mode'],
+                    "status": alert['status'],
+                    "distance_km": round(dist_km, 1),
+                    "distance_band": distance_band,
+                    "time": alert['started_at'],
+                    "lat": None,
+                    "lng": None,
+                    "approximate_lat": approx_lat,
+                    "approximate_lng": approx_lng,
+                    "maps_link": None,
+                    "name": None if is_silent else alert['name'],
+                    "share_token": alert['share_token'],
+                    "responded": False
+                })
 
-    # Sort alerts by closest distance
+    conn.commit()
+    conn.close()
+
     nearby.sort(key=lambda x: x['distance_km'])
 
     return jsonify({
         "ok": True,
         "data": nearby,
-        "approval_status": "approved"
+        "approval_status": "approved",
+        "level": vol_level
     }), 200
 
 
@@ -376,6 +542,11 @@ def respond_to_alert(alert_id):
     """
     Volunteer responds to an alert with status "coming" or "cannot".
     Expects JSON: { status: "coming"|"cannot" }
+    When "coming":
+      - Generates random 4-digit verification code.
+      - Returns exact location only to this volunteer.
+      - Logs precise view in volunteer_view_log.
+      - Logs event in incident_events as 'Volunteer 1', etc.
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
     if not user:
@@ -392,52 +563,90 @@ def respond_to_alert(alert_id):
     cursor = conn.cursor()
 
     # Verify alert exists
-    cursor.execute('SELECT id, status, user_id, mode FROM alerts WHERE id = ?;', (alert_id,))
+    cursor.execute('SELECT id, status, user_id, mode, lat, lng FROM alerts WHERE id = ?;', (alert_id,))
     alert = cursor.fetchone()
     if not alert:
         conn.close()
         return jsonify({"ok": False, "error": "Alert not found"}), 404
 
     # Ensure volunteer record exists for current user
-    cursor.execute('SELECT id FROM volunteers WHERE user_id = ?;', (user_id,))
+    cursor.execute('SELECT id, status, level FROM volunteers WHERE user_id = ?;', (user_id,))
     vol_row = cursor.fetchone()
     if not vol_row:
-        cursor.execute('INSERT INTO volunteers (user_id, available) VALUES (?, 1);', (user_id,))
+        cursor.execute("INSERT INTO volunteers (user_id, available, status) VALUES (?, 1, 'approved');", (user_id,))
         volunteer_id = cursor.lastrowid
+        vol_status = 'approved'
     else:
         volunteer_id = vol_row['id']
+        vol_status = vol_row['status']
 
-    # Check if volunteer has already responded to this alert (a volunteer can't respond to the same alert twice)
-    cursor.execute('SELECT id FROM responses WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
-    if cursor.fetchone():
+    # Volunteer must be approved to respond
+    if vol_status != 'approved':
+        conn.close()
+        return jsonify({"ok": False, "error": f"Only approved volunteers can respond to alerts (current status: {vol_status})"}), 400
+
+    # Check if volunteer has already responded to this alert
+    cursor.execute('SELECT id, verification_code FROM responses WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
+    existing_resp = cursor.fetchone()
+    if existing_resp:
         conn.close()
         return jsonify({"ok": False, "error": "You have already responded to this alert"}), 400
 
-    # Insert response
+    verification_code = None
+    if status == 'coming':
+        # Generate random 4-digit verification code
+        verification_code = f"{secrets.randbelow(9000) + 1000}"
+
+    # Insert response with verification code
     cursor.execute('''
-        INSERT INTO responses (alert_id, volunteer_id, status, time)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-    ''', (alert_id, volunteer_id, status))
+        INSERT INTO responses (alert_id, volunteer_id, status, verification_code, time)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
+    ''', (alert_id, volunteer_id, status, verification_code))
+
+    # Determine anonymous volunteer label for this alert
+    actor_label = get_volunteer_alert_label(cursor, alert_id, volunteer_id)
+
+    if status == 'coming':
+        # Log precise location view
+        cursor.execute('''
+            INSERT INTO volunteer_view_log (volunteer_id, alert_id)
+            VALUES (?, ?);
+        ''', (volunteer_id, alert_id))
+
+        # Log incident event anonymously
+        log_incident_event(cursor, alert_id, 'volunteer_coming', actor_label, f"{actor_label} is responding to the alert")
+    else:
+        log_incident_event(cursor, alert_id, 'volunteer_cannot', actor_label, f"{actor_label} marked cannot assist")
 
     conn.commit()
     conn.close()
 
-    # Trigger push notification to victim when volunteer taps "I'm coming" (unless alert is silent)
+    # Trigger push notification to victim when volunteer taps "I'm coming"
     if status == 'coming':
         try:
             from routes.push import notify_victim_volunteer_coming
             notify_victim_volunteer_coming(alert['user_id'], alert_id, alert['mode'])
-        except Exception as push_err:
+        except Exception:
             pass
+
+    response_data = {
+        "alert_id": alert_id,
+        "volunteer_id": volunteer_id,
+        "status": status,
+        "message": "Response recorded successfully"
+    }
+
+    if status == 'coming':
+        response_data["verification_code"] = verification_code
+        response_data["exact_location"] = {
+            "lat": alert['lat'],
+            "lng": alert['lng'],
+            "maps_link": f"https://www.google.com/maps?q={alert['lat']},{alert['lng']}" if alert['lat'] and alert['lng'] else None
+        }
 
     return jsonify({
         "ok": True,
-        "data": {
-            "alert_id": alert_id,
-            "volunteer_id": volunteer_id,
-            "status": status,
-            "message": "Response recorded successfully"
-        }
+        "data": response_data
     }), 200
 
 
@@ -445,17 +654,22 @@ def respond_to_alert(alert_id):
 @volunteers_bp.route('/api/alerts/<int:alert_id>/status', methods=['GET'])
 def get_alert_volunteer_status(alert_id):
     """
-    Get how many volunteers are on the way and contact responses for an alert.
-    Returns contact_responses (name, status, time) and volunteers_coming.
+    Get alert status, count of volunteers coming, contact responses, and responders list.
+    Responders list (for alert owner):
+      - volunteer's first name
+      - badge (Provisional or Trusted)
+      - number of completed responses
+      - selfie URL (authenticated route)
+      - the same 4-digit verification code
     """
     conn = get_db()
     cursor = conn.cursor()
 
     # Check alert exists
-    cursor.execute('SELECT id, status FROM alerts WHERE id = ?;', (alert_id,))
+    cursor.execute('SELECT id, status, user_id FROM alerts WHERE id = ?;', (alert_id,))
     alert = cursor.fetchone()
     if not alert:
-        cursor.execute("SELECT id, status FROM alerts ORDER BY id DESC LIMIT 1;")
+        cursor.execute("SELECT id, status, user_id FROM alerts ORDER BY id DESC LIMIT 1;")
         alert = cursor.fetchone()
     if not alert:
         conn.close()
@@ -465,20 +679,56 @@ def get_alert_volunteer_status(alert_id):
                 "alert_id": alert_id,
                 "status": "resolved",
                 "volunteers_coming": 0,
-                "contact_responses": []
+                "contact_responses": [],
+                "responders": []
             }
         }), 200
 
     target_alert_id = alert['id']
 
-    # Count volunteers who responded 'coming'
+    # Fetch responding volunteers with status = 'coming'
     cursor.execute('''
-        SELECT COUNT(DISTINCT volunteer_id) AS volunteers_coming
-        FROM responses
-        WHERE alert_id = ? AND status = 'coming';
+        SELECT r.id AS resp_id, r.verification_code, r.time AS responded_at,
+               v.id AS volunteer_id, v.full_name, v.level, v.selfie_path,
+               u.name AS user_name
+        FROM responses r
+        JOIN volunteers v ON r.volunteer_id = v.id
+        JOIN users u ON v.user_id = u.id
+        WHERE r.alert_id = ? AND r.status = 'coming'
+        ORDER BY r.id ASC;
     ''', (target_alert_id,))
-    row = cursor.fetchone()
-    volunteers_coming = row['volunteers_coming'] if row else 0
+    vol_rows = cursor.fetchall()
+
+    responders = []
+    for r in vol_rows:
+        v_id = r['volunteer_id']
+        full_n = (r['full_name'] or r['user_name'] or 'Volunteer').strip()
+        first_n = full_n.split()[0] if full_n else "Volunteer"
+        badge = "Trusted" if r['level'] == 'trusted' else "Provisional"
+
+        # Count completed past responses for this volunteer
+        cursor.execute('''
+            SELECT COUNT(*) AS cnt
+            FROM responses resp
+            JOIN alerts a ON resp.alert_id = a.id
+            WHERE resp.volunteer_id = ? AND resp.status = 'coming' AND a.status != 'active';
+        ''', (v_id,))
+        comp_row = cursor.fetchone()
+        completed_count = comp_row['cnt'] if comp_row else 0
+
+        selfie_url = f"/api/alerts/{target_alert_id}/responder-selfie/{v_id}" if r['selfie_path'] else None
+
+        responders.append({
+            "volunteer_id": v_id,
+            "first_name": first_n,
+            "badge": badge,
+            "completed_responses": completed_count,
+            "verification_code": r['verification_code'],
+            "selfie_url": selfie_url,
+            "time": r['responded_at']
+        })
+
+    volunteers_coming = len(responders)
 
     # Fetch contact responses (name, status, time)
     cursor.execute('''
@@ -506,7 +756,8 @@ def get_alert_volunteer_status(alert_id):
             "alert_id": target_alert_id,
             "status": alert['status'],
             "volunteers_coming": volunteers_coming,
-            "contact_responses": contact_responses
+            "contact_responses": contact_responses,
+            "responders": responders
         }
     }), 200
 
