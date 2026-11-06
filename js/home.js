@@ -105,6 +105,10 @@ SafeHer.home = (function() {
     if (SafeHer.shareLocation && SafeHer.shareLocation.updateHomeBanner) {
       SafeHer.shareLocation.updateHomeBanner();
     }
+
+    if (SafeHer.sos && SafeHer.sos.updateUneasyBanner) {
+      SafeHer.sos.updateUneasyBanner();
+    }
   }
 
   // ── Init (called once at DOMContentLoaded) ─────────────

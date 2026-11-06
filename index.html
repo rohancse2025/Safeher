@@ -261,9 +261,38 @@
         </div>
         <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">chevron_right</span>
       </div>
+
+      <!-- Active Ride Safety Banner -->
+      <div id="ride-active-home-banner" class="ride-active-banner" style="display: none;">
+        <div class="ride-active-banner-inner">
+          <div style="flex: 1; min-width: 0;">
+            <div class="ride-banner-title">
+              <span class="material-symbols-rounded" style="font-size: 18px;">local_taxi</span>
+              <span id="ride-banner-veh-num">Ride in Progress</span>
+            </div>
+            <div class="ride-banner-dest" id="ride-banner-dest">To Destination</div>
+            <div class="ride-banner-time" id="ride-banner-time">Arriving soon</div>
+          </div>
+          <div class="ride-banner-actions">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.router.go('ride')" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">View</button>
+            <button type="button" class="btn btn-crimson" onclick="SafeHer.ride.endRide()" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">End</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Uneasy Alert Banner (shown only when uneasy alert is active) -->
+      <div id="uneasy-active-home-banner" class="uneasy-active-banner" style="display: none;">
+        <div class="uneasy-banner-inner">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-rounded" style="color: #D97706; font-size: 20px;">sentiment_neutral</span>
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: #92400E;">Quiet Check-in Active</div>
+              <div id="uneasy-banner-elapsed" style="font-size: 11px; color: #B45309; margin-top: 1px;">Close contacts notified</div>
+            </div>
+          </div>
           <div class="uneasy-banner-actions">
-            <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I'm OK</button>
-            <button type="button" class="btn btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I need more help</button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="padding: 4px 10px; font-size: 11px; height: 30px; min-height: 30px; border-color: #FCD34D; color: #92400E; background: #FFFBEB;">I'm OK</button>
+            <button type="button" class="btn btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="padding: 4px 10px; font-size: 11px; height: 30px; min-height: 30px;">I need more help</button>
           </div>
         </div>
       </div>
@@ -287,6 +316,22 @@
           <span id="sos-status-text" data-i18n="homeYouAreSafe">You are safe</span>
         </div>
 
+        <!-- Graduated Alert Buttons Row -->
+        <div class="graduated-sos-row">
+          <button type="button" class="grad-btn grad-btn-uneasy" onclick="SafeHer.sos.openUneasySheet()" aria-label="Uneasy check-in">
+            <span class="material-symbols-rounded">sentiment_neutral</span>
+            <span>Uneasy</span>
+          </button>
+          <button type="button" class="grad-btn grad-btn-help" onclick="SafeHer.home.triggerSOS()" aria-label="Help normal SOS">
+            <span class="material-symbols-rounded">sos</span>
+            <span>Help</span>
+          </button>
+          <button type="button" class="grad-btn grad-btn-emergency" onclick="SafeHer.sos.triggerDirectEmergency()" aria-label="Emergency immediate siren">
+            <span class="material-symbols-rounded">e911_emergency</span>
+            <span>Emergency</span>
+          </button>
+        </div>
+
         <div class="chip-row">
           <button class="chip" onclick="SafeHer.router.go('fake-call')">
             <span class="material-symbols-rounded">phone</span><span data-i18n="homeFakeCall">Fake Call</span>
@@ -294,47 +339,25 @@
           <button class="chip" onclick="SafeHer.router.go('tips')">
             <span class="material-symbols-rounded">lightbulb</span><span data-i18n="homeTips">Tips</span>
           </button>
-          <button class="chip" onclick="SafeHer.router.go('evidence')">
+          <button class="chip" onclick="SafeHer.router.go('record-evidence')">
             <span class="material-symbols-rounded">mic</span><span data-i18n="homeEvidence">Evidence</span>
           </button>
         </div>
       </div>
 
-      <!-- Active Ride Safety Banner -->
-      <div id="ride-active-home-banner" class="ride-active-banner" style="display: none;">
-        <div class="ride-active-banner-inner">
-          <div style="flex: 1; min-width: 0;">
-            <div class="ride-banner-title">
-              <span class="material-symbols-rounded" style="font-size: 18px;">local_taxi</span>
-              <span id="ride-banner-veh-num">Ride in Progress</span>
-            </div>
-            <div class="ride-banner-dest" id="ride-banner-dest">To Destination</div>
-            <div class="ride-banner-time" id="ride-banner-time">Arriving soon</div>
-          </div>
-          <div class="ride-banner-actions">
-            <button type="button" class="btn btn-secondary" onclick="SafeHer.router.go('ride')" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">View</button>
-            <button type="button" class="btn btn-crimson" onclick="SafeHer.ride.endRide()" style="padding: 6px 10px; font-size: 12px; height: 32px; min-height: 32px;">End</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tile grid -->
+      <!-- Tile grid: 9 Balanced Tiles (3x3) -->
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.router.go('ride')">
           <span class="material-symbols-rounded">local_taxi</span>
           <span class="tile-label">Ride Safety</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('share-location')">
-          <span class="material-symbols-rounded">share</span>
+          <span class="material-symbols-rounded">share_location</span>
           <span class="tile-label" data-i18n="homeShareLocation">Share Location</span>
         </button>
-        <button class="tile" onclick="SafeHer.router.go('history')">
-          <span class="material-symbols-rounded">history</span>
-          <span class="tile-label" data-i18n="homeHistory">History</span>
-        </button>
-        <button class="tile" onclick="if(SafeHer.helpRights && SafeHer.helpRights.render){SafeHer.helpRights.render();}SafeHer.router.go('help-rights')">
-          <span class="material-symbols-rounded">local_police</span>
-          <span class="tile-label" data-i18n="homeHelpRights">Help & Rights</span>
+        <button class="tile" onclick="SafeHer.router.go('safe-timer')">
+          <span class="material-symbols-rounded">timer</span>
+          <span class="tile-label" data-i18n="homeSafeTimer">Safe Timer</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('nearby-places')">
           <span class="material-symbols-rounded">pin_drop</span>
@@ -344,9 +367,21 @@
           <span class="material-symbols-rounded">groups</span>
           <span class="tile-label" data-i18n="homeVolunteers">Volunteers</span>
         </button>
-        <button class="tile" onclick="SafeHer.router.go('safe-timer')">
-          <span class="material-symbols-rounded">timer</span>
-          <span class="tile-label" data-i18n="homeSafeTimer">Safe Timer</span>
+        <button class="tile" onclick="if(SafeHer.helpRights && SafeHer.helpRights.render){SafeHer.helpRights.render();}SafeHer.router.go('help-rights')">
+          <span class="material-symbols-rounded">local_police</span>
+          <span class="tile-label" data-i18n="homeHelpRights">Help &amp; Rights</span>
+        </button>
+        <button class="tile" onclick="SafeHer.vault.openVaultScreen()">
+          <span class="material-symbols-rounded">lock</span>
+          <span class="tile-label">Evidence Vault</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('complaint-letter')">
+          <span class="material-symbols-rounded">description</span>
+          <span class="tile-label">Complaint</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('history')">
+          <span class="material-symbols-rounded">history</span>
+          <span class="tile-label" data-i18n="homeHistory">Alert History</span>
         </button>
       </div>
 
@@ -2474,7 +2509,42 @@
     </button>
   </nav>
 
-  <!-- ── Uneasy 'Are you OK?' 10-Minute Modal ───────────────── -->
+    <!-- ── Uneasy 'Send a quiet check-in' Sheet Modal ─────────── -->
+  <div id="uneasy-sheet-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
+    <div class="modal-sheet" style="padding: 22px 20px; border-radius: var(--radius-tile); max-width: 380px; width: 92%;">
+      <!-- Form View -->
+      <div id="uneasy-form-view">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span class="material-symbols-rounded" style="color: #D97706; font-size: 24px;">sentiment_neutral</span>
+          <h3 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0;">Quiet Check-in</h3>
+        </div>
+        <p style="font-size: 12px; color: var(--text-gray); margin: 0 0 14px; line-height: 1.45;">
+          Send a quiet check-in with your live GPS location to your close contacts? No sirens or alarms will sound.
+        </p>
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label style="font-size: 11px; font-weight: 600; color: var(--text-dark); margin-bottom: 4px; display: block;">Optional Note</label>
+          <input type="text" id="uneasy-note" class="form-input" placeholder="e.g. Taking a late cab home, just checking in" style="font-size: 13px; padding: 10px 12px;" />
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.closeUneasySheet()" style="flex: 1;">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="SafeHer.sos.sendUneasyCheckin()" style="flex: 1.2; background: #D97706; border-color: #B45309;">Send Check-in</button>
+        </div>
+      </div>
+
+      <!-- Sent View -->
+      <div id="uneasy-sent-view" style="display: none; text-align: center;">
+        <span class="material-symbols-rounded" style="color: #059669; font-size: 40px; margin-bottom: 6px;">check_circle</span>
+        <h3 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 6px;">Check-in Sent</h3>
+        <p style="font-size: 12px; color: var(--text-gray); margin: 0 0 12px; line-height: 1.4;">
+          Your close contacts have been sent your live location and tracking link.
+        </p>
+        <div id="uneasy-track-link-preview" style="background: #F9FAFB; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 14px; font-size: 11px;"></div>
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.closeUneasySheet()" style="width: 100%;">Done</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ── Uneasy 'Are you OK?' 10-Minute Modal ───────────────── -->
   <div id="uneasy-are-you-ok-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
     <div class="modal-sheet" style="text-align: center; padding: 24px 20px; border-radius: 12px; max-width: 360px; width: 90%;">
       <span class="material-symbols-rounded" style="font-size: 40px; color: #D97706; margin-bottom: 8px;">help</span>
@@ -2492,30 +2562,30 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=30"></script>
-<script src="./js/storage.js?v=30"></script>
-<script src="./js/api.js?v=30"></script>
-<script src="./js/i18n.js?v=30"></script>
-<script src="./js/helpdata.js?v=30"></script>
-<script src="./js/help_rights.js?v=30"></script>
-<script src="./js/app.js?v=30"></script>
-<script src="./js/onboarding.js?v=30"></script>
-<script src="./js/auth.js?v=30"></script>
-<script src="./js/pin.js?v=30"></script>
-<script src="./js/home.js?v=30"></script>
-<script src="./js/contacts.js?v=30"></script>
-<script src="./js/tips.js?v=30"></script>
-<script src="./js/profile.js?v=30"></script>
-<script src="./js/sos.js?v=30"></script>
-<script src="./js/map.js?v=30"></script>
-<script src="./js/share_location.js?v=30"></script>
-<script src="./js/police.js?v=30"></script>
-<script src="./js/places.js?v=30"></script>
-<script src="./js/ride.js?v=30"></script>
-<script src="./js/volunteer.js?v=30"></script>
-<script src="./js/timer.js?v=30"></script>
-<script src="./js/fakecall.js?v=30"></script>
-<script src="./js/evidence.js?v=30"></script>
-<script src="./js/vault.js?v=30"></script>
+<script src="./js/config.js?v=32"></script>
+<script src="./js/storage.js?v=32"></script>
+<script src="./js/api.js?v=32"></script>
+<script src="./js/i18n.js?v=32"></script>
+<script src="./js/helpdata.js?v=32"></script>
+<script src="./js/help_rights.js?v=32"></script>
+<script src="./js/app.js?v=32"></script>
+<script src="./js/onboarding.js?v=32"></script>
+<script src="./js/auth.js?v=32"></script>
+<script src="./js/pin.js?v=32"></script>
+<script src="./js/home.js?v=32"></script>
+<script src="./js/contacts.js?v=32"></script>
+<script src="./js/tips.js?v=32"></script>
+<script src="./js/profile.js?v=32"></script>
+<script src="./js/sos.js?v=32"></script>
+<script src="./js/map.js?v=32"></script>
+<script src="./js/share_location.js?v=32"></script>
+<script src="./js/police.js?v=32"></script>
+<script src="./js/places.js?v=32"></script>
+<script src="./js/ride.js?v=32"></script>
+<script src="./js/volunteer.js?v=32"></script>
+<script src="./js/timer.js?v=32"></script>
+<script src="./js/fakecall.js?v=32"></script>
+<script src="./js/evidence.js?v=32"></script>
+<script src="./js/vault.js?v=32"></script>
 </body>
 </html>
