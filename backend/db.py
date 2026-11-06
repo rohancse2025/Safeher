@@ -133,6 +133,32 @@ def init_db():
         );
     ''')
 
+    # 6a. Alert contacts table (one unique token per contact per alert)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alert_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 6b. Contact responses table (responses submitted by contacts via their unique link)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contact_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
     # 7. Timers table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS timers (
@@ -209,6 +235,10 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_token ON alerts(share_token);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_contacts_token ON alert_contacts(token);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_contacts_alert ON alert_contacts(alert_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contact_responses_alert ON contact_responses(alert_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contact_responses_contact ON contact_responses(contact_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_locations_alert ON locations(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')

@@ -96,8 +96,17 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/alerts/<id>/end`** *(Auth required)* – Ends alert with 4-digit PIN. If duress PIN is submitted, returns success to attacker while silently keeping alert active with `duress=1`.
 - **`GET /api/alerts`** *(Auth required)* – Returns full chronological alert history for current user.
 
-### 6. Public Tracking (No Auth)
-- **`GET /api/track/<share_token>`** – Public live-tracking link returning only first name, mode, status, latest coordinates, last updated time, and number of volunteers on the way. Never exposes personal contact information.
+### 6. Public Tracking & Contact Responses (No Auth)
+- **`GET /api/track/<token>`** – Accepts either a general `share_token` (read-only) or a personalized `contact_token`.
+  - For `share_token`: Returns read-only alert status (`is_contact: false`, alert owner's `first_name`, `mode`, `status`, `latest_lat`, `latest_lng`, `last_update_time`, `volunteers_en_route`).
+  - For `contact_token`: Returns contact personalization (`is_contact: true`, `contact_first_name`, `contact_name`, alert owner's `first_name`, `mode`, `status`, `latest_lat`, `latest_lng`, `last_update_time`, `volunteers_en_route`).
+  - Never exposes phone number, email, or credentials.
+- **`POST /api/track/<token>/respond`** – Allows trusted contacts to respond directly from `track.html` without logging in:
+  - Expects JSON: `{"status": "on_my_way" | "called" | "alerted_police" | "cannot_reach"}`.
+  - Valid ONLY with a `contact_token` and an active alert.
+  - Rate-limited to 10 responses per hour per contact token.
+  - Recorded in the `contact_responses` table with timestamp.
+  - Dispatches an instant Web Push notification to the alert owner if subscribed.
 
 ### 7. Email Testing
 - **`POST /api/test-email`** *(Auth required)* – Sends a diagnostic test email to the user's registered address using Gmail SMTP.
@@ -106,7 +115,7 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/volunteers/status`** *(Auth required)* – Saves volunteer availability (`available`: true/false) and latest GPS coordinates.
 - **`GET /api/volunteers/nearby-alerts`** *(Auth required)* – Finds active alerts within 2 km of volunteer's position using the Haversine formula (excludes own alerts; hides names on silent alerts).
 - **`POST /api/alerts/<id>/respond`** *(Auth required)* – Volunteer responds to an alert with `"coming"` or `"cannot"`.
-- **`GET /api/alerts/<id>/status`** *(Auth required, owner only)* – Returns how many volunteers are currently on the way.
+- **`GET /api/alerts/<id>/status`** – Returns `volunteers_coming` and full chronological list of `contact_responses` (`name`, `status`, `time`).
 - **`GET /api/volunteers/count`** – Returns the number of currently available volunteers.
 
 ### 9. Safe Timers & Background Escalation
@@ -124,7 +133,8 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
   2. Silent alerts notify nearby volunteers only, with `silent: true` (no sound).
   3. Victim receives a push when a volunteer taps "I'm coming".
   4. User receives a push when their safe-arrival timer expires.
-  5. Expired 404/410 subscriptions are automatically pruned.
+  5. Alert owner receives a push whenever an emergency contact responds from their tracking link ("Mom: I'm on my way").
+  6. Expired 404/410 subscriptions are automatically pruned.
 
 ### 11. Admin Management (Protected by ADMIN_KEY)
 - **`GET /api/admin/stats`** – Platform metrics: total users, active alerts, alerts today, approved volunteers.
@@ -169,6 +179,8 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`locations`**: Live GPS tracking history for active alerts.
 - **`volunteers`**: Nearby volunteer coordinates and availability status.
 - **`responses`**: Volunteer dispatch responses to active alerts.
+- **`alert_contacts`**: Unique personalized tracking tokens generated for each emergency contact when an alert is created (`id`, `alert_id`, `contact_id`, `token`).
+- **`contact_responses`**: Status responses submitted by contacts via their personalized tracking page (`id`, `alert_id`, `contact_id`, `status`, `created_at`).
 - **`timers`**: Safe Timer records and automatic escalation deadlines.
 - **`push_subscriptions`**: Web Push subscription endpoints and crypto keys per user (`endpoint`, `p256dh`, `auth`).
 - **`evidence_keys`**: Public and wrapped private keys with salt per user (`user_id`, `public_key`, `wrapped_private_key`, `salt`).

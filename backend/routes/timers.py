@@ -247,14 +247,27 @@ def check_expired_timers():
             VALUES (?, ?, ?);
         ''', (alert_id, last_lat, last_lng))
 
-        # 4. Get emergency contact emails and phones
+        # 4. Get emergency contact emails and phones and generate contact tokens
         cursor.execute('''
-            SELECT phone, email FROM contacts
+            SELECT id, name, phone, email FROM contacts
             WHERE user_id = ?;
         ''', (user_id,))
         contact_rows = cursor.fetchall()
         contacts_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
         contacts_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+
+        contact_tokens_email = {}
+        contact_tokens_phone = {}
+        for r in contact_rows:
+            c_token = secrets.token_urlsafe(24)
+            cursor.execute('''
+                INSERT INTO alert_contacts (alert_id, contact_id, token)
+                VALUES (?, ?, ?);
+            ''', (alert_id, r['id'], c_token))
+            if r['email'] and r['email'].strip():
+                contact_tokens_email[r['email'].strip()] = c_token
+            if r['phone'] and r['phone'].strip():
+                contact_tokens_phone[r['phone'].strip()] = c_token
 
         conn.commit()
 
@@ -268,7 +281,8 @@ def check_expired_timers():
                 lat=last_lat,
                 lng=last_lng,
                 share_token=share_token,
-                recipient_emails=contacts_emails
+                recipient_emails=contacts_emails,
+                contact_tokens=contact_tokens_email
             )
 
         # 6. Dispatch automated emergency WhatsApp to contacts
@@ -281,7 +295,8 @@ def check_expired_timers():
                 lat=last_lat,
                 lng=last_lng,
                 share_token=share_token,
-                recipient_phones=contacts_phones
+                recipient_phones=contacts_phones,
+                contact_tokens=contact_tokens_phone
             )
 
         # 6. Dispatch Web Push notification to user

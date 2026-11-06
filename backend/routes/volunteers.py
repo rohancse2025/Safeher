@@ -339,7 +339,8 @@ def respond_to_alert(alert_id):
 @volunteers_bp.route('/api/alerts/<int:alert_id>/status', methods=['GET'])
 def get_alert_volunteer_status(alert_id):
     """
-    Get how many volunteers are on the way for an alert.
+    Get how many volunteers are on the way and contact responses for an alert.
+    Returns contact_responses (name, status, time) and volunteers_coming.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -357,27 +358,49 @@ def get_alert_volunteer_status(alert_id):
             "data": {
                 "alert_id": alert_id,
                 "status": "resolved",
-                "volunteers_coming": 0
+                "volunteers_coming": 0,
+                "contact_responses": []
             }
         }), 200
+
+    target_alert_id = alert['id']
 
     # Count volunteers who responded 'coming'
     cursor.execute('''
         SELECT COUNT(DISTINCT volunteer_id) AS volunteers_coming
         FROM responses
         WHERE alert_id = ? AND status = 'coming';
-    ''', (alert_id,))
+    ''', (target_alert_id,))
     row = cursor.fetchone()
     volunteers_coming = row['volunteers_coming'] if row else 0
+
+    # Fetch contact responses (name, status, time)
+    cursor.execute('''
+        SELECT c.name, cr.status, cr.created_at AS time
+        FROM contact_responses cr
+        JOIN contacts c ON cr.contact_id = c.id
+        WHERE cr.alert_id = ?
+        ORDER BY cr.id DESC;
+    ''', (target_alert_id,))
+    resp_rows = cursor.fetchall()
+    contact_responses = [
+        {
+            "name": r['name'],
+            "status": r['status'],
+            "time": r['time']
+        }
+        for r in resp_rows
+    ]
 
     conn.close()
 
     return jsonify({
         "ok": True,
         "data": {
-            "alert_id": alert_id,
+            "alert_id": target_alert_id,
             "status": alert['status'],
-            "volunteers_coming": volunteers_coming
+            "volunteers_coming": volunteers_coming,
+            "contact_responses": contact_responses
         }
     }), 200
 

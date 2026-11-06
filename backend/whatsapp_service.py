@@ -167,7 +167,7 @@ def send_whatsapp(to_phone, message_text):
     return True, "simulated"
 
 
-def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at_str, lat, lng, share_token, recipient_phones):
+def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at_str, lat, lng, share_token, recipient_phones, contact_tokens=None):
     """
     Send emergency WhatsApp messages to contacts in a background thread so the HTTP API responds instantly.
     """
@@ -190,8 +190,13 @@ def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at
         )
 
         for phone in recipient_phones:
+            tok = share_token
+            if contact_tokens and isinstance(contact_tokens, dict):
+                tok = contact_tokens.get(phone) or share_token
+            per_track_link = f"{frontend_url}/track.html?t={tok}"
+            per_message = message.replace(track_link, per_track_link)
             masked = mask_phone(phone)
-            success, err_msg = send_whatsapp(phone, message)
+            success, err_msg = send_whatsapp(phone, per_message)
             if success:
                 app_logger.info(f"[WHATSAPP SENT] alert_id={alert_id}, to={masked}, status={err_msg or 'delivered'}")
             else:

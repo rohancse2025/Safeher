@@ -283,3 +283,29 @@ def notify_user_timer_expired(user_id, timer_id):
     }
     dispatch_push_to_users([user_id], payload)
 
+
+def notify_alert_owner_contact_response(owner_user_id, alert_id, contact_name, status):
+    """
+    Send a Web Push notification to the alert owner for each new contact response,
+    if she has subscribed.
+    """
+    status_label_map = {
+        'on_my_way': "I'm on my way",
+        'called': "I called her",
+        'alerted_police': "I alerted police",
+        'cannot_reach': "I can't reach her"
+    }
+    action_label = status_label_map.get(status, status)
+    payload = {
+        "title": f"Contact Update: {contact_name}",
+        "body": f"{contact_name}: {action_label}",
+        "data": {
+            "screen": "sos-active",
+            "alert_id": alert_id,
+            "status": status,
+            "contact_name": contact_name
+        },
+        "silent": False
+    }
+    dispatch_push_to_users([owner_user_id], payload)
+

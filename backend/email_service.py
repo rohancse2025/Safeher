@@ -56,7 +56,7 @@ def send_email(to_email, subject, body_text, body_html=None):
         return False, err_msg
 
 
-def send_alert_notifications_background(alert_id, user_name, mode, started_at_str, lat, lng, share_token, recipient_emails, note=None):
+def send_alert_notifications_background(alert_id, user_name, mode, started_at_str, lat, lng, share_token, recipient_emails, note=None, contact_tokens=None):
     """
     Send alert emails to contacts in a background thread so the HTTP API responds immediately.
     Logs failures without crashing and updates notified_count in SQLite.
@@ -143,8 +143,14 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
 
         sent_count = 0
         for email in recipient_emails:
+            tok = share_token
+            if contact_tokens and isinstance(contact_tokens, dict):
+                tok = contact_tokens.get(email) or contact_tokens.get(email.lower()) or share_token
+            per_track_link = f"{frontend_url}/track.html?t={tok}"
+            per_body_text = body_text.replace(track_link, per_track_link)
+            per_body_html = body_html.replace(track_link, per_track_link)
             masked_to = mask_email(email)
-            success, err_msg = send_email(email, subject, body_text, body_html)
+            success, err_msg = send_email(email, subject, per_body_text, per_body_html)
             if success:
                 sent_count += 1
                 app_logger.info(f"[EMAIL SENT] alert_id={alert_id}, to={masked_to}")

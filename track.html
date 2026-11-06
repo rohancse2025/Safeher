@@ -200,6 +200,64 @@
       color: #A80F3C;
       border: 1px solid #A80F3C;
     }
+    .btn-contact-action {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #A80F3C;
+      background: #FFFFFF;
+      color: #A80F3C;
+      font-family: inherit;
+      box-sizing: border-box;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .btn-contact-action:hover, .btn-contact-action:active {
+      background: #FCEFF3;
+    }
+    .btn-contact-action.active-status {
+      background: #A80F3C;
+      color: #FFFFFF;
+    }
+    .btn-navigate-her {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      background: #1B5E20;
+      color: #FFFFFF;
+      text-decoration: none;
+      box-sizing: border-box;
+      font-family: inherit;
+      margin-top: 10px;
+    }
+    .contact-confirm-banner {
+      background: #E8F5E9;
+      border: 1px solid #C8E6C9;
+      color: #1B5E20;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 10px 0;
+    }
     .track-notice {
       font-size: 11px;
       color: #777777;
@@ -281,6 +339,35 @@
 
       <!-- Leaflet Live Map -->
       <div id="track-map"></div>
+
+      <!-- Contact Response Controls (Shown when link is a contact link) -->
+      <div id="track-contact-actions-section" style="display: none; margin-bottom: 14px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button type="button" class="btn-contact-action" id="btn-resp-on-my-way" onclick="respondContact('on_my_way')">
+            <span class="material-symbols-rounded">directions_run</span>I’m on my way
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-called" onclick="respondContact('called')">
+            <span class="material-symbols-rounded">phone_in_talk</span>I called her
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-alerted-police" onclick="respondContact('alerted_police')">
+            <span class="material-symbols-rounded">local_police</span>I alerted police
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-cannot-reach" onclick="respondContact('cannot_reach')">
+            <span class="material-symbols-rounded">phone_missed</span>I can’t reach her
+          </button>
+        </div>
+
+        <!-- Confirmation text after each -->
+        <div id="track-contact-confirmation" class="contact-confirm-banner" style="display: none;">
+          <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
+          <span id="track-contact-confirm-text">Sent. She can see this.</span>
+        </div>
+
+        <!-- Navigate to her button -->
+        <a id="track-navigate-her" href="#" target="_blank" rel="noopener noreferrer" class="btn-navigate-her">
+          <span class="material-symbols-rounded">directions</span>Navigate to her
+        </a>
+      </div>
 
       <!-- Action Buttons -->
       <div class="track-actions">
@@ -427,8 +514,70 @@
           if (gmapsLink) {
             gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
           }
+          var navHerBtn = document.getElementById('track-navigate-her');
+          if (navHerBtn) {
+            navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+          }
+        }
+
+        // Show four large contact response buttons and navigate button when link is a contact link
+        if (data.is_contact) {
+          var contactSection = document.getElementById('track-contact-actions-section');
+          if (contactSection) contactSection.style.display = 'block';
         }
       }
+
+      window.respondContact = function(statusKey) {
+        var token = getToken();
+        if (!token) return;
+        var confirmBox = document.getElementById('track-contact-confirmation');
+        var confirmText = document.getElementById('track-contact-confirm-text');
+        var btns = document.querySelectorAll('.btn-contact-action');
+        btns.forEach(function(b) { b.disabled = true; });
+
+        fetch(getApiBase() + '/api/track/' + encodeURIComponent(token) + '/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: statusKey })
+        })
+        .then(function(res) {
+          return res.json().then(function(json) {
+            return { ok: res.ok, status: res.status, json: json };
+          });
+        })
+        .then(function(res) {
+          btns.forEach(function(b) { b.disabled = false; });
+          if (confirmBox) confirmBox.style.display = 'flex';
+          if (res.ok && res.json.ok) {
+            if (confirmText) confirmText.textContent = 'Sent. She can see this.';
+            if (confirmBox) {
+              confirmBox.style.background = '#E8F5E9';
+              confirmBox.style.borderColor = '#C8E6C9';
+              confirmBox.style.color = '#1B5E20';
+            }
+            btns.forEach(function(b) { b.classList.remove('active-status'); });
+            var selBtn = document.getElementById('btn-resp-' + statusKey.replace(/_/g, '-'));
+            if (selBtn) selBtn.classList.add('active-status');
+          } else {
+            if (confirmText) confirmText.textContent = (res.json && res.json.error) || 'Failed to submit response';
+            if (confirmBox) {
+              confirmBox.style.background = '#FFEBEE';
+              confirmBox.style.borderColor = '#FFCDD2';
+              confirmBox.style.color = '#C62828';
+            }
+          }
+        })
+        .catch(function() {
+          btns.forEach(function(b) { b.disabled = false; });
+          if (confirmBox) {
+            confirmBox.style.display = 'flex';
+            confirmBox.style.background = '#FFEBEE';
+            confirmBox.style.borderColor = '#FFCDD2';
+            confirmBox.style.color = '#C62828';
+          }
+          if (confirmText) confirmText.textContent = 'Network error. Please try again.';
+        });
+      };
 
       function fetchTrackData(token) {
         var url = getApiBase() + '/api/track/' + encodeURIComponent(token);

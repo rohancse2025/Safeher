@@ -434,6 +434,19 @@
         <span class="sos-status-label" id="sos-status-sub">Waiting for volunteers...</span>
       </div>
 
+      <!-- Contacts responding list -->
+      <div id="sos-contacts-responding-box" style="margin-bottom: 14px; background: var(--white); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--crimson); display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 17px;">quickreply</span>Contacts responding
+          </span>
+          <span id="sos-contacts-responding-count" style="font-size: 11px; font-weight: 600; color: var(--crimson); background: var(--crimson-bg); padding: 2px 8px; border-radius: 10px;">0 updates</span>
+        </div>
+        <div id="sos-contacts-responding-list" style="display: flex; flex-direction: column; gap: 6px;">
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 4px 0;">Waiting for contact responses...</p>
+        </div>
+      </div>
+
       <!-- Call 112 Button -->
       <div class="sos-call-112-row" style="margin-bottom: 14px;">
         <a href="tel:112" class="btn btn-primary btn-crimson" style="background: var(--crimson); color: var(--white); gap: 8px; font-weight: 600; text-decoration: none;">

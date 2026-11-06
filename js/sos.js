@@ -288,6 +288,7 @@ SafeHer.sos = (function() {
 
     var volunteerSubEl = document.getElementById('sos-status-sub');
     if (volunteerSubEl) volunteerSubEl.textContent = 'Waiting for volunteers...';
+    renderContactsResponding([]);
 
     startDurationCounter();
     startTrackingInterval();
@@ -839,6 +840,7 @@ SafeHer.sos = (function() {
 
     var volunteerSubEl = document.getElementById('sos-status-sub');
     if (volunteerSubEl) volunteerSubEl.textContent = 'Waiting for volunteers...';
+    renderContactsResponding([]);
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
       SafeHer.home.setSOSActive(false);
@@ -874,13 +876,16 @@ SafeHer.sos = (function() {
       SafeHer.api.getAlertVolunteerStatus(alertId, function(err, data) {
         if (err || !data) return;
         var coming = data.volunteers_coming !== undefined ? data.volunteers_coming : 0;
+        var contactResponses = data.contact_responses || [];
         var act = SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
         if (act) {
           act.volunteersEnRoute = coming;
           act.volunteerStatus = coming > 0 ? (coming + ' volunteer' + (coming > 1 ? 's are' : ' is') + ' on the way') : 'Waiting for volunteers...';
+          act.contactResponses = contactResponses;
           SafeHer.api.setActiveSos(act);
         }
         updateVolunteerStatusDisplay();
+        renderContactsResponding(contactResponses);
       });
     }
   }
@@ -909,6 +914,68 @@ SafeHer.sos = (function() {
     }
   }
 
+  // ─── Contacts Responding Live List ────────────────────────────
+  function renderContactsResponding(responses) {
+    var listEl = document.getElementById('sos-contacts-responding-list');
+    var countEl = document.getElementById('sos-contacts-responding-count');
+    if (!listEl) return;
+
+    if (!responses || !Array.isArray(responses) || responses.length === 0) {
+      listEl.innerHTML = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 4px 0;">Waiting for contact responses...</p>';
+      if (countEl) countEl.textContent = '0 updates';
+      return;
+    }
+
+    if (countEl) {
+      countEl.textContent = responses.length + (responses.length === 1 ? ' update' : ' updates');
+    }
+
+    var labelMap = {
+      'on_my_way': "I’m on my way",
+      'called': "I called her",
+      'alerted_police': "I alerted police",
+      'cannot_reach': "I can’t reach her"
+    };
+    var iconMap = {
+      'on_my_way': 'directions_run',
+      'called': 'phone_in_talk',
+      'alerted_police': 'local_police',
+      'cannot_reach': 'phone_missed'
+    };
+
+    var html = responses.map(function(item) {
+      var name = (item.name || 'Contact').trim();
+      var statusKey = item.status || '';
+      var label = labelMap[statusKey] || statusKey || 'Responded';
+      var icon = iconMap[statusKey] || 'check_circle';
+      var timeStr = item.time || '';
+
+      if (timeStr) {
+        try {
+          var d = new Date(timeStr.replace(' ', 'T'));
+          if (!isNaN(d.getTime())) {
+            timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+        } catch(e) {}
+      }
+
+      return (
+        '<div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--crimson-bg, #FCEFF3); border: 1px solid var(--border-color, #EAD3DA); border-radius: 6px;">' +
+          '<div>' +
+            '<div style="font-size: 13px; font-weight: 700; color: var(--text-dark, #222);">' + escapeHtml(name) + '</div>' +
+            '<div style="font-size: 12px; font-weight: 600; color: var(--crimson, #A80F3C); display: flex; align-items: center; gap: 4px; margin-top: 2px;">' +
+              '<span class="material-symbols-rounded" style="font-size: 15px;">' + icon + '</span>' +
+              '<span>' + escapeHtml(label) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<span style="font-size: 11px; color: var(--text-gray, #777); font-weight: 500;">' + escapeHtml(timeStr) + '</span>' +
+        '</div>'
+      );
+    }).join('');
+
+    listEl.innerHTML = html;
+  }
+
   function init() {
     SafeHer.router.onShow('sos-active', function() {
       var activeSos = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
@@ -921,6 +988,9 @@ SafeHer.sos = (function() {
       }
       updateDurationDisplay();
       updateVolunteerStatusDisplay();
+      if (activeSos && activeSos.contactResponses) {
+        renderContactsResponding(activeSos.contactResponses);
+      }
       startVolunteerStatusPolling();
       if (mapInstance) {
         mapInstance.invalidateSize();

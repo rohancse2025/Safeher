@@ -162,17 +162,31 @@ def create_alert():
         # 3. Retrieve contacts: for uneasy mode, strictly notify close=true contacts only
         if mode == 'uneasy':
             cursor.execute('''
-                SELECT phone, email FROM contacts
+                SELECT id, name, phone, email FROM contacts
                 WHERE user_id = ? AND close = 1;
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT phone, email FROM contacts
+                SELECT id, name, phone, email FROM contacts
                 WHERE user_id = ?;
             ''', (user_id,))
         contact_rows = cursor.fetchall()
         recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
         recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+
+        # Generate unique contact token for each contact and store in alert_contacts
+        contact_tokens_email = {}
+        contact_tokens_phone = {}
+        for r in contact_rows:
+            c_token = secrets.token_urlsafe(24)
+            cursor.execute('''
+                INSERT INTO alert_contacts (alert_id, contact_id, token)
+                VALUES (?, ?, ?);
+            ''', (alert_id, r['id'], c_token))
+            if r['email'] and r['email'].strip():
+                contact_tokens_email[r['email'].strip()] = c_token
+            if r['phone'] and r['phone'].strip():
+                contact_tokens_phone[r['phone'].strip()] = c_token
 
         conn.commit()
     except Exception:
@@ -192,7 +206,8 @@ def create_alert():
             lng=lng,
             share_token=share_token,
             recipient_emails=recipient_emails,
-            note=note
+            note=note,
+            contact_tokens=contact_tokens_email
         )
 
     # 5. Trigger background automated WhatsApp dispatch to contacts
@@ -205,7 +220,8 @@ def create_alert():
             lat=lat,
             lng=lng,
             share_token=share_token,
-            recipient_phones=recipient_phones
+            recipient_phones=recipient_phones,
+            contact_tokens=contact_tokens_phone
         )
 
     # Log alert creation event
@@ -297,17 +313,31 @@ def quick_trigger_alert():
 
     cursor.execute('INSERT INTO locations (alert_id, lat, lng) VALUES (?, ?, ?);', (alert_id, lat, lng))
 
-    cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+    cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ?;', (user_id,))
     contact_rows = cursor.fetchall()
     recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
     recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+
+    contact_tokens_email = {}
+    contact_tokens_phone = {}
+    for r in contact_rows:
+        c_token = secrets.token_urlsafe(24)
+        cursor.execute('''
+            INSERT INTO alert_contacts (alert_id, contact_id, token)
+            VALUES (?, ?, ?);
+        ''', (alert_id, r['id'], c_token))
+        if r['email'] and r['email'].strip():
+            contact_tokens_email[r['email'].strip()] = c_token
+        if r['phone'] and r['phone'].strip():
+            contact_tokens_phone[r['phone'].strip()] = c_token
+
     conn.commit()
     conn.close()
 
     if recipient_emails:
-        send_alert_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_emails)
+        send_alert_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_emails, contact_tokens=contact_tokens_email)
     if recipient_phones:
-        send_whatsapp_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_phones)
+        send_whatsapp_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_phones, contact_tokens=contact_tokens_phone)
 
     app_logger.info(f"[QUICK ALERT CREATED] alert_id={alert_id}, user_id={user_id}, lat={lat}, lng={lng}")
 
@@ -784,38 +814,62 @@ def get_alert_details(alert_id):
     }), 200
 
 
-# ─── Public Route: GET /api/track/<share_token> ──────────────
-@alerts_bp.route('/api/track/<share_token>', methods=['GET'])
-def get_public_track(share_token):
+# ─── Public Route: GET /api/track/<token> ─────────────────────
+@alerts_bp.route('/api/track/<token>', methods=['GET'])
+def get_public_track(token):
     """
     Public live tracking route. Accessible without login.
-    Returns ONLY:
-      - first_name
-      - mode
-      - status
-      - latest_lat
-      - latest_lng
-      - last_update_time
-      - volunteers_en_route
-    Never exposes full name, phone number, email, or user credentials.
+    Accepts either:
+      - contact_token (from alert_contacts): personalized link for a trusted contact.
+        Returns is_contact: true, contact_first_name, contact_name, first_name (owner), mode, status,
+        latest_lat, latest_lng, last_update_time, volunteers_en_route.
+      - share_token (from alerts): general read-only link.
+        Returns is_contact: false, contact_first_name: null, first_name (owner), mode, status, etc.
+    Never exposes phone number, email, or user credentials.
     """
-    clean_token = share_token.strip()
+    clean_token = token.strip()
 
     conn = get_db()
     cursor = conn.cursor()
 
-    # Find alert and user's full name
+    # 1. First check if clean_token is a contact token in alert_contacts
     cursor.execute('''
-        SELECT a.id, a.mode, a.status, a.lat, a.lng, a.started_at, u.name
-        FROM alerts a
+        SELECT ac.id AS ac_id, ac.alert_id, ac.contact_id, ac.token AS contact_token,
+               c.name AS contact_name,
+               a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
+               u.name AS owner_name
+        FROM alert_contacts ac
+        JOIN alerts a ON ac.alert_id = a.id
         JOIN users u ON a.user_id = u.id
-        WHERE a.share_token = ?;
+        JOIN contacts c ON ac.contact_id = c.id
+        WHERE ac.token = ?;
     ''', (clean_token,))
-    alert = cursor.fetchone()
+    contact_match = cursor.fetchone()
 
-    if not alert:
-        conn.close()
-        return jsonify({"ok": False, "error": "Tracking link not found or expired"}), 404
+    is_contact = False
+    contact_first_name = None
+    contact_name = None
+
+    if contact_match:
+        is_contact = True
+        alert = contact_match
+        contact_name = contact_match['contact_name'] or 'Contact'
+        contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
+        owner_name = contact_match['owner_name'] or 'User'
+    else:
+        # 2. Check if clean_token matches alerts.share_token (general read-only token)
+        cursor.execute('''
+            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
+                   u.name AS owner_name
+            FROM alerts a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.share_token = ?;
+        ''', (clean_token,))
+        alert = cursor.fetchone()
+        if not alert:
+            conn.close()
+            return jsonify({"ok": False, "error": "Tracking link not found or expired"}), 404
+        owner_name = alert['owner_name'] or 'User'
 
     alert_id = alert['id']
     status = alert['status']
@@ -854,20 +908,129 @@ def get_public_track(share_token):
 
     conn.close()
 
-    # Extract first name only
-    full_name = alert['name'] or ''
-    first_name = full_name.split()[0] if full_name else 'User'
+    # Extract alert owner's first name
+    first_name = owner_name.split()[0] if owner_name else 'User'
+
+    res_data = {
+        "first_name": first_name,
+        "mode": alert['mode'],
+        "status": status,
+        "latest_lat": latest_lat,
+        "latest_lng": latest_lng,
+        "last_update_time": last_update_time,
+        "volunteers_en_route": volunteers_en_route,
+        "is_contact": is_contact
+    }
+    if is_contact:
+        res_data["contact_first_name"] = contact_first_name
+        res_data["contact_name"] = contact_name
+
+    return jsonify({
+        "ok": True,
+        "data": res_data
+    }), 200
+
+
+# ─── Route: POST /api/track/<token>/respond ───────────────────
+@alerts_bp.route('/api/track/<token>/respond', methods=['POST'])
+def respond_contact_track(token):
+    """
+    Allow a contact to submit a response from the tracking page without logging in.
+    Valid ONLY with a contact token and an active alert.
+    Rate limited to 10 responses per hour per token.
+    Stores the response in the contact_responses table.
+    Sends a Web Push notification to the alert owner if subscribed.
+    Expects JSON: { "status": "on_my_way" | "called" | "alerted_police" | "cannot_reach" }
+    """
+    clean_token = token.strip()
+    data = request.get_json(silent=True) or {}
+    status = (data.get('status') or '').strip().lower()
+
+    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach'}
+    if status not in VALID_CONTACT_STATUSES:
+        return jsonify({
+            "ok": False,
+            "error": f"Invalid status. Must be one of: {', '.join(sorted(VALID_CONTACT_STATUSES))}"
+        }), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Verify contact token
+    cursor.execute('''
+        SELECT ac.id AS ac_id, ac.alert_id, ac.contact_id, ac.token,
+               a.id AS alert_id, a.user_id, a.status AS alert_status,
+               c.name AS contact_name
+        FROM alert_contacts ac
+        JOIN alerts a ON ac.alert_id = a.id
+        JOIN contacts c ON ac.contact_id = c.id
+        WHERE ac.token = ?;
+    ''', (clean_token,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Only personalized contact links can submit status responses. Read-only links cannot respond."
+        }), 403
+
+    if row['alert_status'] != 'active':
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "This alert is no longer active"
+        }), 400
+
+    alert_id = row['alert_id']
+    contact_id = row['contact_id']
+    owner_user_id = row['user_id']
+    contact_name = row['contact_name']
+
+    # Rate limiting: maximum 10 responses per hour per token
+    cursor.execute('''
+        SELECT COUNT(*) AS count FROM contact_responses
+        WHERE alert_id = ? AND contact_id = ? AND created_at >= datetime('now', '-1 hour');
+    ''', (alert_id, contact_id))
+    cnt_row = cursor.fetchone()
+    if cnt_row and cnt_row['count'] >= 10:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Rate limit exceeded: maximum 10 responses per hour per contact link"
+        }), 429
+
+    # Insert into contact_responses
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        INSERT INTO contact_responses (alert_id, contact_id, status)
+        VALUES (?, ?, ?);
+    ''', (alert_id, contact_id, status))
+    conn.commit()
+    conn.close()
+
+    # Send Web Push notification to alert owner if subscribed
+    try:
+        from routes.push import notify_alert_owner_contact_response
+        notify_alert_owner_contact_response(
+            owner_user_id=owner_user_id,
+            alert_id=alert_id,
+            contact_name=contact_name,
+            status=status
+        )
+    except Exception as push_err:
+        app_logger.error(f"[Alert Respond] Owner push trigger error: {push_err}")
+
+    app_logger.info(f"[CONTACT RESPONSE] alert_id={alert_id}, contact={contact_name}, status={status}")
 
     return jsonify({
         "ok": True,
         "data": {
-            "first_name": first_name,
-            "mode": alert['mode'],
+            "message": "Response recorded successfully",
+            "alert_id": alert_id,
+            "contact_name": contact_name,
             "status": status,
-            "latest_lat": latest_lat,
-            "latest_lng": latest_lng,
-            "last_update_time": last_update_time,
-            "volunteers_en_route": volunteers_en_route
+            "time": now_str
         }
     }), 200
 
