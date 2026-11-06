@@ -483,6 +483,13 @@
       <!-- Alert Status Note -->
       <p class="prototype-note" style="color: #2E7D32;">✓ 100% Automated: Emergency Email and WhatsApp are dispatched directly by the backend server without opening any external apps.</p>
 
+      <!-- Record Evidence Button (Visible Camera & Audio) -->
+      <div style="margin-top: 14px;">
+        <button type="button" class="btn btn-secondary" onclick="SafeHer.vault.openEvidenceScreen('sos-active')" style="width: 100%; border-color: var(--crimson); color: var(--crimson); font-weight: 600; gap: 8px;">
+          <span class="material-symbols-rounded">videocam</span>Record Evidence (Video / Audio)
+        </button>
+      </div>
+
       <!-- I'm Safe Button -->
       <div style="margin-top: 18px;">
         <button class="btn btn-primary" onclick="SafeHer.sos.requestEndAlert()" style="background: #27AE60;">
@@ -1649,6 +1656,89 @@
     </div>
   </div>
 
+  <!-- ── Record Evidence Screen (Visible Video / Audio Vault) ── -->
+  <div id="screen-record-evidence" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.vault.exitEvidenceScreen()" aria-label="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Record Evidence</span>
+      <span class="material-symbols-rounded" style="color: var(--crimson); margin-left: auto; margin-right: 12px; font-size: 20px;" title="Zero-Knowledge Encrypted Vault">lock</span>
+    </div>
+
+    <div class="page-wrap" style="padding: 16px; padding-bottom: 32px;">
+      <!-- Camera Preview Box -->
+      <div style="position: relative; width: 100%; max-width: 400px; height: 260px; background: #000000; border-radius: var(--radius-tile); overflow: hidden; margin: 0 auto 12px auto; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border);">
+        <video id="evidence-camera-preview" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+        
+        <!-- Audio Only Placeholder View -->
+        <div id="evidence-audio-placeholder" style="display: none; flex-direction: column; align-items: center; justify-content: center; color: #ffffff;">
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(168, 15, 60, 0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+            <span class="material-symbols-rounded" style="font-size: 36px; color: var(--crimson);">mic</span>
+          </div>
+          <span style="font-size: 13px; font-weight: 600;">Audio Recording Mode</span>
+          <span style="font-size: 11px; color: #9CA3AF; margin-top: 2px;">Microphone active (Camera disabled)</span>
+        </div>
+
+        <!-- REC Overlay Badge (Top Left) -->
+        <div id="evidence-rec-badge" style="display: none; position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); padding: 4px 8px; border-radius: 6px; align-items: center; gap: 6px; color: #ffffff; font-size: 11px; font-weight: 700;">
+          <span class="rec-dot-pulsing"></span>
+          <span>REC</span>
+          <span id="evidence-elapsed-timer" style="font-family: monospace;">00:00</span>
+        </div>
+
+        <!-- Quick Camera Flip Overlay (Top Right) -->
+        <button type="button" id="evidence-camera-flip-overlay-btn" onclick="SafeHer.vault.switchCamera()" aria-label="Switch camera" style="position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <span class="material-symbols-rounded" style="font-size: 20px;">flip_camera_android</span>
+        </button>
+      </div>
+
+      <!-- Controls Row: Audio-only Switch & Camera Switch -->
+      <div class="settings-card" style="margin-bottom: 12px; padding: 10px 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
+            <input type="checkbox" id="evidence-audio-only-toggle" onchange="SafeHer.vault.toggleAudioOnly(this.checked)" style="accent-color: var(--crimson); width: 18px; height: 18px; cursor: pointer;" />
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-dark);">Audio only</span>
+          </label>
+          <button type="button" id="evidence-switch-cam-btn" class="btn btn-secondary" onclick="SafeHer.vault.switchCamera()" style="font-size: 12px; padding: 4px 10px; height: 30px; min-height: 30px; gap: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">flip_camera_android</span>Switch Camera
+          </button>
+        </div>
+      </div>
+
+      <!-- Status Card: Remaining Time & Storage Info -->
+      <div class="settings-card" style="margin-bottom: 16px; padding: 12px 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">timer</span>
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-dark);">Remaining Time:</span>
+          </div>
+          <span id="evidence-remaining-time" style="font-size: 13px; font-weight: 700; color: var(--crimson); font-family: monospace;">03:00</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 18px; color: #4B5563;">hard_drive</span>
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-dark);">Device Storage:</span>
+          </div>
+          <span id="evidence-storage-info" style="font-size: 12px; font-weight: 600; color: #4B5563;">Estimating...</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: var(--text-gray); line-height: 1.3;">
+          480p @ 400 kbps &bull; Standalone 10-second chunks &bull; AES-GCM + RSA-OAEP encryption &bull; SHA-256 hash chained
+        </div>
+      </div>
+
+      <!-- Start / Stop Button -->
+      <div>
+        <button type="button" id="evidence-start-stop-btn" class="btn btn-primary btn-crimson" onclick="SafeHer.vault.toggleManualRecording()" style="width: 100%; min-height: 50px; font-size: 16px; font-weight: 700; gap: 8px;">
+          <span class="material-symbols-rounded">fiber_manual_record</span>Start Recording
+        </button>
+      </div>
+      <p id="evidence-sos-note" style="font-size: 11px; color: var(--text-gray); text-align: center; margin-top: 8px; display: none;">
+        Active SOS in progress: Safety PIN is required to stop recording.
+      </p>
+    </div>
+  </div>
+
   <!-- ── Contacts ────────────────────────────────────────── -->
   <div id="screen-contacts" class="screen has-nav">
     <div class="topbar">
@@ -1919,6 +2009,18 @@
               RSA-OAEP 2048 + AES-GCM Encrypted &bull; Safety PIN required for playback
             </div>
           </div>
+        </div>
+
+        <!-- Manual Record Evidence Screen Launcher -->
+        <div class="settings-tile" onclick="SafeHer.vault.openEvidenceScreen('profile')" style="margin-top: 10px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius-tile); padding: 12px 14px; background: #ffffff; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">videocam</span>
+            <div>
+              <p style="font-size: 13px; font-weight: 600; color: var(--text-dark); margin: 0;">Record Evidence</p>
+              <p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0 0;">Camera &amp; audio recorder with live preview</p>
+            </div>
+          </div>
+          <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
         </div>
       </div>
 
@@ -2388,30 +2490,30 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=29"></script>
-<script src="./js/storage.js?v=29"></script>
-<script src="./js/api.js?v=29"></script>
-<script src="./js/i18n.js?v=29"></script>
-<script src="./js/helpdata.js?v=29"></script>
-<script src="./js/help_rights.js?v=29"></script>
-<script src="./js/app.js?v=29"></script>
-<script src="./js/onboarding.js?v=29"></script>
-<script src="./js/auth.js?v=29"></script>
-<script src="./js/pin.js?v=29"></script>
-<script src="./js/home.js?v=29"></script>
-<script src="./js/contacts.js?v=29"></script>
-<script src="./js/tips.js?v=29"></script>
-<script src="./js/profile.js?v=29"></script>
-<script src="./js/sos.js?v=29"></script>
-<script src="./js/map.js?v=29"></script>
-<script src="./js/share_location.js?v=29"></script>
-<script src="./js/police.js?v=29"></script>
-<script src="./js/places.js?v=29"></script>
-<script src="./js/ride.js?v=29"></script>
-<script src="./js/volunteer.js?v=29"></script>
-<script src="./js/timer.js?v=29"></script>
-<script src="./js/fakecall.js?v=29"></script>
-<script src="./js/evidence.js?v=29"></script>
-<script src="./js/vault.js?v=29"></script>
+<script src="./js/config.js?v=30"></script>
+<script src="./js/storage.js?v=30"></script>
+<script src="./js/api.js?v=30"></script>
+<script src="./js/i18n.js?v=30"></script>
+<script src="./js/helpdata.js?v=30"></script>
+<script src="./js/help_rights.js?v=30"></script>
+<script src="./js/app.js?v=30"></script>
+<script src="./js/onboarding.js?v=30"></script>
+<script src="./js/auth.js?v=30"></script>
+<script src="./js/pin.js?v=30"></script>
+<script src="./js/home.js?v=30"></script>
+<script src="./js/contacts.js?v=30"></script>
+<script src="./js/tips.js?v=30"></script>
+<script src="./js/profile.js?v=30"></script>
+<script src="./js/sos.js?v=30"></script>
+<script src="./js/map.js?v=30"></script>
+<script src="./js/share_location.js?v=30"></script>
+<script src="./js/police.js?v=30"></script>
+<script src="./js/places.js?v=30"></script>
+<script src="./js/ride.js?v=30"></script>
+<script src="./js/volunteer.js?v=30"></script>
+<script src="./js/timer.js?v=30"></script>
+<script src="./js/fakecall.js?v=30"></script>
+<script src="./js/evidence.js?v=30"></script>
+<script src="./js/vault.js?v=30"></script>
 </body>
 </html>

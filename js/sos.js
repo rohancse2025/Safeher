@@ -320,7 +320,9 @@ SafeHer.sos = (function() {
       }
     } else if (currentMode === 'emergency') {
       renderEmergencyMode();
-      if (SafeHer.vault && SafeHer.vault.getSettings().enabled) {
+      if (SafeHer.vault && SafeHer.vault.startEmergencySession) {
+        SafeHer.vault.startEmergencySession(currentAlertId);
+      } else if (SafeHer.vault && SafeHer.vault.getSettings().enabled) {
         var vSettings = SafeHer.vault.getSettings();
         if (vSettings.recordEmergencyVideo) {
           SafeHer.vault.startSession('video', currentAlertId);
