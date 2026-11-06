@@ -616,6 +616,7 @@ SafeHer.vault = (function() {
     var recorderOptions = mimeType ? { mimeType: mimeType } : {};
 
     try {
+      var sessionForThisRecorder = activeSession;
       var recorder = new MediaRecorder(currentMediaStream, recorderOptions);
       currentMediaRecorder = recorder;
       var chunkParts = [];
@@ -629,14 +630,16 @@ SafeHer.vault = (function() {
       // By stopping the recorder every 10 seconds, the browser writes container headers,
       // guaranteeing each chunk is a standalone, playable media file!
       recorder.onstop = async function() {
-        if (chunkParts.length > 0 && activeSession) {
-          var standaloneBlob = new Blob(chunkParts, { type: mimeType });
+        if (chunkParts.length > 0 && sessionForThisRecorder) {
+          var standaloneBlob = new Blob(chunkParts, { type: sessionForThisRecorder.mime || mimeType });
           try {
-            var chunkRecord = await addChunk(standaloneBlob);
+            var chunkRecord = await addChunk(standaloneBlob, sessionForThisRecorder);
             if (chunkRecord) {
               queueUpload(chunkRecord);
             }
-          } catch (ex) {}
+          } catch (ex) {
+            console.warn('[Vault] Chunk save error:', ex);
+          }
         }
       };
 
@@ -999,14 +1002,13 @@ SafeHer.vault = (function() {
     var isAudio = activeSession.isAudioOnly;
 
     // Use 480p video at about 400 kbps
-    var recorderOptions = {
-      mimeType: mimeType
-    };
-    if (!isAudio) {
+    var recorderOptions = mimeType ? { mimeType: mimeType } : {};
+    if (!isAudio && recorderOptions.mimeType) {
       recorderOptions.videoBitsPerSecond = 400000; // ~400 kbps
     }
 
     try {
+      var sessionForThisRecorder = activeSession;
       var recorder = new MediaRecorder(currentMediaStream, recorderOptions);
       currentMediaRecorder = recorder;
       var chunkParts = [];
@@ -1019,14 +1021,16 @@ SafeHer.vault = (function() {
 
       // By stopping every 10 seconds, each chunk is a standalone, playable media file
       recorder.onstop = async function() {
-        if (chunkParts.length > 0 && activeSession) {
-          var standaloneBlob = new Blob(chunkParts, { type: mimeType });
+        if (chunkParts.length > 0 && sessionForThisRecorder) {
+          var standaloneBlob = new Blob(chunkParts, { type: sessionForThisRecorder.mime || mimeType });
           try {
-            var chunkRecord = await addChunk(standaloneBlob);
+            var chunkRecord = await addChunk(standaloneBlob, sessionForThisRecorder);
             if (chunkRecord) {
               queueUpload(chunkRecord);
             }
-          } catch (ex) {}
+          } catch (ex) {
+            console.warn('[Vault] Error adding visible chunk:', ex);
+          }
         }
       };
 
@@ -1232,14 +1236,14 @@ SafeHer.vault = (function() {
     }
   }
 
-  async function addChunk(blob) {
-    if (!activeSession) return null;
-    var sess = activeSession;
-    var idx = sess.currentIndex;
-    var prev = sess.prevHash;
+  async function addChunk(blob, targetSession) {
+    var sess = targetSession || activeSession;
+    if (!sess) return null;
+    var idx = sess.currentIndex || 0;
+    var prev = sess.prevHash || '0'.repeat(64);
     var mime = sess.mime;
 
-    sess.currentIndex++;
+    sess.currentIndex = idx + 1;
 
     try {
       var record = await encryptAndSaveChunk(blob, sess.id, idx, prev, mime);
@@ -1412,19 +1416,20 @@ SafeHer.vault = (function() {
       chunkIntervalTimer = null;
     }
 
+    var closingSession = activeSession;
+    if (closingSession) {
+      closingSession.isEnding = true;
+    }
+
     if (currentMediaRecorder && currentMediaRecorder.state !== 'inactive') {
       try {
+        if (typeof currentMediaRecorder.requestData === 'function') {
+          currentMediaRecorder.requestData();
+        }
         currentMediaRecorder.stop();
       } catch (e) {}
     }
     currentMediaRecorder = null;
-
-    if (currentMediaStream) {
-      try {
-        currentMediaStream.getTracks().forEach(function(t) { t.stop(); });
-      } catch (e) {}
-    }
-    currentMediaStream = null;
 
     if (activeSession) {
       var endedSessionId = activeSession.id;
@@ -1450,6 +1455,16 @@ SafeHer.vault = (function() {
         }
       });
     }
+
+    // Stop streams after a brief delay so onstop can finish packaging standalone blob
+    setTimeout(function() {
+      if (currentMediaStream && !activeSession) {
+        try {
+          currentMediaStream.getTracks().forEach(function(t) { t.stop(); });
+        } catch (e) {}
+        currentMediaStream = null;
+      }
+    }, 600);
   }
 
   // ─── Page Visibility Change ────────────────────────────────
@@ -1914,11 +1929,17 @@ SafeHer.vault = (function() {
       var cStore = tx.objectStore(CHUNKS_STORE);
       var sStore = tx.objectStore(SESSIONS_STORE);
 
-      var cReq = cStore.index('sessionId').getAll(IDBKeyRange.only(sessionId));
+      var cReq = null;
+      try {
+        cReq = cStore.index('sessionId').getAll(IDBKeyRange.only(sessionId));
+      } catch (ex) {
+        cReq = cStore.getAll();
+      }
       var sReq = sStore.get(sessionId);
 
       tx.oncomplete = async function() {
-        var chunks = cReq.result || [];
+        var rawChunks = cReq.result || [];
+        var chunks = rawChunks.filter(function(c) { return c.sessionId === sessionId; });
         var session = sReq.result;
 
         if (chunks.length === 0) {
