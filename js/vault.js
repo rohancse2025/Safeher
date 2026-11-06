@@ -253,6 +253,36 @@ SafeHer.vault = (function() {
     );
   }
 
+  function registerPublicKeyWithServer(jwk) {
+    try {
+      if (!SafeHer.api || !SafeHer.api.getToken || !SafeHer.api.getToken()) return;
+      var keys = getStoredKeys();
+      if (!keys) return;
+      var pubKey = jwk || keys.publicKeyJwk;
+      if (!pubKey) return;
+
+      var apiBase = (typeof SafeHer.config !== 'undefined' && SafeHer.config.API_BASE) ? SafeHer.config.API_BASE : '';
+      fetch(apiBase + '/api/evidence/key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SafeHer.api.getToken()
+        },
+        body: JSON.stringify({
+          publicKey: typeof pubKey === 'string' ? pubKey : JSON.stringify(pubKey),
+          wrappedPrivateKey: keys.wrappedPrivateKey || '',
+          salt: keys.salt || ''
+        })
+      }).then(function(res) {
+        return res.json();
+      }).then(function(json) {
+        // successfully registered
+      }).catch(function() {
+        // network or offline fallback
+      });
+    } catch (e) {}
+  }
+
   // ─── 6. Unlock Vault (PIN Required) ───────────────────────
   // Uses PBKDF2 to derive the AES wrapping key, unwraps the RSA private key,
   // and returns a decryptor object.
@@ -1615,8 +1645,28 @@ SafeHer.vault = (function() {
   var playbackBlobUrls = [];
   var currentPlayingChunkIndex = 0;
   var currentSessionChunks = [];
+  var previousScreenBeforeVault = 'home';
 
   function openVaultScreen() {
+    if (SafeHer.router && SafeHer.router.getCurrent) {
+      previousScreenBeforeVault = SafeHer.router.getCurrent() || 'home';
+    }
+
+    // Check if user has a Safety PIN set up
+    if (SafeHer.api && SafeHer.api.hasPin && !SafeHer.api.hasPin()) {
+      if (SafeHer.toast) {
+        SafeHer.toast('Please set a Safety PIN first to protect your Evidence Vault');
+      }
+      if (SafeHer.pin && SafeHer.pin.openSetPin) {
+        SafeHer.pin.openSetPin('evidence-vault', function() {
+          openVaultScreen();
+        });
+      } else {
+        SafeHer.router.go('profile');
+      }
+      return;
+    }
+
     if (SafeHer.askPin) {
       SafeHer.askPin(
         function(enteredPin) {
@@ -1638,7 +1688,9 @@ SafeHer.vault = (function() {
 
   function closeVaultScreen() {
     stopPlayback();
-    SafeHer.router.go('profile');
+    var dest = previousScreenBeforeVault || 'home';
+    if (dest === 'evidence-vault') dest = 'home';
+    SafeHer.router.go(dest);
   }
 
   function verifyLocalChain(chunks) {
