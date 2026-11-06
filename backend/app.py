@@ -19,6 +19,7 @@ from routes.volunteers import volunteers_bp
 from routes.timers import timers_bp, start_timer_monitor
 from routes.admin import admin_bp
 from routes.push import push_bp
+from routes.evidence import evidence_bp
 
 # 1. Load configuration from .env
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -68,6 +69,7 @@ def create_app():
     app.register_blueprint(timers_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(push_bp)
+    app.register_blueprint(evidence_bp)
 
     # 5. Start background thread checking for expired running timers
     start_timer_monitor()

@@ -164,6 +164,38 @@ def init_db():
         );
     ''')
 
+    # 9. Evidence public keys table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS evidence_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            public_key TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id)
+        );
+    ''')
+
+    # 10. Evidence encrypted chunks table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS evidence_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            user_id TEXT,
+            alert_id TEXT,
+            mime TEXT,
+            size INTEGER,
+            encrypted_data TEXT,
+            encrypted_key TEXT,
+            iv TEXT,
+            sha256 TEXT,
+            prev_hash TEXT,
+            chain_hash TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(session_id, chunk_index)
+        );
+    ''')
+
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
@@ -173,6 +205,7 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_endpoint ON push_subscriptions(endpoint);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_session ON evidence_chunks(session_id);')
 
     conn.commit()
     conn.close()

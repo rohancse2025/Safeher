@@ -1739,7 +1739,70 @@
     </div>
   </div>
 
-  <!-- ── Contacts ────────────────────────────────────────── -->
+    <!-- ── Evidence Vault Screen (PIN Protected) ──────────────── -->
+  <div id="screen-evidence-vault" class="screen">
+    <div class="topbar">
+      <button type="button" class="topbar-back" onclick="SafeHer.vault.closeVaultScreen()" aria-label="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Evidence Vault</span>
+      <div style="width: 40px;"></div>
+    </div>
+
+    <div class="page-wrap" style="padding-bottom: 30px;">
+      <!-- Storage Usage Card -->
+      <div style="background: #ffffff; border: 1px solid var(--border); border-radius: var(--radius-tile); padding: 14px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 22px;">shield</span>
+            <span style="font-size: 14px; font-weight: 700; color: var(--text-dark);">Secured Vault Storage</span>
+          </div>
+          <span id="vault-storage-used" style="font-size: 12px; font-weight: 700; color: var(--crimson);">0 KB used</span>
+        </div>
+        <p style="font-size: 11px; color: var(--text-gray); margin: 0; line-height: 1.4;">
+          Recordings are encrypted client-side with RSA-OAEP + AES-GCM and verified with SHA-256 hash chains.
+        </p>
+      </div>
+
+      <!-- Playback Card -->
+      <div id="vault-playback-card" style="display: none; background: #ffffff; border: 1px solid var(--crimson); border-radius: var(--radius-tile); padding: 14px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">play_circle</span>
+            <span id="vault-playback-title" style="font-size: 13px; font-weight: 700; color: var(--crimson);">Playing Recording</span>
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="SafeHer.vault.stopPlayback()" style="font-size: 11px; padding: 4px 8px; min-height: 26px; height: 26px;">Close Player</button>
+        </div>
+
+        <div style="position: relative; width: 100%; border-radius: 6px; overflow: hidden; background: #000000; margin-bottom: 8px;">
+          <video id="vault-video-player" playsinline controls style="display: none; width: 100%; max-height: 240px; background: #000;"></video>
+          <div id="vault-audio-container" style="display: none; padding: 20px 10px; text-align: center; background: #FFF5F7;">
+            <span class="material-symbols-rounded" style="font-size: 40px; color: var(--crimson); margin-bottom: 8px; display: block;">mic</span>
+            <audio id="vault-audio-player" controls style="width: 100%;"></audio>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-gray);">
+          <span id="vault-playback-status">Decrypting...</span>
+          <span id="vault-playback-chunk-info">Chunk 1 / 1</span>
+        </div>
+      </div>
+
+      <!-- Sessions List -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-dark);">Recorded Sessions</span>
+        <button type="button" class="btn btn-secondary" onclick="SafeHer.vault.renderVaultScreen()" style="font-size: 11px; padding: 3px 8px; min-height: 24px; height: 24px;">
+          <span class="material-symbols-rounded" style="font-size: 14px; vertical-align: middle;">refresh</span> Refresh
+        </button>
+      </div>
+
+      <div id="vault-sessions-list" style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Injected via SafeHer.vault.renderVaultScreen() -->
+      </div>
+    </div>
+  </div>
+
+<!-- ── Contacts ────────────────────────────────────────── -->
   <div id="screen-contacts" class="screen has-nav">
     <div class="topbar">
       <span class="topbar-title" style="margin-left: 8px;">Emergency Contacts</span>
@@ -2018,6 +2081,17 @@
             <div>
               <p style="font-size: 13px; font-weight: 600; color: var(--text-dark); margin: 0;">Record Evidence</p>
               <p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0 0;">Camera &amp; audio recorder with live preview</p>
+            </div>
+          </div>
+          <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
+        </div>
+        <!-- Evidence Vault Screen Launcher -->
+        <div class="settings-tile" onclick="SafeHer.vault.openVaultScreen()" style="margin-top: 10px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius-tile); padding: 12px 14px; background: #ffffff; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">lock</span>
+            <div>
+              <p style="font-size: 13px; font-weight: 600; color: var(--text-dark); margin: 0;">Evidence Vault</p>
+              <p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0 0;">View &amp; verify encrypted recordings &bull; PIN protected</p>
             </div>
           </div>
           <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>

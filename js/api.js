@@ -1198,6 +1198,69 @@ SafeHer.api = (function() {
       }
     },
 
+    // ─── Evidence Vault Endpoints ──────────────────────────────
+    registerEvidenceKey: function(publicKey, callback) {
+      if (useBackend()) {
+        return apiFetch('/api/evidence/key', {
+          method: 'POST',
+          body: JSON.stringify({ publicKey: publicKey })
+        }).then(function(json) {
+          if (callback) callback(null, json);
+          return json;
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+          throw err;
+        });
+      } else {
+        if (callback) callback(null, { ok: true, offline: true });
+        return Promise.resolve({ ok: true, offline: true });
+      }
+    },
+
+    uploadEvidenceChunk: function(chunkData) {
+      if (useBackend()) {
+        return apiFetch('/api/evidence/chunk', {
+          method: 'POST',
+          body: JSON.stringify(chunkData)
+        });
+      }
+      return Promise.resolve({ ok: true, offline: true });
+    },
+
+    verifyEvidenceSession: function(sessionId, callback) {
+      if (useBackend()) {
+        return apiFetch('/api/evidence/verify/' + encodeURIComponent(sessionId), {
+          method: 'GET'
+        }).then(function(json) {
+          if (callback) callback(null, json);
+          return json;
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+          return { ok: false, error: err.message };
+        });
+      } else {
+        if (callback) callback(null, { ok: false, error: 'Offline' });
+        return Promise.resolve({ ok: false, error: 'Offline' });
+      }
+    },
+
+    deleteEvidenceSession: function(sessionId, callback) {
+      if (useBackend()) {
+        return apiFetch('/api/evidence/session/' + encodeURIComponent(sessionId), {
+          method: 'DELETE'
+        }).then(function(json) {
+          if (callback) callback(null, json);
+          return json;
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+          return { ok: false, error: err.message };
+        });
+      } else {
+        if (callback) callback(null, { ok: true, offline: true });
+        return Promise.resolve({ ok: true, offline: true });
+      }
+    },
+
     // ─── Auxiliary Features (Tips, Location & I18n) ───────────
     getTips: function(category) {
       var defaultTips = [

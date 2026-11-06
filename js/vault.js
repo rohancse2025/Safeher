@@ -227,6 +227,7 @@ SafeHer.vault = (function() {
     };
 
     localStorage.setItem(KEYS_KEY, JSON.stringify(keysRecord));
+    registerPublicKeyWithServer(publicKeyJwk);
     return keysRecord;
   }
 
@@ -1170,41 +1171,154 @@ SafeHer.vault = (function() {
     }
   }
 
-  // ─── Upload Queue ──────────────────────────────────────────
+  // ─── Upload Queue with Backoff & Ordered Retries ──────────
+  var uploadBackoffMs = 1000;
+  var uploadRetryTimer = null;
+
   function queueUpload(chunkRecord) {
     if (!chunkRecord) return;
-    uploadQueue.push(chunkRecord);
+    var alreadyQueued = uploadQueue.some(function(q) {
+      return q.id === chunkRecord.id || (q.sessionId === chunkRecord.sessionId && q.index === chunkRecord.index);
+    });
+    if (!alreadyQueued) {
+      uploadQueue.push(chunkRecord);
+    }
     processUploadQueue();
+  }
+
+  function markChunkUploadedInDB(chunkId) {
+    getDB(function(err, db) {
+      if (err || !db) return;
+      try {
+        var tx = db.transaction([CHUNKS_STORE], 'readwrite');
+        var store = tx.objectStore(CHUNKS_STORE);
+        var req = store.get(chunkId);
+        req.onsuccess = function() {
+          if (req.result) {
+            var item = req.result;
+            item.uploaded = true;
+            store.put(item);
+          }
+        };
+      } catch (e) {}
+    });
   }
 
   async function processUploadQueue() {
     if (isProcessingUploadQueue || uploadQueue.length === 0) return;
     isProcessingUploadQueue = true;
+
     try {
       while (uploadQueue.length > 0) {
+        // Sort strictly by session and index ASC so chunks are verified in cryptographic order
+        uploadQueue.sort(function(a, b) {
+          if (a.sessionId === b.sessionId) return a.index - b.index;
+          return String(a.sessionId).localeCompare(String(b.sessionId));
+        });
+
         var chunk = uploadQueue[0];
-        if (SafeHer.api && typeof SafeHer.api.uploadEvidenceChunk === 'function') {
-          try {
-            await SafeHer.api.uploadEvidenceChunk(chunk);
-            chunk.uploaded = true;
-            getDB(function(err, db) {
-              if (!err && db) {
-                try {
-                  var tx = db.transaction([CHUNKS_STORE], 'readwrite');
-                  tx.objectStore(CHUNKS_STORE).put(chunk);
-                } catch (e) {}
-              }
-            });
-          } catch (e) {
-            break;
-          }
+        if (chunk.uploaded) {
+          uploadQueue.shift();
+          continue;
         }
-        uploadQueue.shift();
+
+        var encDataB64 = typeof chunk.encryptedData === 'string' ? chunk.encryptedData : bufToBase64(chunk.encryptedData);
+        var encKeyB64 = typeof chunk.encryptedKey === 'string' ? chunk.encryptedKey : bufToBase64(chunk.encryptedKey);
+        var ivHex = typeof chunk.iv === 'string' ? chunk.iv : bufToHex(chunk.iv);
+
+        var payload = {
+          sessionId: chunk.sessionId,
+          index: chunk.index,
+          mime: chunk.mime,
+          size: chunk.size,
+          encryptedData: encDataB64,
+          encryptedKey: encKeyB64,
+          iv: ivHex,
+          sha256: chunk.sha256,
+          prevHash: chunk.prevHash,
+          chainHash: chunk.chainHash,
+          alertId: chunk.alertId || ''
+        };
+
+        try {
+          if (SafeHer.api && typeof SafeHer.api.uploadEvidenceChunk === 'function') {
+            await SafeHer.api.uploadEvidenceChunk(payload);
+          } else {
+            var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || '';
+            var res = await fetch(base + '/api/evidence/chunk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+          }
+
+          chunk.uploaded = true;
+          markChunkUploadedInDB(chunk.id || (chunk.sessionId + '_' + chunk.index));
+          uploadBackoffMs = 1000;
+          uploadQueue.shift();
+        } catch (err) {
+          // Upload failed: retry with backoff (1s, 2s, 4s, 8s, up to 30s)
+          isProcessingUploadQueue = false;
+          if (!uploadRetryTimer) {
+            var delay = uploadBackoffMs || 1000;
+            uploadBackoffMs = Math.min(30000, delay * 2);
+            uploadRetryTimer = setTimeout(function() {
+              uploadRetryTimer = null;
+              processUploadQueue();
+            }, delay);
+          }
+          return;
+        }
       }
     } finally {
       isProcessingUploadQueue = false;
     }
   }
+
+  function resumePendingUploads() {
+    getDB(function(err, db) {
+      if (err || !db) return;
+      try {
+        var tx = db.transaction([CHUNKS_STORE], 'readonly');
+        var store = tx.objectStore(CHUNKS_STORE);
+        var req = store.getAll();
+        req.onsuccess = function() {
+          var allChunks = req.result || [];
+          var pending = allChunks.filter(function(c) { return !c.uploaded; });
+          pending.sort(function(a, b) {
+            if (a.sessionId === b.sessionId) return a.index - b.index;
+            return String(a.sessionId).localeCompare(String(b.sessionId));
+          });
+          pending.forEach(function(c) {
+            var alreadyQueued = uploadQueue.some(function(q) {
+              return q.id === c.id || (q.sessionId === c.sessionId && q.index === c.index);
+            });
+            if (!alreadyQueued) {
+              uploadQueue.push(c);
+            }
+          });
+          if (uploadQueue.length > 0) {
+            uploadBackoffMs = 1000;
+            processUploadQueue();
+          }
+        };
+      } catch (e) {}
+    });
+  }
+
+  // Network and visibility resume triggers
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', function() {
+      uploadBackoffMs = 1000;
+      if (uploadRetryTimer) {
+        clearTimeout(uploadRetryTimer);
+        uploadRetryTimer = null;
+      }
+      resumePendingUploads();
+    });
+  }
+
 
   function endSession() {
     if (sessionLimitTimer) {
@@ -1494,15 +1608,359 @@ SafeHer.vault = (function() {
     });
   }
 
-  // ─── 13. Initialization ───────────────────────────────────
+  
+  // ─── 12b. Evidence Vault Screen (Protected by askPin) ─────
+  var currentUnlockedPin = null;
+  var currentPlaybackSessionId = null;
+  var playbackBlobUrls = [];
+  var currentPlayingChunkIndex = 0;
+  var currentSessionChunks = [];
+
+  function openVaultScreen() {
+    if (SafeHer.askPin) {
+      SafeHer.askPin(
+        function(enteredPin) {
+          currentUnlockedPin = enteredPin;
+          SafeHer.router.go('evidence-vault');
+          renderVaultScreen();
+        },
+        function(err) {
+          if (err === 'wrong_pin' && SafeHer.toast) {
+            SafeHer.toast('Incorrect Safety PIN');
+          }
+        }
+      );
+    } else {
+      SafeHer.router.go('evidence-vault');
+      renderVaultScreen();
+    }
+  }
+
+  function closeVaultScreen() {
+    stopPlayback();
+    SafeHer.router.go('profile');
+  }
+
+  function verifyLocalChain(chunks) {
+    if (!chunks || chunks.length === 0) return true;
+    var expectedPrev = '0'.repeat(64);
+    for (var i = 0; i < chunks.length; i++) {
+      var c = chunks[i];
+      if (c.prevHash !== expectedPrev) return false;
+      expectedPrev = c.chainHash;
+    }
+    return true;
+  }
+
+  function checkRemoteVerification(sessionId, localValid) {
+    if (SafeHer.api && typeof SafeHer.api.verifyEvidenceSession === 'function') {
+      SafeHer.api.verifyEvidenceSession(sessionId, function(err, res) {
+        var badgeEl = document.getElementById('chain-badge-' + sessionId);
+        if (!badgeEl) return;
+        if (res && res.verified && localValid) {
+          badgeEl.innerHTML = '<span style="background:#ECFDF5;color:#059669;border:1px solid #A7F3D0;display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;"><span class="material-symbols-rounded" style="font-size:14px;">verified</span>Chain verified</span>';
+        } else if (!localValid || (res && res.verified === false)) {
+          badgeEl.innerHTML = '<span style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;"><span class="material-symbols-rounded" style="font-size:14px;">error</span>Chain invalid</span>';
+        }
+      });
+    }
+  }
+
+  function renderVaultScreen() {
+    getDB(function(err, db) {
+      if (err || !db) return;
+      var tx = db.transaction([CHUNKS_STORE, SESSIONS_STORE], 'readonly');
+      var chunkStore = tx.objectStore(CHUNKS_STORE);
+      var sessionStore = tx.objectStore(SESSIONS_STORE);
+
+      var chunksReq = chunkStore.getAll();
+      var sessionsReq = sessionStore.getAll();
+
+      var allChunks = [];
+      var allSessions = [];
+
+      chunksReq.onsuccess = function() { allChunks = chunksReq.result || []; };
+      sessionsReq.onsuccess = function() { allSessions = sessionsReq.result || []; };
+
+      tx.oncomplete = function() {
+        // 1. Used storage
+        var totalBytes = 0;
+        allChunks.forEach(function(c) {
+          if (c.size) totalBytes += c.size;
+          else if (c.encryptedData && c.encryptedData.byteLength) totalBytes += c.encryptedData.byteLength;
+        });
+        var usedStr = totalBytes < 1024 * 1024
+          ? (totalBytes / 1024).toFixed(1) + ' KB used'
+          : (totalBytes / (1024 * 1024)).toFixed(2) + ' MB used';
+        var storageEl = document.getElementById('vault-storage-used');
+        if (storageEl) storageEl.textContent = usedStr;
+
+        // 2. Render sessions list
+        var listEl = document.getElementById('vault-sessions-list');
+        if (!listEl) return;
+
+        if (allSessions.length === 0) {
+          listEl.innerHTML = '<div style="background:#ffffff;border:1px solid var(--border);border-radius:var(--radius-tile);padding:24px 16px;text-align:center;">' +
+            '<span class="material-symbols-rounded" style="color:var(--text-gray);font-size:36px;margin-bottom:8px;display:block;">lock_clock</span>' +
+            '<p style="font-size:13px;font-weight:600;color:var(--text-dark);margin:0 0 4px 0;">No evidence recordings yet</p>' +
+            '<p style="font-size:11px;color:var(--text-gray);margin:0;line-height:1.4;">Evidence recorded during Silent SOS, Emergency SOS, or manual recording will appear here.</p>' +
+          '</div>';
+          return;
+        }
+
+        allSessions.sort(function(a, b) {
+          return new Date(b.startedAt || 0) - new Date(a.startedAt || 0);
+        });
+
+        var html = '';
+        allSessions.forEach(function(s) {
+          var sChunks = allChunks.filter(function(c) { return c.sessionId === s.id; });
+          sChunks.sort(function(a, b) { return a.index - b.index; });
+
+          var dateStr = s.startedAt ? new Date(s.startedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown Date';
+          var isVideo = s.kind === 'video' || sChunks.some(function(c) { return c.mime && c.mime.indexOf('video') !== -1; });
+          var kindLabel = isVideo ? 'Audio & Video' : 'Audio Only';
+          var kindIcon = isVideo ? 'videocam' : 'mic';
+
+          var durSecs = 0;
+          if (s.endedAt && s.startedAt) {
+            durSecs = Math.max(1, Math.round((new Date(s.endedAt) - new Date(s.startedAt)) / 1000));
+          } else {
+            durSecs = sChunks.length * 10;
+          }
+          var durStr = durSecs < 60 ? (durSecs + 's') : (Math.floor(durSecs / 60) + 'm ' + (durSecs % 60) + 's');
+
+          var uploadedCount = sChunks.filter(function(c) { return c.uploaded; }).length;
+          var isAllUploaded = sChunks.length > 0 && uploadedCount === sChunks.length;
+          var uploadBadge = isAllUploaded
+            ? '<span style="background:#ECFDF5;color:#059669;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #A7F3D0;">Uploaded</span>'
+            : ('<span style="background:#FFFBEB;color:#D97706;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #FDE68A;">' + uploadedCount + '/' + sChunks.length + ' Uploaded</span>');
+
+          var localChainValid = verifyLocalChain(sChunks);
+
+          html += '<div class="vault-session-card" style="background:#ffffff;border:1px solid var(--border);border-radius:var(--radius-tile);padding:14px;display:flex;flex-direction:column;gap:10px;">' +
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
+              '<div style="display:flex;align-items:center;gap:10px;">' +
+                '<div style="width:36px;height:36px;border-radius:50%;background:var(--light-pink);border:1px solid #F3C2CE;display:flex;align-items:center;justify-content:center;color:var(--crimson);flex-shrink:0;">' +
+                  '<span class="material-symbols-rounded" style="font-size:20px;">' + kindIcon + '</span>' +
+                '</div>' +
+                '<div>' +
+                  '<p style="font-size:13px;font-weight:700;color:var(--text-dark);margin:0 0 2px 0;">' + kindLabel + '</p>' +
+                  '<p style="font-size:11px;color:var(--text-gray);margin:0;">' + dateStr + ' &bull; ' + durStr + ' &bull; ' + sChunks.length + ' chunks</p>' +
+                '</div>' +
+              '</div>' +
+              '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
+                uploadBadge +
+                '<span id="chain-badge-' + s.id + '" style="font-size:11px;color:var(--text-gray);">' +
+                  (localChainValid ? '<span style="color:#059669;display:inline-flex;align-items:center;gap:2px;"><span class="material-symbols-rounded" style="font-size:14px;">verified</span>Chain verified</span>' : '<span style="color:#DC2626;">Chain corrupted</span>') +
+                '</span>' +
+              '</div>' +
+            '</div>' +
+
+            '<div style="display:flex;gap:8px;margin-top:2px;">' +
+              '<button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.vault.playSession(\'' + s.id + '\')" style="flex:1;font-size:12px;height:34px;min-height:34px;padding:6px 12px;gap:6px;">' +
+                '<span class="material-symbols-rounded" style="font-size:16px;">play_arrow</span>Decrypt & Play' +
+              '</button>' +
+              '<button type="button" class="btn btn-secondary" onclick="SafeHer.vault.promptDeleteSession(\'' + s.id + '\')" style="color:#DC2626;border-color:#FCA5A5;font-size:12px;height:34px;min-height:34px;padding:6px 12px;gap:4px;">' +
+                '<span class="material-symbols-rounded" style="font-size:16px;">delete</span>Delete' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+
+          checkRemoteVerification(s.id, localChainValid);
+        });
+
+        listEl.innerHTML = html;
+      };
+    });
+  }
+
+  // ─── Playback in Sequence ─────────────────────────────────
+  async function playSession(sessionId) {
+    if (!currentUnlockedPin) {
+      if (SafeHer.askPin) {
+        SafeHer.askPin(
+          function(pin) {
+            currentUnlockedPin = pin;
+            playSession(sessionId);
+          },
+          function(err) {
+            if (err === 'wrong_pin' && SafeHer.toast) {
+              SafeHer.toast('Incorrect Safety PIN');
+            }
+          }
+        );
+      }
+      return;
+    }
+
+    var unlockedVault;
+    try {
+      unlockedVault = await unlock(currentUnlockedPin);
+    } catch (e) {
+      currentUnlockedPin = null;
+      if (SafeHer.toast) SafeHer.toast('Incorrect PIN: Unable to unwrap evidence key');
+      return;
+    }
+
+    getDB(function(err, db) {
+      if (err || !db) return;
+      var tx = db.transaction([CHUNKS_STORE, SESSIONS_STORE], 'readonly');
+      var cStore = tx.objectStore(CHUNKS_STORE);
+      var sStore = tx.objectStore(SESSIONS_STORE);
+
+      var cReq = cStore.index('sessionId').getAll(IDBKeyRange.only(sessionId));
+      var sReq = sStore.get(sessionId);
+
+      tx.oncomplete = async function() {
+        var chunks = cReq.result || [];
+        var session = sReq.result;
+
+        if (chunks.length === 0) {
+          if (SafeHer.toast) SafeHer.toast('No recorded evidence found in this session');
+          return;
+        }
+
+        chunks.sort(function(a, b) { return a.index - b.index; });
+        currentSessionChunks = chunks;
+        currentPlayingChunkIndex = 0;
+        currentPlaybackSessionId = sessionId;
+
+        var isVideo = (session && session.kind === 'video') || chunks.some(function(c) { return c.mime && c.mime.indexOf('video') !== -1; });
+
+        var card = document.getElementById('vault-playback-card');
+        var titleEl = document.getElementById('vault-playback-title');
+        var statusEl = document.getElementById('vault-playback-status');
+        var chunkInfoEl = document.getElementById('vault-playback-chunk-info');
+        var videoEl = document.getElementById('vault-video-player');
+        var audioContainer = document.getElementById('vault-audio-container');
+        var audioEl = document.getElementById('vault-audio-player');
+
+        if (card) card.style.display = 'block';
+        if (titleEl) titleEl.textContent = 'Playing ' + (isVideo ? 'Video' : 'Audio') + ' Session';
+        if (statusEl) statusEl.textContent = 'Decrypting chunks with Safety PIN...';
+
+        var activePlayer = isVideo ? videoEl : audioEl;
+
+        if (isVideo) {
+          if (videoEl) videoEl.style.display = 'block';
+          if (audioContainer) audioContainer.style.display = 'none';
+        } else {
+          if (videoEl) videoEl.style.display = 'none';
+          if (audioContainer) audioContainer.style.display = 'block';
+        }
+
+        async function playChunkAt(index) {
+          if (index >= chunks.length) {
+            if (statusEl) statusEl.textContent = 'Sequential playback finished (' + chunks.length + ' chunks)';
+            return;
+          }
+
+          currentPlayingChunkIndex = index;
+          if (chunkInfoEl) chunkInfoEl.textContent = 'Chunk ' + (index + 1) + ' / ' + chunks.length;
+          if (statusEl) statusEl.textContent = 'Decrypting chunk ' + (index + 1) + '...';
+
+          try {
+            var rawData = await unlockedVault.decryptChunk(chunks[index]);
+            var blob = new Blob([rawData], { type: chunks[index].mime || (isVideo ? 'video/webm' : 'audio/webm') });
+            var url = URL.createObjectURL(blob);
+            playbackBlobUrls.push(url);
+
+            if (activePlayer) {
+              activePlayer.src = url;
+              activePlayer.onended = function() {
+                playChunkAt(index + 1);
+              };
+              activePlayer.play().catch(function() {});
+              if (statusEl) statusEl.textContent = 'Playing chunk ' + (index + 1) + ' of ' + chunks.length;
+            }
+          } catch (ex) {
+            if (statusEl) statusEl.textContent = 'Decryption failed for chunk ' + (index + 1);
+          }
+        }
+
+        playChunkAt(0);
+      };
+    });
+  }
+
+  function stopPlayback() {
+    var videoEl = document.getElementById('vault-video-player');
+    var audioEl = document.getElementById('vault-audio-player');
+    var card = document.getElementById('vault-playback-card');
+
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.src = '';
+      videoEl.onended = null;
+    }
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.src = '';
+      audioEl.onended = null;
+    }
+    playbackBlobUrls.forEach(function(u) {
+      try { URL.revokeObjectURL(u); } catch (e) {}
+    });
+    playbackBlobUrls = [];
+    currentSessionChunks = [];
+    currentPlayingChunkIndex = 0;
+    currentPlaybackSessionId = null;
+
+    if (card) card.style.display = 'none';
+  }
+
+  // ─── Delete Session with PIN ──────────────────────────────
+  function promptDeleteSession(sessionId) {
+    if (SafeHer.askPin) {
+      SafeHer.askPin(
+        async function(pin) {
+          try {
+            // Verify PIN unlocks the vault key
+            await unlock(pin);
+            deleteSession(sessionId, function(err) {
+              if (SafeHer.api && typeof SafeHer.api.deleteEvidenceSession === 'function') {
+                SafeHer.api.deleteEvidenceSession(sessionId);
+              }
+              stopPlayback();
+              renderVaultScreen();
+              if (SafeHer.toast) SafeHer.toast('Recording session deleted');
+            });
+          } catch (ex) {
+            if (SafeHer.toast) SafeHer.toast('Incorrect Safety PIN');
+          }
+        },
+        function(err) {
+          if (err === 'wrong_pin' && SafeHer.toast) {
+            SafeHer.toast('Incorrect Safety PIN. Deletion cancelled.');
+          }
+        }
+      );
+    } else {
+      deleteSession(sessionId, function() {
+        stopPlayback();
+        renderVaultScreen();
+      });
+    }
+  }
+
+// ─── 13. Initialization ───────────────────────────────────
   function init() {
     getDB();
+    if (getStoredKeys()) {
+      registerPublicKeyWithServer();
+    }
+    resumePendingUploads();
+
     if (SafeHer.router && SafeHer.router.onShow) {
       SafeHer.router.onShow('profile', function() {
         renderSettings();
       });
       SafeHer.router.onShow('record-evidence', function() {
         onOpenEvidenceScreen();
+      });
+      SafeHer.router.onShow('evidence-vault', function() {
+        renderVaultScreen();
       });
     }
   }
@@ -1540,7 +1998,15 @@ SafeHer.vault = (function() {
     deleteSession: deleteSession,
     checkStorageSpace: checkStorageSpace,
     getSupportedAudioMime: getSupportedAudioMime,
-    getSupportedVideoMime: getSupportedVideoMime
+    getSupportedVideoMime: getSupportedVideoMime,
+    registerPublicKeyWithServer: registerPublicKeyWithServer,
+    resumePendingUploads: resumePendingUploads,
+    openVaultScreen: openVaultScreen,
+    closeVaultScreen: closeVaultScreen,
+    renderVaultScreen: renderVaultScreen,
+    playSession: playSession,
+    stopPlayback: stopPlayback,
+    promptDeleteSession: promptDeleteSession
   };
 })();
 
