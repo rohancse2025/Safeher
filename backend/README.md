@@ -156,11 +156,44 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
   5. Alert owner receives a push whenever an emergency contact responds from their tracking link ("Mom: I'm on my way").
   6. Expired 404/410 subscriptions are automatically pruned.
 
-### 11. Admin Management (Protected by ADMIN_KEY)
-- **`GET /api/admin/stats`** – Platform metrics: total users, active alerts, alerts today, approved volunteers.
-- **`GET /api/admin/volunteers/pending`** – Lists pending volunteer applications.
-- **`POST /api/admin/volunteers/<id>/approve`** – Approves a volunteer for alert matching.
-- **`POST /api/admin/volunteers/<id>/reject`** – Rejects a volunteer application.
+### 11. Admin Management & Volunteer Review Backend
+*Protected by `ADMIN_KEY` or named reviewer keys defined in `ADMIN_REVIEWERS` (`name:key,name:key`). Supports optional dual-reviewer policy (`REQUIRE_TWO_REVIEWERS=true`).*
+
+- **Reviewer Authentication & Identification**:
+  - Reviewer key provided via `X-Admin-Key: <key>` or `Authorization: Bearer <key>`.
+  - Maps to reviewer name stored with every audit action, review decision, reference verification, and interview.
+  - Optional `REQUIRE_TWO_REVIEWERS=true`: Enforces that approval requires an initial `"recommend"` by one reviewer and final `"approve"` by a different reviewer.
+- **Automatic Fraud & Safety Risk Flags (`flags_json`)**:
+  - `duplicate_phone` *(high)*: Applicant phone matches an existing volunteer application.
+  - `duplicate_id` *(high)*: `id_type` and `id_last4` combination already registered to another applicant.
+  - `reference_phone_conflict` *(high)*: Reference phone equals applicant's own or another applicant's phone number.
+  - `recent_rejection` *(high)*: Applicant had a volunteer rejection within the last 90 days.
+  - `name_signature_mismatch` *(high)*: Typed signature differs from declared full name.
+  - `incomplete_profile` *(info)*: Motivation (< 15 chars) or availability (< 5 chars) is sparse.
+- **Review Routes**:
+  - **`GET /api/admin/volunteers?status=`**: Lists volunteers filtered by status with parsed flags, severity counts, and aggregate counts (`counts: {all, submitted, in_review, approved, rejected, ...}`).
+  - **`GET /api/admin/volunteers/<id>`**: Retrieves full application packet (details, references, training attempts, phone interview verification, flags) with sensitive `id_image_path` safely excluded.
+  - **`GET /api/admin/volunteers/<id>/id-image`**: Streams the government ID image document and writes a persistent view audit row to `volunteer_reviews`.
+  - **`POST /api/admin/volunteers/<id>/references/<rid>`**: Records reference verification phone call (`outcome` in `"pending"`, `"confirmed"`, `"not_reachable"`, `"negative"`, `notes`, `reviewer`, `time`).
+  - **`POST /api/admin/volunteers/<id>/interview`**: Records phone verification interview (`notes`, `confirmed_identity`, `called_applicant_number`), validating phone ownership.
+  - **`POST /api/admin/volunteers/<id>/decision`**:
+    - **`approve`**: Strict gate checks:
+      1. Checklist all true (`identity_matches_photo`, `phone_verified_by_call`, `interview_done`, `declaration_checked`).
+      2. At least 2 references have outcome `"confirmed"` and none is `"negative"`.
+      3. Safety training passed (>= 80%).
+      4. Note >= 20 characters.
+      5. No unresolved high-severity flags (override permitted only with `override_flags: true` and a note explicitly mentioning the override/flag code).
+      6. Dual-reviewer check: If `REQUIRE_TWO_REVIEWERS=true`, requires prior recommendation from a different reviewer.
+      - Sets `status = "approved"`, `level = "provisional"`, `approved_by`, `approved_at`, `valid_until = 12 months`.
+    - **`recommend`**: Marks status `"in_review"` for secondary reviewer sign-off.
+    - **`request_info`**: Marks status `"in_review"` and records audit note.
+    - **`reject`**: Requires valid `reason_code` (`id_mismatch`, `references_negative`, `references_unreachable`, `training_not_passed`, `incomplete`, `safety_concern`, `underage`, `other`) and note. Sets status `"rejected"` and 30-day cooldown (`reapply_after`).
+  - **`GET /api/admin/volunteers/<id>/audit`**: Returns complete chronological audit trail from `volunteer_reviews`.
+  - **`POST /api/admin/volunteers/<id>/revoke`**: Revokes volunteer privileges at any time with note and reviewer attribution.
+- **Platform Metrics & Logs**:
+  - **`GET /api/admin/stats`**: Platform metrics: total users, active alerts, alerts today, approved volunteers.
+  - **`GET /api/admin/logs`**: Last 100 log lines with masked sensitive data.
+  - **`POST /api/admin/purge-test-data`**: Cleans dummy test users while preserving production accounts.
 
 ### 12. Evidence Vault (Auth Required, Owner Only)
 *Zero-Knowledge, Tamper-Proof Evidence Storage. Contacts, volunteers, and the admin page never get access to evidence.*

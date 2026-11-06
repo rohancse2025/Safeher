@@ -1,5 +1,108 @@
+def compute_volunteer_flags(cursor, vol_id, user_id, applicant_phone, vol, refs):
+    """
+    Computes automatic fraud & safety risk flags on submit.
+    Stored in flags_json. Severity is 'info' or 'high'.
+    """
+    flags = []
+
+    # 1. Duplicate phone against another volunteer applicant
+    if applicant_phone:
+        cursor.execute('''
+            SELECT COUNT(*) AS cnt FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ? AND v.id != ?;
+        ''', (applicant_phone, vol_id))
+        cnt = cursor.fetchone()['cnt']
+        if cnt > 0:
+            flags.append({
+                "code": "duplicate_phone",
+                "severity": "high",
+                "message": f"Applicant phone {applicant_phone} is also associated with another volunteer application."
+            })
+
+    # 2. Duplicate id_type plus id_last4 against another applicant
+    id_type = vol.get('id_type')
+    id_last4 = vol.get('id_last4')
+    if id_type and id_last4:
+        cursor.execute('''
+            SELECT COUNT(*) AS cnt FROM volunteers
+            WHERE id_type = ? AND id_last4 = ? AND id != ?;
+        ''', (id_type, id_last4, vol_id))
+        cnt = cursor.fetchone()['cnt']
+        if cnt > 0:
+            flags.append({
+                "code": "duplicate_id",
+                "severity": "high",
+                "message": f"Duplicate ID: {id_type} ending with {id_last4} is already registered to another applicant."
+            })
+
+    # 3. Reference phone conflict:
+    ref_phones = [r.get('phone', '').strip() for r in refs if r.get('phone')]
+    if applicant_phone and any(p == applicant_phone for p in ref_phones):
+        flags.append({
+            "code": "reference_phone_conflict",
+            "severity": "high",
+            "message": "A reference phone number matches the applicant's own phone number."
+        })
+
+    if ref_phones:
+        placeholders = ','.join('?' for _ in ref_phones)
+        cursor.execute(f'''
+            SELECT u.phone FROM users u
+            JOIN volunteers v ON v.user_id = u.id
+            WHERE v.id != ? AND u.phone IN ({placeholders});
+        ''', [vol_id] + ref_phones)
+        matched_other = cursor.fetchall()
+        if matched_other:
+            flags.append({
+                "code": "reference_phone_conflict",
+                "severity": "high",
+                "message": "A reference phone number belongs to another volunteer applicant."
+            })
+
+    # 4. Rejection within the last 90 days:
+    cursor.execute('''
+        SELECT vr.ts, vr.action, v.reapply_after, v.updated_at
+        FROM volunteers v
+        LEFT JOIN volunteer_reviews vr ON vr.volunteer_id = v.id AND vr.action = 'reject'
+        WHERE v.id = ?
+          AND (
+            (v.reapply_after IS NOT NULL AND v.updated_at >= datetime('now', '-90 days'))
+            OR (vr.ts IS NOT NULL AND vr.ts >= datetime('now', '-90 days'))
+          );
+    ''', (vol_id,))
+    if cursor.fetchone():
+        flags.append({
+            "code": "recent_rejection",
+            "severity": "high",
+            "message": "Applicant had a volunteer rejection within the last 90 days."
+        })
+
+    # 5. Name mismatch between typed signature and full name:
+    typed_sig = (vol.get('typed_signature') or '').strip()
+    full_name = (vol.get('full_name') or '').strip()
+    if typed_sig != full_name:
+        flags.append({
+            "code": "name_signature_mismatch",
+            "severity": "high",
+            "message": f"Typed signature ('{typed_sig}') does not exactly match full name ('{full_name}')."
+        })
+
+    # 6. Incomplete profile:
+    motivation = (vol.get('motivation') or '').strip()
+    availability = (vol.get('availability_text') or '').strip()
+    if not motivation or len(motivation) < 15 or not availability or len(availability) < 5:
+        flags.append({
+            "code": "incomplete_profile",
+            "severity": "info",
+            "message": "Profile has brief or incomplete motivation/availability information."
+        })
+
+    return flags
+
 # backend/routes/volunteers.py – Community volunteer network, nearby active alerts, and response dispatch
 import math
+import json
 import os
 import uuid
 import datetime
@@ -1329,13 +1432,24 @@ def submit_volunteer_application():
             "error": f"Typed signature ('{vol.get('typed_signature')}') must exactly match your full name ('{full_name}')"
         }), 400
 
-    # 10. All checks passed: set status to 'submitted'
+    # 10. Compute automatic fraud and safety risk flags
+    flags = compute_volunteer_flags(cursor, vol_id, user_id, applicant_phone, vol, refs)
+    flags_json = json.dumps(flags)
+
+    # All checks passed: set status to 'submitted' and record flags
     cursor.execute('''
         UPDATE volunteers
         SET status = 'submitted',
+            flags_json = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?;
-    ''', (vol_id,))
+    ''', (flags_json, vol_id))
+
+    # Audit submission
+    cursor.execute('''
+        INSERT INTO volunteer_reviews (volunteer_id, reviewer, action, checklist_json, note)
+        VALUES (?, 'system', 'submit', ?, 'Volunteer application submitted for review');
+    ''', (vol_id, flags_json))
     conn.commit()
 
     cursor.execute('''

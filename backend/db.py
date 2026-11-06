@@ -154,6 +154,20 @@ def init_db():
         );
     ''')
 
+    # 5c. Volunteer reviews & audit trail table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volunteer_id INTEGER NOT NULL,
+            reviewer TEXT NOT NULL,
+            action TEXT NOT NULL,
+            checklist_json TEXT,
+            note TEXT,
+            ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE
+        );
+    ''')
+
     # Add columns if migrating existing database
     cursor.execute("PRAGMA table_info(alerts);")
     alert_cols = [col['name'] for col in cursor.fetchall()]
@@ -189,6 +203,11 @@ def init_db():
         ('reject_reason_code', 'TEXT'),
         ('reapply_after', 'TIMESTAMP'),
         ('flags_json', 'TEXT'),
+        ('interview_notes', 'TEXT'),
+        ('interview_confirmed_identity', 'INTEGER DEFAULT 0'),
+        ('interview_called_applicant_number', 'INTEGER DEFAULT 0'),
+        ('interview_by', 'TEXT'),
+        ('interview_at', 'TIMESTAMP'),
     ]
     for col_name, col_type in vol_columns_to_add:
         if col_name not in existing_vol_cols:
@@ -316,6 +335,7 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_references_vol ON volunteer_references(volunteer_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_training_vol ON volunteer_training_attempts(volunteer_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_status ON volunteers(status);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_reviews_vol ON volunteer_reviews(volunteer_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_locations_alert ON locations(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')
