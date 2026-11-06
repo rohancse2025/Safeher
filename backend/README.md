@@ -111,12 +111,32 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 ### 7. Email Testing
 - **`POST /api/test-email`** *(Auth required)* – Sends a diagnostic test email to the user's registered address using Gmail SMTP.
 
-### 8. Volunteer Network
-- **`POST /api/volunteers/status`** *(Auth required)* – Saves volunteer availability (`available`: true/false) and latest GPS coordinates.
-- **`GET /api/volunteers/nearby-alerts`** *(Auth required)* – Finds active alerts within 2 km of volunteer's position using the Haversine formula (excludes own alerts; hides names on silent alerts).
-- **`POST /api/alerts/<id>/respond`** *(Auth required)* – Volunteer responds to an alert with `"coming"` or `"cannot"`.
+### 8. Volunteer Network & KYC Application System
+*Full-fledged multi-step volunteer onboarding with strict safety training, identity document verification, reference checks, and cooldowns.*
+- **`GET /api/volunteers/application`** *(Auth required)* – Retrieves the volunteer's current application draft, KYC state, training status, and references.
+- **`PUT /api/volunteers/application`** *(Auth required)* – Saves or updates the volunteer application draft:
+  - Details: `full_name`, `dob` (YYYY-MM-DD), `locality`, `id_type` ("Voter ID", "Driving Licence", "College ID", "Passport", "Other"), `id_last4` (strictly $\le 4$ digits, never full ID number).
+  - Motivation & Availability: `motivation`, `availability_text`.
+  - 2 References: Array of personal/professional references (`name`, `phone`, `relation`).
+  - Code of Conduct: `declaration_accepted` (boolean), `declaration_version`, `typed_signature` (must match full name).
+  - Enforces 30-day cooldown if the previous application was rejected (`reapply_after`).
+- **`POST /api/volunteers/application/id-image`** *(Auth required)* – Uploads multipart ID document photo (JPEG/PNG only, max 2 MB). Validates magic bytes, saves to private directory `backend/private_uploads/` with unguessable random name. Never served publicly.
+- **`POST /api/volunteers/application/selfie`** *(Auth required)* – Uploads multipart live verification selfie (JPEG/PNG only, max 2 MB, magic byte verified, stored in `backend/private_uploads/`).
+- **`GET /api/volunteers/training`** *(Auth required)* – Returns 8 multiple-choice safety questions without revealing correct answers.
+- **`POST /api/volunteers/training/submit`** *(Auth required)* – Scores training answers. Requires at least 80% (7/8) to pass. If failed, enforces a strict **24-hour retry cooldown** before another attempt is permitted.
+- **`POST /api/volunteers/application/submit`** *(Auth required)* – Final submission validation:
+  - Validates age $\ge 18$ calculated from Date of Birth.
+  - Verifies full name, locality, ID type, and ID last 4 digits (never a full ID).
+  - Confirms physical existence of uploaded ID image and selfie files on disk.
+  - Verifies at least 2 references with different phone numbers, neither matching the applicant's own phone.
+  - Confirms safety training passed with score $\ge 80\%$.
+  - Validates declaration acceptance and typed signature matching full name.
+  - Sets application status to `"submitted"` for administrator review.
+- **`POST /api/volunteers/status`** *(Auth required)* – Saves volunteer availability (`available`: true/false) and latest GPS coordinates for approved volunteers.
+- **`GET /api/volunteers/nearby-alerts`** *(Auth required)* – Finds active alerts within proximity of approved volunteer's position (excludes own alerts; hides names on silent alerts).
+- **`POST /api/alerts/<id>/respond`** *(Auth required)* – Approved volunteer responds to an alert with `"coming"` or `"cannot"`.
 - **`GET /api/alerts/<id>/status`** – Returns `volunteers_coming` and full chronological list of `contact_responses` (`name`, `status`, `time`).
-- **`GET /api/volunteers/count`** – Returns the number of currently available volunteers.
+- **`GET /api/volunteers/count`** – Returns the number of currently available approved volunteers.
 
 ### 9. Safe Timers & Background Escalation
 - **`POST /api/timers`** *(Auth required)* – Starts a countdown timer (`minutes`, optional `contact_id`).
@@ -157,7 +177,9 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`GET /api/evidence/sessions/<id>/verify`** *(Auth required, owner only)* – Validates the cryptographic SHA-256 hash chain and on-disk file integrity across all session chunks. Returns `{"verified": true}` or reports the first `brokenIndex`.
 - **`GET /api/evidence/chunks/<id>`** *(Auth required, owner only)* – Streams/downloads the raw encrypted chunk binary file.
 - **`DELETE /api/evidence/sessions/<id>`** *(Auth required, owner only)* – Requires the user's 4-digit Safety PIN. Permanently deletes the session, its chunk records, and its on-disk files.
-- **Automated Retention Scheduler**: Background scheduler purges sessions and chunk directories older than 30 days automatically.
+- **Automated Retention Scheduler**:
+  1. Purges evidence recording sessions and chunk files older than 30 days automatically.
+  2. Permanently deletes volunteer ID image files from disk 7 days after any final decision (approved, rejected, revoked, expired) while preserving `id_last4` and `id_type` for audit integrity.
 
 ---
 
@@ -177,7 +199,9 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`contacts`**: Emergency contacts linked to users.
 - **`alerts`**: Emergency SOS records with mode, coordinates, status, and unique share tokens.
 - **`locations`**: Live GPS tracking history for active alerts.
-- **`volunteers`**: Nearby volunteer coordinates and availability status.
+- **`volunteers`**: Extended volunteer records with KYC and lifecycle tracking (`id`, `user_id`, `full_name`, `dob`, `locality`, `id_type`, `id_last4`, `id_image_path`, `selfie_path`, `motivation`, `availability_text`, `declaration_accepted_at`, `declaration_version`, `typed_signature`, `training_score`, `training_passed_at`, `status` in draft/submitted/in_review/approved/rejected/suspended/revoked/expired, `level` in provisional/trusted, `approved_at`, `approved_by`, `valid_until`, `reject_reason_code`, `reapply_after`, `flags_json`, `available`, `lat`, `lng`, `updated_at`).
+- **`volunteer_references`**: Personal & professional references for background checks (`id`, `volunteer_id`, `name`, `phone`, `relation`, `contacted_at`, `outcome` in pending/confirmed/not_reachable/negative, `notes`, `reviewer`).
+- **`volunteer_training_attempts`**: Audit log of safety questionnaire attempts (`id`, `volunteer_id`, `score`, `taken_at`).
 - **`responses`**: Volunteer dispatch responses to active alerts.
 - **`alert_contacts`**: Unique personalized tracking tokens generated for each emergency contact when an alert is created (`id`, `alert_id`, `contact_id`, `token`).
 - **`contact_responses`**: Status responses submitted by contacts via their personalized tracking page (`id`, `alert_id`, `contact_id`, `status`, `created_at`).

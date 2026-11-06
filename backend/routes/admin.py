@@ -57,10 +57,12 @@ def list_pending_volunteers():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT v.id, v.user_id, u.name, u.phone, u.email, v.note, v.status, v.updated_at
+        SELECT v.id, v.user_id, u.name, u.phone, u.email, v.note, v.status,
+               v.full_name, v.dob, v.locality, v.id_type, v.id_last4, v.training_score,
+               v.updated_at
         FROM volunteers v
         JOIN users u ON v.user_id = u.id
-        WHERE v.status = 'pending'
+        WHERE v.status IN ('pending', 'submitted', 'in_review')
         ORDER BY v.id ASC;
     ''')
     rows = cursor.fetchall()
@@ -154,13 +156,24 @@ def approve_volunteer(volunteer_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, status FROM volunteers WHERE id = ?;', (volunteer_id,))
+    cursor.execute('SELECT id, status FROM volunteers WHERE id = ? OR user_id = ?;', (volunteer_id, volunteer_id))
     vol = cursor.fetchone()
     if not vol:
         conn.close()
         return jsonify({"ok": False, "error": "Volunteer not found"}), 404
 
-    cursor.execute("UPDATE volunteers SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (volunteer_id,))
+    data = request.get_json(silent=True) or {}
+    level = data.get('level') or 'provisional'
+    cursor.execute('''
+        UPDATE volunteers
+        SET status = 'approved',
+            level = ?,
+            approved_at = CURRENT_TIMESTAMP,
+            approved_by = 'admin',
+            valid_until = datetime('now', '+1 year'),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? OR user_id = ?;
+    ''', (level, volunteer_id, volunteer_id))
     conn.commit()
     conn.close()
 
@@ -169,6 +182,7 @@ def approve_volunteer(volunteer_id):
         "data": {
             "id": volunteer_id,
             "status": "approved",
+            "level": level,
             "message": "Volunteer approved successfully"
         }
     }), 200
@@ -184,13 +198,22 @@ def reject_volunteer(volunteer_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, status FROM volunteers WHERE id = ?;', (volunteer_id,))
+    cursor.execute('SELECT id, status FROM volunteers WHERE id = ? OR user_id = ?;', (volunteer_id, volunteer_id))
     vol = cursor.fetchone()
     if not vol:
         conn.close()
         return jsonify({"ok": False, "error": "Volunteer not found"}), 404
 
-    cursor.execute("UPDATE volunteers SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (volunteer_id,))
+    data = request.get_json(silent=True) or {}
+    reason_code = data.get('reason_code') or data.get('reject_reason_code') or 'policy_check_failed'
+    cursor.execute('''
+        UPDATE volunteers
+        SET status = 'rejected',
+            reject_reason_code = ?,
+            reapply_after = datetime('now', '+30 days'),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? OR user_id = ?;
+    ''', (reason_code, volunteer_id, volunteer_id))
     conn.commit()
     conn.close()
 
@@ -199,7 +222,9 @@ def reject_volunteer(volunteer_id):
         "data": {
             "id": volunteer_id,
             "status": "rejected",
-            "message": "Volunteer application rejected"
+            "reject_reason_code": reason_code,
+            "reapply_after_days": 30,
+            "message": "Volunteer application rejected. Reapplication cooldown set to 30 days."
         }
     }), 200
 

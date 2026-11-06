@@ -91,7 +91,7 @@ def init_db():
         );
     ''')
 
-    # 5. Volunteers table
+    # 5. Volunteers table (extended application & KYC fields)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS volunteers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,26 +99,100 @@ def init_db():
             available INTEGER DEFAULT 0,
             lat REAL,
             lng REAL,
-            status TEXT DEFAULT 'pending',
+            status TEXT DEFAULT 'draft',
             note TEXT,
+            full_name TEXT,
+            dob TEXT,
+            locality TEXT,
+            id_type TEXT,
+            id_last4 TEXT,
+            id_image_path TEXT,
+            selfie_path TEXT,
+            motivation TEXT,
+            availability_text TEXT,
+            declaration_accepted_at TIMESTAMP,
+            declaration_version TEXT,
+            typed_signature TEXT,
+            training_score REAL,
+            training_passed_at TIMESTAMP,
+            level TEXT DEFAULT 'provisional',
+            approved_at TIMESTAMP,
+            approved_by TEXT,
+            valid_until TIMESTAMP,
+            reject_reason_code TEXT,
+            reapply_after TIMESTAMP,
+            flags_json TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
 
-    # Add columns if migrating existing database
+    # 5a. Volunteer references table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_references (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volunteer_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            relation TEXT,
+            contacted_at TIMESTAMP,
+            outcome TEXT DEFAULT 'pending',
+            notes TEXT,
+            reviewer TEXT,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE
+        );
+    ''')
 
+    # 5b. Volunteer training attempts table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS volunteer_training_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volunteer_id INTEGER NOT NULL,
+            score REAL NOT NULL,
+            taken_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (volunteer_id) REFERENCES volunteers(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # Add columns if migrating existing database
     cursor.execute("PRAGMA table_info(alerts);")
     alert_cols = [col['name'] for col in cursor.fetchall()]
     if 'note' not in alert_cols:
         cursor.execute("ALTER TABLE alerts ADD COLUMN note TEXT;")
 
     cursor.execute("PRAGMA table_info(volunteers);")
-    vol_cols = [col['name'] for col in cursor.fetchall()]
-    if 'status' not in vol_cols:
-        cursor.execute("ALTER TABLE volunteers ADD COLUMN status TEXT DEFAULT 'pending';")
-    if 'note' not in vol_cols:
+    existing_vol_cols = {col['name'] for col in cursor.fetchall()}
+    if 'status' not in existing_vol_cols:
+        cursor.execute("ALTER TABLE volunteers ADD COLUMN status TEXT DEFAULT 'draft';")
+    if 'note' not in existing_vol_cols:
         cursor.execute("ALTER TABLE volunteers ADD COLUMN note TEXT;")
+
+    vol_columns_to_add = [
+        ('full_name', 'TEXT'),
+        ('dob', 'TEXT'),
+        ('locality', 'TEXT'),
+        ('id_type', 'TEXT'),
+        ('id_last4', 'TEXT'),
+        ('id_image_path', 'TEXT'),
+        ('selfie_path', 'TEXT'),
+        ('motivation', 'TEXT'),
+        ('availability_text', 'TEXT'),
+        ('declaration_accepted_at', 'TIMESTAMP'),
+        ('declaration_version', 'TEXT'),
+        ('typed_signature', 'TEXT'),
+        ('training_score', 'REAL'),
+        ('training_passed_at', 'TIMESTAMP'),
+        ('level', "TEXT DEFAULT 'provisional'"),
+        ('approved_at', 'TIMESTAMP'),
+        ('approved_by', 'TEXT'),
+        ('valid_until', 'TIMESTAMP'),
+        ('reject_reason_code', 'TEXT'),
+        ('reapply_after', 'TIMESTAMP'),
+        ('flags_json', 'TEXT'),
+    ]
+    for col_name, col_type in vol_columns_to_add:
+        if col_name not in existing_vol_cols:
+            cursor.execute(f"ALTER TABLE volunteers ADD COLUMN {col_name} {col_type};")
 
     # 6. Responses table
     cursor.execute('''
@@ -239,6 +313,9 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_contacts_alert ON alert_contacts(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contact_responses_alert ON contact_responses(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contact_responses_contact ON contact_responses(contact_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_references_vol ON volunteer_references(volunteer_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_training_vol ON volunteer_training_attempts(volunteer_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_status ON volunteers(status);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_locations_alert ON locations(alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')

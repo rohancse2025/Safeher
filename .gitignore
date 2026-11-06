@@ -13,3 +13,4 @@ venv/
 .venv/
 /Safeher/
 backend/evidence/
+backend/private_uploads/

@@ -1,5 +1,8 @@
 # backend/routes/volunteers.py – Community volunteer network, nearby active alerts, and response dispatch
 import math
+import os
+import uuid
+import datetime
 from flask import Blueprint, request, jsonify, g
 
 from db import get_db
@@ -481,5 +484,877 @@ def get_available_volunteers_count():
         "data": {
             "available_volunteers": count,
             "nearby": False
+        }
+    }), 200
+
+
+# ─── Volunteer Training & Questionnaire Bank ─────────────────
+VOLUNTEER_TRAINING_QUESTIONS = [
+    {
+        "id": 1,
+        "question": "What is the very first action you must take when responding to an emergency alert?",
+        "options": [
+            "Call 112 first and don’t confront anyone",
+            "Confront any suspected person immediately to protect the victim",
+            "Wait 30 minutes to see if the situation de-escalates on its own",
+            "Take photographs of the scene to document what happened"
+        ],
+        "correct_answer": "Call 112 first and don’t confront anyone"
+    },
+    {
+        "id": 2,
+        "question": "When arriving near the alert location, you see the person is accompanied by someone acting threateningly. What should you do?",
+        "options": [
+            "If the person is with someone threatening, stay at a distance and call 112",
+            "Physically intervene immediately between the person and the threat",
+            "Shout at the person threatening her to intimidate them",
+            "Follow them quietly into secluded areas without informing police"
+        ],
+        "correct_answer": "If the person is with someone threatening, stay at a distance and call 112"
+    },
+    {
+        "id": 3,
+        "question": "What are the strict rules regarding social media and privacy after responding to an emergency?",
+        "options": [
+            "Never post the person’s location, photo or story on social media",
+            "You can post photos of the incident if you blur their face",
+            "Posting their real-time location online is allowed to gather community help",
+            "You may share the incident story as long as you do not name the street"
+        ],
+        "correct_answer": "Never post the person’s location, photo or story on social media"
+    },
+    {
+        "id": 4,
+        "question": "After an emergency incident has ended, what is the policy regarding contacting the person you assisted?",
+        "options": [
+            "Never contact the person afterwards without their clear consent",
+            "You should call them the next day to ask how they are feeling",
+            "You may add them on social messaging platforms using their emergency contact info",
+            "It is permitted to visit their home if you want to ensure they reached safely"
+        ],
+        "correct_answer": "Never contact the person afterwards without their clear consent"
+    },
+    {
+        "id": 5,
+        "question": "If you receive an emergency alert but you are currently alone in an unsafe or deserted location, what should you do?",
+        "options": [
+            "If you are alone in an unsafe place, use “Can’t help” and don’t go",
+            "Proceed to the alert location anyway because the victim needs help",
+            "Call out loudly in your area to see if strangers will accompany you",
+            "Turn off your phone and ignore the alert completely"
+        ],
+        "correct_answer": "If you are alone in an unsafe place, use “Can’t help” and don’t go"
+    },
+    {
+        "id": 6,
+        "question": "How must you respond to a “silent-mode” alert (where the user’s screen is dark and no siren sounds)?",
+        "options": [
+            "A silent-mode alert (screen dark, no sound) is high risk, so call 112 and don’t call or message her",
+            "Call her phone immediately to ask what the situation is",
+            "Send repeated WhatsApp messages asking her to describe her surroundings",
+            "Sound your phone’s siren to frighten away potential stalkers"
+        ],
+        "correct_answer": "A silent-mode alert (screen dark, no sound) is high risk, so call 112 and don’t call or message her"
+    },
+    {
+        "id": 7,
+        "question": "If the person who triggered the alert needs to leave the scene, what transportation guideline must you follow?",
+        "options": [
+            "Never go alone with her to a private place or vehicle unless she asks and it is safe",
+            "Insist that she enters your private vehicle immediately",
+            "Direct her into any passing stranger’s vehicle to get her away quickly",
+            "Take her to your own private residence while waiting for help"
+        ],
+        "correct_answer": "Never go alone with her to a private place or vehicle unless she asks and it is safe"
+    },
+    {
+        "id": 8,
+        "question": "How is your personal data and verification information handled by the SafeHer platform?",
+        "options": [
+            "Your data is used only to verify you and to match you with nearby alerts",
+            "Your profile, ID details, and phone number are publicly visible to all app users",
+            "Your verification data is shared with private security marketing agencies",
+            "Your identity document is published in the community volunteer directory"
+        ],
+        "correct_answer": "Your data is used only to verify you and to match you with nearby alerts"
+    }
+]
+
+PRIVATE_UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'private_uploads'))
+os.makedirs(PRIVATE_UPLOADS_DIR, exist_ok=True)
+
+
+def check_magic_image_type(file_bytes):
+    """
+    Check real image type using magic bytes.
+    Accepts only real JPEG or PNG.
+    """
+    if file_bytes.startswith(b'\xff\xd8\xff'):
+        return True, 'jpg'
+    if file_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+        return True, 'png'
+    return False, None
+
+
+# ─── Route: GET /api/volunteers/application ───────────────────
+@volunteers_bp.route('/api/volunteers/application', methods=['GET'])
+@login_required
+def get_volunteer_application():
+    """
+    Retrieve current volunteer application draft, training state, and references.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, user_id, full_name, dob, locality, id_type, id_last4,
+               id_image_path, selfie_path, motivation, availability_text,
+               declaration_accepted_at, declaration_version, typed_signature,
+               training_score, training_passed_at, status, level, approved_at,
+               approved_by, valid_until, reject_reason_code, reapply_after,
+               flags_json, updated_at
+        FROM volunteers
+        WHERE user_id = ?;
+    ''', (user_id,))
+    vol = cursor.fetchone()
+
+    if not vol:
+        conn.close()
+        return jsonify({
+            "ok": True,
+            "data": {
+                "has_application": False,
+                "status": "not_started"
+            }
+        }), 200
+
+    vol_dict = dict(vol)
+    vol_id = vol_dict['id']
+
+    # Fetch references
+    cursor.execute('''
+        SELECT id, name, phone, relation, contacted_at, outcome, notes
+        FROM volunteer_references
+        WHERE volunteer_id = ?
+        ORDER BY id ASC;
+    ''', (vol_id,))
+    references = [dict(r) for r in cursor.fetchall()]
+    vol_dict['references'] = references
+    vol_dict['has_application'] = True
+
+    # Check cooldown status
+    if vol_dict.get('reapply_after'):
+        try:
+            reapply_dt = datetime.datetime.strptime(vol_dict['reapply_after'], "%Y-%m-%d %H:%M:%S")
+            vol_dict['cooldown_active'] = (datetime.datetime.now() < reapply_dt)
+        except Exception:
+            vol_dict['cooldown_active'] = False
+    else:
+        vol_dict['cooldown_active'] = False
+
+    conn.close()
+    return jsonify({"ok": True, "data": vol_dict}), 200
+
+
+# ─── Route: PUT /api/volunteers/application ───────────────────
+@volunteers_bp.route('/api/volunteers/application', methods=['PUT'])
+@login_required
+def save_volunteer_draft():
+    """
+    Save or update volunteer application draft (details, motivation, availability, 2 references, declaration).
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    data = request.get_json(silent=True) or {}
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Check existing volunteer row
+    cursor.execute('SELECT id, status, reapply_after FROM volunteers WHERE user_id = ?;', (user_id,))
+    existing = cursor.fetchone()
+
+    # Check 30-day cooldown if rejected
+    if existing and existing['reapply_after']:
+        try:
+            reapply_dt = datetime.datetime.strptime(existing['reapply_after'], "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.now() < reapply_dt:
+                conn.close()
+                return jsonify({
+                    "ok": False,
+                    "error": f"Application cooldown active. You cannot reapply until {existing['reapply_after']}."
+                }), 403
+        except Exception:
+            pass
+
+    full_name = (data.get('full_name') or '').strip()
+    dob = (data.get('dob') or '').strip()
+    locality = (data.get('locality') or '').strip()
+    id_type = (data.get('id_type') or '').strip()
+    id_last4 = (data.get('id_last4') or '').strip()
+    motivation = (data.get('motivation') or '').strip()
+    availability_text = (data.get('availability_text') or '').strip()
+    declaration_version = (data.get('declaration_version') or 'v1.0').strip()
+    typed_signature = (data.get('typed_signature') or '').strip()
+    declaration_accepted = data.get('declaration_accepted') in (True, 1, 'true', '1')
+
+    # Validate id_type if given
+    VALID_ID_TYPES = {"Voter ID", "Driving Licence", "College ID", "Passport", "Other"}
+    if id_type and id_type not in VALID_ID_TYPES:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": f"Invalid id_type. Must be one of: {', '.join(sorted(VALID_ID_TYPES))}"
+        }), 400
+
+    # Ensure id_last4 is never full ID (max 4 characters)
+    if id_last4 and len(id_last4) > 4:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "id_last4 must be at most 4 digits/characters, never a full ID number."
+        }), 400
+
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if existing:
+        vol_id = existing['id']
+        current_status = existing['status']
+        # If currently rejected or expired, allow re-drafting after cooldown
+        new_status = 'draft' if current_status in ('rejected', 'expired', 'draft', None) else current_status
+        cursor.execute('''
+            UPDATE volunteers
+            SET full_name = COALESCE(NULLIF(?, ''), full_name),
+                dob = COALESCE(NULLIF(?, ''), dob),
+                locality = COALESCE(NULLIF(?, ''), locality),
+                id_type = COALESCE(NULLIF(?, ''), id_type),
+                id_last4 = COALESCE(NULLIF(?, ''), id_last4),
+                motivation = COALESCE(NULLIF(?, ''), motivation),
+                availability_text = COALESCE(NULLIF(?, ''), availability_text),
+                declaration_version = ?,
+                typed_signature = COALESCE(NULLIF(?, ''), typed_signature),
+                declaration_accepted_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE declaration_accepted_at END,
+                status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        ''', (full_name, dob, locality, id_type, id_last4, motivation, availability_text,
+               declaration_version, typed_signature, declaration_accepted, new_status, vol_id))
+    else:
+        cursor.execute('''
+            INSERT INTO volunteers (
+                user_id, status, full_name, dob, locality, id_type, id_last4,
+                motivation, availability_text, declaration_version, typed_signature,
+                declaration_accepted_at, updated_at
+            ) VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP);
+        ''', (user_id, full_name or None, dob or None, locality or None, id_type or None,
+               id_last4 or None, motivation or None, availability_text or None, declaration_version,
+               typed_signature or None, declaration_accepted))
+        vol_id = cursor.lastrowid
+
+    # Save references if provided
+    refs = data.get('references')
+    if refs and isinstance(refs, list):
+        cursor.execute('DELETE FROM volunteer_references WHERE volunteer_id = ?;', (vol_id,))
+        for r in refs[:5]:
+            r_name = (r.get('name') or '').strip()
+            r_phone = (r.get('phone') or '').strip()
+            r_rel = (r.get('relation') or '').strip()
+            if r_name and r_phone:
+                cursor.execute('''
+                    INSERT INTO volunteer_references (volunteer_id, name, phone, relation, outcome)
+                    VALUES (?, ?, ?, ?, 'pending');
+                ''', (vol_id, r_name, r_phone, r_rel))
+
+    conn.commit()
+
+    # Return updated draft
+    cursor.execute('''
+        SELECT id, user_id, full_name, dob, locality, id_type, id_last4,
+               id_image_path, selfie_path, motivation, availability_text,
+               declaration_accepted_at, declaration_version, typed_signature,
+               training_score, training_passed_at, status, updated_at
+        FROM volunteers WHERE id = ?;
+    ''', (vol_id,))
+    saved_vol = dict(cursor.fetchone())
+
+    cursor.execute('SELECT id, name, phone, relation, outcome FROM volunteer_references WHERE volunteer_id = ?;', (vol_id,))
+    saved_vol['references'] = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "data": saved_vol,
+        "message": "Volunteer application draft saved successfully"
+    }), 200
+
+
+# ─── Route: POST /api/volunteers/application/id-image ─────────
+@volunteers_bp.route('/api/volunteers/application/id-image', methods=['POST'])
+@login_required
+def upload_id_image():
+    """
+    Accept multipart ID image (JPEG or PNG only, at most 2 MB).
+    Validates magic bytes, saves to backend/private_uploads/ with random filename.
+    Never served publicly.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+
+    file = request.files.get('file') or request.files.get('id_image') or request.files.get('image')
+    if not file:
+        return jsonify({"ok": False, "error": "No file uploaded. Use field name 'file' or 'id_image'."}), 400
+
+    file_bytes = file.read()
+    if len(file_bytes) == 0:
+        return jsonify({"ok": False, "error": "Uploaded file is empty"}), 400
+
+    # Max 2 MB enforcement
+    MAX_SIZE = 2 * 1024 * 1024  # 2,097,152 bytes
+    if len(file_bytes) > MAX_SIZE:
+        return jsonify({"ok": False, "error": "File size exceeds maximum permitted limit of 2 MB"}), 413
+
+    # Magic byte real type verification
+    is_valid, ext = check_magic_image_type(file_bytes)
+    if not is_valid:
+        return jsonify({"ok": False, "error": "Invalid file type. Only real JPEG or PNG images are permitted."}), 400
+
+    # Save with unguessable random name
+    rand_name = f"id_{uuid.uuid4().hex}.{ext}"
+    dest_path = os.path.join(PRIVATE_UPLOADS_DIR, rand_name)
+    with open(dest_path, 'wb') as f:
+        f.write(file_bytes)
+
+    rel_path = f"private_uploads/{rand_name}"
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM volunteers WHERE user_id = ?;', (user_id,))
+    row = cursor.fetchone()
+    if row:
+        # Delete old ID image file if replacing
+        cursor.execute('SELECT id_image_path FROM volunteers WHERE user_id = ?;', (user_id,))
+        old_row = cursor.fetchone()
+        if old_row and old_row['id_image_path']:
+            old_full = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', old_row['id_image_path'])
+            if os.path.exists(old_full):
+                try: os.remove(old_full)
+                except Exception: pass
+        cursor.execute('UPDATE volunteers SET id_image_path = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;',
+                       (rel_path, user_id))
+    else:
+        cursor.execute('''
+            INSERT INTO volunteers (user_id, status, id_image_path, updated_at)
+            VALUES (?, 'draft', ?, CURRENT_TIMESTAMP);
+        ''', (user_id, rel_path))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "path": rel_path,
+            "filename": rand_name,
+            "message": "ID image uploaded successfully"
+        }
+    }), 200
+
+
+# ─── Route: POST /api/volunteers/application/selfie ───────────
+@volunteers_bp.route('/api/volunteers/application/selfie', methods=['POST'])
+@login_required
+def upload_selfie():
+    """
+    Accept multipart selfie (JPEG or PNG only, at most 2 MB).
+    Validates magic bytes, saves to backend/private_uploads/ with random filename.
+    Never served publicly.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+
+    file = request.files.get('file') or request.files.get('selfie') or request.files.get('image')
+    if not file:
+        return jsonify({"ok": False, "error": "No file uploaded. Use field name 'file' or 'selfie'."}), 400
+
+    file_bytes = file.read()
+    if len(file_bytes) == 0:
+        return jsonify({"ok": False, "error": "Uploaded file is empty"}), 400
+
+    # Max 2 MB enforcement
+    MAX_SIZE = 2 * 1024 * 1024  # 2,097,152 bytes
+    if len(file_bytes) > MAX_SIZE:
+        return jsonify({"ok": False, "error": "File size exceeds maximum permitted limit of 2 MB"}), 413
+
+    # Magic byte real type verification
+    is_valid, ext = check_magic_image_type(file_bytes)
+    if not is_valid:
+        return jsonify({"ok": False, "error": "Invalid file type. Only real JPEG or PNG images are permitted."}), 400
+
+    # Save with unguessable random name
+    rand_name = f"selfie_{uuid.uuid4().hex}.{ext}"
+    dest_path = os.path.join(PRIVATE_UPLOADS_DIR, rand_name)
+    with open(dest_path, 'wb') as f:
+        f.write(file_bytes)
+
+    rel_path = f"private_uploads/{rand_name}"
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM volunteers WHERE user_id = ?;', (user_id,))
+    row = cursor.fetchone()
+    if row:
+        # Delete old selfie file if replacing
+        cursor.execute('SELECT selfie_path FROM volunteers WHERE user_id = ?;', (user_id,))
+        old_row = cursor.fetchone()
+        if old_row and old_row['selfie_path']:
+            old_full = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', old_row['selfie_path'])
+            if os.path.exists(old_full):
+                try: os.remove(old_full)
+                except Exception: pass
+        cursor.execute('UPDATE volunteers SET selfie_path = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;',
+                       (rel_path, user_id))
+    else:
+        cursor.execute('''
+            INSERT INTO volunteers (user_id, status, selfie_path, updated_at)
+            VALUES (?, 'draft', ?, CURRENT_TIMESTAMP);
+        ''', (user_id, rel_path))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "path": rel_path,
+            "filename": rand_name,
+            "message": "Selfie uploaded successfully"
+        }
+    }), 200
+
+
+# ─── Route: GET /api/volunteers/training ──────────────────────
+@volunteers_bp.route('/api/volunteers/training', methods=['GET'])
+@login_required
+def get_training_questions():
+    """
+    Returns 8 multiple-choice safety questions WITHOUT revealing the correct answers.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Check last training attempt and 24h retry lockout
+    cursor.execute('''
+        SELECT vta.score, vta.taken_at
+        FROM volunteer_training_attempts vta
+        JOIN volunteers v ON vta.volunteer_id = v.id
+        WHERE v.user_id = ?
+        ORDER BY vta.id DESC LIMIT 1;
+    ''', (user_id,))
+    last_attempt = cursor.fetchone()
+
+    retry_locked = False
+    retry_available_at = None
+
+    if last_attempt and last_attempt['score'] < 80.0:
+        try:
+            taken_dt = datetime.datetime.strptime(last_attempt['taken_at'], "%Y-%m-%d %H:%M:%S")
+            available_dt = taken_dt + datetime.timedelta(hours=24)
+            if datetime.datetime.now() < available_dt:
+                retry_locked = True
+                retry_available_at = available_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+
+    conn.close()
+
+    # Build sanitized questions list (omit correct_answer)
+    sanitized = [
+        {
+            "id": q["id"],
+            "question": q["question"],
+            "options": q["options"]
+        }
+        for q in VOLUNTEER_TRAINING_QUESTIONS
+    ]
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "total_questions": len(sanitized),
+            "pass_percentage": 80,
+            "retry_locked": retry_locked,
+            "retry_available_at": retry_available_at,
+            "questions": sanitized
+        }
+    }), 200
+
+
+# ─── Route: POST /api/volunteers/training/submit ──────────────
+@volunteers_bp.route('/api/volunteers/training/submit', methods=['POST'])
+@login_required
+def submit_training_answers():
+    """
+    Scores the 8 questions (needs at least 80% to pass).
+    After a fail, allows a retry only after 24 hours.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    data = request.get_json(silent=True) or {}
+    answers = data.get('answers') or {}
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Ensure volunteer record exists
+    cursor.execute('SELECT id, training_score, training_passed_at FROM volunteers WHERE user_id = ?;', (user_id,))
+    vol = cursor.fetchone()
+    if not vol:
+        cursor.execute("INSERT INTO volunteers (user_id, status) VALUES (?, 'draft');", (user_id,))
+        vol_id = cursor.lastrowid
+    else:
+        vol_id = vol['id']
+
+    # Check 24-hour retry lock on prior failure
+    cursor.execute('''
+        SELECT score, taken_at
+        FROM volunteer_training_attempts
+        WHERE volunteer_id = ?
+        ORDER BY id DESC LIMIT 1;
+    ''', (vol_id,))
+    last_attempt = cursor.fetchone()
+
+    if last_attempt and last_attempt['score'] < 80.0:
+        try:
+            taken_dt = datetime.datetime.strptime(last_attempt['taken_at'], "%Y-%m-%d %H:%M:%S")
+            available_dt = taken_dt + datetime.timedelta(hours=24)
+            if datetime.datetime.now() < available_dt:
+                conn.close()
+                return jsonify({
+                    "ok": False,
+                    "error": f"Training failed. You may retry after 24 hours (available at {available_dt.strftime('%Y-%m-%d %H:%M:%S')})."
+                }), 429
+        except Exception:
+            pass
+
+    # Score answers
+    correct_count = 0
+    total = len(VOLUNTEER_TRAINING_QUESTIONS)
+
+    for q in VOLUNTEER_TRAINING_QUESTIONS:
+        qid_str = str(q['id'])
+        user_ans = answers.get(qid_str) or answers.get(q['id'])
+        if user_ans is None and isinstance(answers, list):
+            # Also support answers as list of {"question_id": 1, "answer": ...}
+            for item in answers:
+                if item.get('question_id') == q['id'] or item.get('id') == q['id']:
+                    user_ans = item.get('answer')
+                    break
+
+        if user_ans is not None:
+            # Match by exact text or index
+            correct_text = q['correct_answer'].strip().lower()
+            if isinstance(user_ans, int) and 0 <= user_ans < len(q['options']):
+                chosen_text = q['options'][user_ans].strip().lower()
+            else:
+                chosen_text = str(user_ans).strip().lower()
+
+            if chosen_text == correct_text:
+                correct_count += 1
+
+    score_pct = round((correct_count / float(total)) * 100.0, 1)
+    passed = (score_pct >= 80.0)
+
+    # Record attempt
+    cursor.execute('''
+        INSERT INTO volunteer_training_attempts (volunteer_id, score, taken_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP);
+    ''', (vol_id, score_pct))
+
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if passed:
+        cursor.execute('''
+            UPDATE volunteers
+            SET training_score = ?,
+                training_passed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        ''', (score_pct, vol_id))
+    else:
+        cursor.execute('''
+            UPDATE volunteers
+            SET training_score = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        ''', (score_pct, vol_id))
+
+    conn.commit()
+    conn.close()
+
+    if passed:
+        return jsonify({
+            "ok": True,
+            "data": {
+                "score": score_pct,
+                "correct": correct_count,
+                "total": total,
+                "passed": True,
+                "message": f"Congratulations! You passed the volunteer safety training with {score_pct}%."
+            }
+        }), 200
+    else:
+        retry_time = (datetime.datetime.now() + datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        return jsonify({
+            "ok": False,
+            "data": {
+                "score": score_pct,
+                "correct": correct_count,
+                "total": total,
+                "passed": False,
+                "retry_available_at": retry_time,
+                "message": f"You scored {score_pct}% (minimum 80% required to pass). A retry will be available in 24 hours."
+            },
+            "error": "Training score below 80%. A retry will be available after 24 hours."
+        }), 400
+
+
+# ─── Route: POST /api/volunteers/application/submit ───────────
+@volunteers_bp.route('/api/volunteers/application/submit', methods=['POST'])
+@login_required
+def submit_volunteer_application():
+    """
+    Validates everything:
+      - age 18 or over from dob
+      - full_name
+      - locality
+      - an ID type with last 4 digits only and never a full ID number
+      - ID image and selfie uploaded
+      - 2 references with different phones that are not the applicant's own
+      - training passed
+      - declaration accepted with a typed signature that matches the full name
+    Sets status to 'submitted'.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    applicant_phone = (user.get('phone') or '').strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, full_name, dob, locality, id_type, id_last4,
+               id_image_path, selfie_path, motivation, availability_text,
+               declaration_accepted_at, declaration_version, typed_signature,
+               training_score, training_passed_at, status, reapply_after
+        FROM volunteers
+        WHERE user_id = ?;
+    ''', (user_id,))
+    vol = cursor.fetchone()
+
+    if not vol:
+        conn.close()
+        return jsonify({"ok": False, "error": "No volunteer application found. Please save a draft first."}), 400
+
+    vol = dict(vol)
+    vol_id = vol['id']
+
+    # 1. Check 30-day cooldown
+    if vol.get('reapply_after'):
+        try:
+            reapply_dt = datetime.datetime.strptime(vol['reapply_after'], "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.now() < reapply_dt:
+                conn.close()
+                return jsonify({
+                    "ok": False,
+                    "error": f"Application cooldown active. You cannot reapply until {vol['reapply_after']}."
+                }), 403
+        except Exception:
+            pass
+
+    # 2. Validate full_name
+    full_name = (vol.get('full_name') or '').strip()
+    if not full_name or len(full_name) < 2:
+        conn.close()
+        return jsonify({"ok": False, "error": "Full name is required (minimum 2 characters)"}), 400
+
+    # 3. Validate Date of Birth and age 18+
+    dob_str = (vol.get('dob') or '').strip()
+    if not dob_str:
+        conn.close()
+        return jsonify({"ok": False, "error": "Date of birth is required"}), 400
+
+    try:
+        birth_date = datetime.datetime.strptime(dob_str, "%Y-%m-%d").date()
+    except ValueError:
+        try:
+            birth_date = datetime.datetime.strptime(dob_str, "%d/%m/%Y").date()
+        except ValueError:
+            conn.close()
+            return jsonify({"ok": False, "error": "Invalid date of birth format. Use YYYY-MM-DD."}), 400
+
+    today = datetime.date.today()
+    age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    if age < 18:
+        conn.close()
+        return jsonify({"ok": False, "error": f"Volunteer must be at least 18 years of age (current age: {age})"}), 400
+
+    # 4. Validate locality
+    locality = (vol.get('locality') or '').strip()
+    if not locality or len(locality) < 2:
+        conn.close()
+        return jsonify({"ok": False, "error": "Locality is required"}), 400
+
+    # 5. Validate ID Type and ID last 4
+    VALID_ID_TYPES = {"Voter ID", "Driving Licence", "College ID", "Passport", "Other"}
+    id_type = (vol.get('id_type') or '').strip()
+    if not id_type or id_type not in VALID_ID_TYPES:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": f"Valid ID type is required. Choose from: {', '.join(sorted(VALID_ID_TYPES))}"
+        }), 400
+
+    id_last4 = (vol.get('id_last4') or '').strip()
+    if not id_last4 or len(id_last4) != 4 or not id_last4.isalnum():
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "id_last4 must be exactly 4 digits or alphanumeric characters. Full ID numbers are never permitted."
+        }), 400
+
+    # 6. Validate ID image and selfie uploads exist on disk
+    id_path = vol.get('id_image_path')
+    selfie_path = vol.get('selfie_path')
+
+    if not id_path:
+        conn.close()
+        return jsonify({"ok": False, "error": "Government ID image upload is required"}), 400
+
+    if not selfie_path:
+        conn.close()
+        return jsonify({"ok": False, "error": "Live verification selfie upload is required"}), 400
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    id_full = os.path.join(base_dir, '..', id_path) if not os.path.isabs(id_path) else id_path
+    selfie_full = os.path.join(base_dir, '..', selfie_path) if not os.path.isabs(selfie_path) else selfie_path
+
+    if not os.path.exists(id_full):
+        conn.close()
+        return jsonify({"ok": False, "error": "ID image file missing from storage. Please re-upload your ID."}), 400
+
+    if not os.path.exists(selfie_full):
+        conn.close()
+        return jsonify({"ok": False, "error": "Selfie file missing from storage. Please re-upload your selfie."}), 400
+
+    # 7. Validate 2 references with different phones that are not applicant's own
+    cursor.execute('''
+        SELECT id, name, phone, relation FROM volunteer_references
+        WHERE volunteer_id = ?;
+    ''', (vol_id,))
+    refs = [dict(r) for r in cursor.fetchall()]
+
+    if len(refs) < 2:
+        conn.close()
+        return jsonify({"ok": False, "error": f"At least 2 personal/professional references are required (currently have {len(refs)})"}), 400
+
+    ref_phones = []
+    for r in refs:
+        p = (r.get('phone') or '').strip()
+        n = (r.get('name') or '').strip()
+        if not n:
+            conn.close()
+            return jsonify({"ok": False, "error": "All references must have a contact name"}), 400
+        if not p or len(p) < 7:
+            conn.close()
+            return jsonify({"ok": False, "error": f"Invalid phone number for reference '{n}'"}), 400
+
+        # Cannot be applicant's own phone
+        if applicant_phone and p == applicant_phone:
+            conn.close()
+            return jsonify({"ok": False, "error": f"Reference phone number cannot be the applicant's own phone number ({applicant_phone})"}), 400
+
+        ref_phones.append(p)
+
+    # References must have distinct phones
+    if len(set(ref_phones[:2])) < 2:
+        conn.close()
+        return jsonify({"ok": False, "error": "The two references must have different phone numbers"}), 400
+
+    # 8. Validate training passed
+    training_passed_at = vol.get('training_passed_at')
+    training_score = vol.get('training_score') or 0.0
+
+    if not training_passed_at or training_score < 80.0:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Volunteer safety training must be completed and passed with at least 80% score before submitting."
+        }), 400
+
+    # 9. Validate declaration accepted with typed signature matching full name
+    decl_accepted = vol.get('declaration_accepted_at')
+    if not decl_accepted:
+        conn.close()
+        return jsonify({"ok": False, "error": "Volunteer code of conduct declaration must be accepted"}), 400
+
+    typed_sig = (vol.get('typed_signature') or '').strip().lower()
+    fn_clean = full_name.strip().lower()
+    if not typed_sig or typed_sig != fn_clean:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": f"Typed signature ('{vol.get('typed_signature')}') must exactly match your full name ('{full_name}')"
+        }), 400
+
+    # 10. All checks passed: set status to 'submitted'
+    cursor.execute('''
+        UPDATE volunteers
+        SET status = 'submitted',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?;
+    ''', (vol_id,))
+    conn.commit()
+
+    cursor.execute('''
+        SELECT id, user_id, status, full_name, id_type, id_last4, training_score, updated_at
+        FROM volunteers WHERE id = ?;
+    ''', (vol_id,))
+    final_vol = dict(cursor.fetchone())
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "volunteer_id": final_vol['id'],
+            "status": "submitted",
+            "full_name": final_vol['full_name'],
+            "id_type": final_vol['id_type'],
+            "id_last4": final_vol['id_last4'],
+            "training_score": final_vol['training_score'],
+            "updated_at": final_vol['updated_at'],
+            "message": "Volunteer application submitted successfully for review"
         }
     }), 200
