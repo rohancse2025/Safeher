@@ -23,17 +23,13 @@ def get_contacts():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+        'SELECT id, name, phone, email, relationship FROM contacts WHERE user_id = ? ORDER BY id ASC;',
         (user_id,)
     )
     rows = cursor.fetchall()
     conn.close()
 
-    contacts = []
-    for r in rows:
-        c = dict(r)
-        c['close'] = bool(c.get('close', 0))
-        contacts.append(c)
+    contacts = [dict(r) for r in rows]
 
     return jsonify({
         "ok": True,
@@ -58,7 +54,6 @@ def create_contact():
     phone = (data.get('phone') or '').strip()
     email = (data.get('email') or '').strip()
     relationship = (data.get('relationship') or '').strip()
-    close_val = 1 if data.get('close') else 0
 
     # Validations
     if not name:
@@ -75,8 +70,8 @@ def create_contact():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
-        (user_id, name, phone, email or None, relationship or None, close_val)
+        'INSERT INTO contacts (user_id, name, phone, email, relationship) VALUES (?, ?, ?, ?, ?);',
+        (user_id, name, phone, email or None, relationship or None)
     )
     contact_id = cursor.lastrowid
     conn.commit()
@@ -90,8 +85,7 @@ def create_contact():
             "name": name,
             "phone": phone,
             "email": email or None,
-            "relationship": relationship or None,
-            "close": bool(close_val)
+            "relationship": relationship or None
         }
     }), 201
 
@@ -102,7 +96,7 @@ def create_contact():
 def update_contact(contact_id):
     """
     Update an existing contact. Strictly scoped to the authenticated user.
-    Expects JSON: { name, phone, email (optional), relationship (optional), close (optional) }
+    Expects JSON: { name, phone, email (optional), relationship (optional) }
     """
     user_id = g.current_user['id']
     data = request.get_json(silent=True) or {}
@@ -111,7 +105,6 @@ def update_contact(contact_id):
     phone = (data.get('phone') or '').strip()
     email = (data.get('email') or '').strip()
     relationship = (data.get('relationship') or '').strip()
-    close_val = 1 if data.get('close') else 0
 
     # Validations
     if not name:
@@ -135,8 +128,8 @@ def update_contact(contact_id):
         return jsonify({"ok": False, "error": "Contact not found"}), 404
 
     cursor.execute(
-        'UPDATE contacts SET name = ?, phone = ?, email = ?, relationship = ?, close = ? WHERE id = ? AND user_id = ?;',
-        (name, phone, email or None, relationship or None, close_val, contact_id, user_id)
+        'UPDATE contacts SET name = ?, phone = ?, email = ?, relationship = ? WHERE id = ? AND user_id = ?;',
+        (name, phone, email or None, relationship or None, contact_id, user_id)
     )
     conn.commit()
     conn.close()
@@ -149,8 +142,7 @@ def update_contact(contact_id):
             "name": name,
             "phone": phone,
             "email": email or None,
-            "relationship": relationship or None,
-            "close": bool(close_val)
+            "relationship": relationship or None
         }
     }), 200
 

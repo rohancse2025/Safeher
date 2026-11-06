@@ -441,8 +441,7 @@ SafeHer.api = (function() {
                 name: c.name,
                 phone: c.phone,
                 email: c.email || '',
-                relation: c.relationship || 'Other',
-                close: !!c.close
+                relation: c.relationship || 'Other'
               };
             });
             SafeHer.storage.set('contacts', serverContacts);
@@ -463,7 +462,6 @@ SafeHer.api = (function() {
       var all = SafeHer.storage.get('contacts') || [];
       contact.id = Date.now();
       contact.userId = userId;
-      contact.close = !!contact.close;
       all.push(contact);
       SafeHer.storage.set('contacts', all);
 
@@ -476,14 +474,12 @@ SafeHer.api = (function() {
             phone: contact.phone,
             email: contact.email || '',
             relationship: contact.relation || contact.relationship || 'Other',
-            close: !!contact.close,
             user_id: currentUser.id,
             phone_auth: currentUser.phone
           })
         }).then(function(json) {
           if (json.data && json.data.id) {
             contact.id = json.data.id;
-            contact.close = !!json.data.close;
             SafeHer.storage.set('contacts', all);
           }
           if (callback) callback(null, contact);
@@ -508,7 +504,6 @@ SafeHer.api = (function() {
           all[i].phone = data.phone;
           all[i].email = data.email || '';
           all[i].relation = data.relation || data.relationship || 'Other';
-          all[i].close = !!data.close;
           updated = all[i];
           break;
         }
@@ -522,8 +517,7 @@ SafeHer.api = (function() {
             name: data.name,
             phone: data.phone,
             email: data.email || '',
-            relationship: data.relation || data.relationship || 'Other',
-            close: !!data.close
+            relationship: data.relation || data.relationship || 'Other'
           })
         }).then(function() {
           if (callback) callback(null, updated);
@@ -895,36 +889,6 @@ SafeHer.api = (function() {
         apiFetch('/api/alerts/' + id + '/end', {
           method: 'POST',
           body: JSON.stringify({ pin: pin, user_id: u.id || null })
-        }).then(function(json) {
-          if (callback) callback(null, json.data);
-        }).catch(function(err) {
-          if (callback) callback(err.message, null);
-        });
-      } else {
-        if (callback) callback(null, { status: 'resolved' });
-      }
-    },
-
-    escalateAlert: function(alertId, toMode, callback) {
-      if (useBackend()) {
-        apiFetch('/api/alerts/' + alertId + '/escalate', {
-          method: 'POST',
-          body: JSON.stringify({ to: toMode || 'normal' })
-        }).then(function(json) {
-          if (callback) callback(null, json.data);
-        }).catch(function(err) {
-          if (callback) callback(err.message, null);
-        });
-      } else {
-        if (callback) callback(null, { id: alertId, mode: toMode });
-      }
-    },
-
-    resolveAlertOk: function(alertId, callback) {
-      this.clearActiveSos();
-      if (useBackend()) {
-        apiFetch('/api/alerts/' + alertId + '/ok', {
-          method: 'POST'
         }).then(function(json) {
           if (callback) callback(null, json.data);
         }).catch(function(err) {

@@ -60,8 +60,7 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
     """
     Send alert emails to contacts in a background thread so the HTTP API responds immediately.
     Logs failures without crashing and updates notified_count in SQLite.
-    Supports mode='uneasy' with friendly wording and optional note.
-    """
+        """
     if not recipient_emails:
         return
 
@@ -69,72 +68,19 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         track_link = f"{frontend_url}/track.html?t={share_token}"
         maps_link = f"https://www.google.com/maps?q={lat},{lng}"
-        first_name = (user_name.split()[0] if user_name else 'Someone').strip()
+        subject = f"🚨 EMERGENCY SOS: {user_name} needs urgent help!"
+        body_text = (
+            f"🚨 EMERGENCY SOS ALERT - SafeHer 🚨\n\n"
+            f"{user_name} has triggered an urgent SOS alert!\n\n"
+            f"Mode: {mode.upper()}\n"
+            f"Time: {started_at_str}\n"
+            f"Coordinates: {lat}, {lng}\n\n"
+            f"🔴 Live GPS Tracking Link:\n{track_link}\n\n"
+            f"📍 Google Maps Location:\n{maps_link}\n\n"
+            f"Please contact {user_name} immediately or call Police (112)."
+        )
 
-        if mode == 'uneasy':
-            subject = f"{first_name} feels uneasy"
-            note_text = f"\nNote: {note}\n" if note else ""
-            body_text = (
-                f"💛 Quiet Check-In - SafeHer 💛\n\n"
-                f"{first_name} feels uneasy and sent a quiet check-in with their live location.{note_text}\n"
-                f"Time: {started_at_str}\n"
-                f"Coordinates: {lat}, {lng}\n\n"
-                f"📍 Live Tracking Link (expires in 2 hours):\n{track_link}\n\n"
-                f"🗺 Google Maps:\n{maps_link}\n\n"
-                f"This is a quiet check-in, not an emergency siren alert. Please keep an eye on their location or give them a gentle call/text."
-            )
-            note_html = f'<div style="background:#FFF9EB;border-left:4px solid #F59E0B;padding:12px 16px;margin:16px 0;border-radius:4px;font-size:14px;color:#92400E;"><strong>Note:</strong> {note}</div>' if note else ''
-            body_html = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #FFFDF5; margin: 0; padding: 20px; }}
-    .card {{ max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 2px solid #F59E0B; overflow: hidden; }}
-    .header {{ background: #F59E0B; color: #ffffff; padding: 18px; text-align: center; }}
-    .header h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
-    .content {{ padding: 24px; color: #1F2937; line-height: 1.6; font-size: 15px; }}
-    .btn {{ display: inline-block; padding: 12px 22px; margin: 6px 4px; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 8px; text-align: center; }}
-    .btn-track {{ background: #F59E0B; color: #ffffff !important; }}
-    .footer {{ background: #FFFDF5; padding: 14px 20px; text-align: center; font-size: 12px; color: #6B7280; border-top: 1px solid #FDE68A; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <h1>💛 Quiet Check-In</h1>
-    </div>
-    <div class="content">
-      <p style="font-size: 16px; margin-top: 0;"><strong>{first_name}</strong> feels uneasy and shared their live location with you.</p>
-      {note_html}
-      <p style="font-size: 13px; color: #6B7280;">Sent at: {started_at_str}</p>
-      <div style="text-align: center; margin: 20px 0;">
-        <a href="{track_link}" class="btn btn-track" target="_blank" rel="noopener">📍 Open Live Tracking (2h)</a>
-      </div>
-      <p style="color: #6B7280; font-size: 13px; text-align: center;">
-        This is a friendly check-in, not an emergency siren. Keep an eye on them or send a quick message to check if they're okay.
-      </p>
-    </div>
-    <div class="footer">
-      Sent by SafeHer &bull; Link expires after 2 hours
-    </div>
-  </div>
-</body>
-</html>"""
-        else:
-            subject = f"🚨 EMERGENCY SOS: {user_name} needs urgent help!"
-            body_text = (
-                f"🚨 EMERGENCY SOS ALERT - SafeHer 🚨\n\n"
-                f"{user_name} has triggered an urgent SOS alert!\n\n"
-                f"Mode: {mode.upper()}\n"
-                f"Time: {started_at_str}\n"
-                f"Coordinates: {lat}, {lng}\n\n"
-                f"🔴 Live GPS Tracking Link:\n{track_link}\n\n"
-                f"📍 Google Maps Location:\n{maps_link}\n\n"
-                f"Please contact {user_name} immediately or call Police (112)."
-            )
-
-            body_html = f"""<!DOCTYPE html>
+        body_html = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">

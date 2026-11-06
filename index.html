@@ -261,17 +261,6 @@
         </div>
         <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">chevron_right</span>
       </div>
-
-      <!-- Active Uneasy Alert Banner (shown when quiet check-in is active) -->
-      <div id="uneasy-active-home-banner" class="uneasy-active-banner" style="display: none;">
-        <div class="uneasy-active-banner-inner">
-          <div style="flex: 1; min-width: 0;">
-            <div class="uneasy-banner-title">
-              <span class="material-symbols-rounded" style="font-size: 18px; color: #D97706;">sentiment_dissatisfied</span>
-              <span>Quiet Check-in Active</span>
-            </div>
-            <div class="uneasy-banner-sub" id="uneasy-banner-elapsed">Started just now &bull; Close contacts notified</div>
-          </div>
           <div class="uneasy-banner-actions">
             <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I'm OK</button>
             <button type="button" class="btn btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I need more help</button>
@@ -291,19 +280,6 @@
                       onclick="SafeHer.home.triggerSOS()">SOS</button>
             </div>
           </div>
-        </div>
-
-        <!-- Graduated Alerts: Uneasy, Help, Emergency -->
-        <div class="graduated-alert-row">
-          <button type="button" class="btn-graduated btn-grad-uneasy" onclick="SafeHer.sos.openUneasySheet()">
-            <span class="material-symbols-rounded" style="font-size: 16px;">sentiment_dissatisfied</span>Uneasy
-          </button>
-          <button type="button" class="btn-graduated btn-grad-help" onclick="SafeHer.home.triggerSOS()">
-            <span class="material-symbols-rounded" style="font-size: 16px;">help</span>Help
-          </button>
-          <button type="button" class="btn-graduated btn-grad-emergency" onclick="SafeHer.sos.triggerDirectEmergency()">
-            <span class="material-symbols-rounded" style="font-size: 16px;">warning</span>Emergency
-          </button>
         </div>
 
         <div class="sos-status">
@@ -1860,13 +1836,6 @@
               <option value="Other">Other</option>
             </select>
           </div>
-          <div class="form-group" style="margin-top: 10px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-dark);">
-              <input type="checkbox" id="contact-close" style="width: 16px; height: 16px; accent-color: var(--crimson);" />
-              Close contact
-            </label>
-            <span class="form-hint" style="display: block; font-size: 11px; color: var(--text-gray); margin-top: 3px; margin-left: 24px;">Close contacts get &lsquo;Uneasy&rsquo; check-ins</span>
-          </div>
           <div class="form-submit-wrap" style="display: flex; gap: 8px; margin-top: 14px;">
             <button type="button" class="btn btn-secondary" onclick="SafeHer.contacts.closeModal()" style="flex: 1;">Cancel</button>
             <button type="submit" class="btn btn-primary" id="contact-submit-btn" style="flex: 1;">Save</button>
@@ -2504,47 +2473,6 @@
       <span class="nav-label" data-i18n="navProfile">Profile</span>
     </button>
   </nav>
-
-  <!-- ── Uneasy Quiet Check-in Sheet Modal ─────────────────── -->
-  <div id="uneasy-sheet-modal" class="modal-backdrop" style="display: none; align-items: flex-end;">
-    <div class="modal-sheet" style="border-radius: 16px 16px 0 0; padding: 20px; max-width: 480px; margin: 0 auto; width: 100%;">
-      <div id="uneasy-form-view">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <div style="width: 32px; height: 32px; border-radius: 50%; background: #FFF9EB; color: #D97706; display: flex; align-items: center; justify-content: center;">
-              <span class="material-symbols-rounded" style="font-size: 20px;">sentiment_dissatisfied</span>
-            </div>
-            <h3 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0;">Quiet Check-in</h3>
-          </div>
-          <button type="button" class="btn-text-link" onclick="SafeHer.sos.closeUneasySheet()" style="font-size: 22px; line-height: 1; color: var(--text-gray); border: none; background: none; cursor: pointer;">&times;</button>
-        </div>
-
-        <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 14px 0; line-height: 1.4;">
-          Send a quiet check-in to your close contacts? Your live location will be shared for 2 hours with no loud siren or flashing screen.
-        </p>
-
-        <div class="form-group" style="margin-bottom: 16px;">
-          <label class="form-label" for="uneasy-note" style="font-size: 12px;">Optional note</label>
-          <textarea class="form-input" id="uneasy-note" rows="2" placeholder="e.g. Walking home, feels dark, just keeping you posted..." style="resize: none; font-size: 13px; padding: 8px 10px;"></textarea>
-        </div>
-
-        <div style="display: flex; gap: 8px;">
-          <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.closeUneasySheet()" style="flex: 1;">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="SafeHer.sos.sendUneasyCheckin()" style="flex: 1; background: #D97706; border-color: #B45309;">Send</button>
-        </div>
-      </div>
-
-      <div id="uneasy-sent-view" style="display: none; text-align: center; padding: 10px 0;">
-        <div style="width: 48px; height: 48px; border-radius: 50%; background: #FFF9EB; color: #D97706; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;">
-          <span class="material-symbols-rounded" style="font-size: 28px;">check_circle</span>
-        </div>
-        <h3 style="font-size: 17px; font-weight: 700; color: var(--text-dark); margin: 0 0 6px;">Check-in sent</h3>
-        <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 14px;">Your close contacts have been notified with your live tracking link.</p>
-        <div style="background: #F9FAFB; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; word-break: break-all; font-size: 12px; color: var(--text-dark); text-align: left;" id="uneasy-track-link-preview"></div>
-        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.closeUneasySheet()" style="width: 100%;">Done</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ── Uneasy 'Are you OK?' 10-Minute Modal ───────────────── -->
   <div id="uneasy-are-you-ok-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">

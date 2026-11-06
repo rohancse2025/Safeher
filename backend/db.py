@@ -56,7 +56,6 @@ def init_db():
             phone TEXT NOT NULL,
             email TEXT,
             relationship TEXT,
-            close INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
@@ -108,10 +107,6 @@ def init_db():
     ''')
 
     # Add columns if migrating existing database
-    cursor.execute("PRAGMA table_info(contacts);")
-    contact_cols = [col['name'] for col in cursor.fetchall()]
-    if 'close' not in contact_cols:
-        cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
 
     cursor.execute("PRAGMA table_info(alerts);")
     alert_cols = [col['name'] for col in cursor.fetchall()]

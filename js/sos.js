@@ -928,18 +928,6 @@ SafeHer.sos = (function() {
     if (overlay) {
       overlay.onclick = onOverlayTap;
     }
-
-    if (SafeHer.router && SafeHer.router.onShow) {
-      SafeHer.router.onShow('home', function() {
-        updateUneasyBanner();
-      });
-    }
-
-    var existingUneasy = getActiveUneasyAlert();
-    if (existingUneasy) {
-      updateUneasyBanner();
-      startUneasyMonitoring();
-    }
   }
 
   // ─── Graduated Alerts: Uneasy Alert & Direct Emergency ───
@@ -1173,13 +1161,6 @@ SafeHer.sos = (function() {
     cancelCountdown: cancelCountdown,
     startSilentMode: startSilentMode,
     startEmergencyMode: startEmergencyMode,
-    triggerDirectEmergency: triggerDirectEmergency,
-    openUneasySheet: openUneasySheet,
-    closeUneasySheet: closeUneasySheet,
-    sendUneasyCheckin: sendUneasyCheckin,
-    resolveUneasyAlert: resolveUneasyAlert,
-    escalateUneasyAlert: escalateUneasyAlert,
-    updateUneasyBanner: updateUneasyBanner,
     onSilentScreenTap: onSilentScreenTap,
     requestEndAlert: requestEndAlert,
     requestStopAlarm: requestStopAlarm,
