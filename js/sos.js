@@ -311,6 +311,18 @@ SafeHer.sos = (function() {
           if (mapInstance) mapInstance.invalidateSize();
         }, 300);
       }
+
+      // Auto-start evidence recording in normal SOS mode if enabled in settings
+      if (SafeHer.vault) {
+        var vSettings = SafeHer.vault.getSettings ? SafeHer.vault.getSettings() : null;
+        if (vSettings && vSettings.enabled) {
+          if (vSettings.recordEmergencyVideo && SafeHer.vault.startEmergencySession) {
+            SafeHer.vault.startEmergencySession(currentAlertId);
+          } else if (vSettings.recordSilentAudio && SafeHer.vault.startSilentSession) {
+            SafeHer.vault.startSilentSession(currentAlertId);
+          }
+        }
+      }
     } else if (currentMode === 'silent') {
       renderSilentMode();
       if (SafeHer.vault && SafeHer.vault.startSilentSession) {

@@ -464,32 +464,37 @@ SafeHer.vault = (function() {
     return false;
   }
 
-  // Check mic and camera permissions via navigator.permissions.query without prompting
+  // Check mic and camera permissions without prompting
   async function areEmergencyPermissionsGranted() {
-    if (!navigator.permissions || !navigator.permissions.query) {
-      return false;
+    var settings = getSettings();
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        var micP = await navigator.permissions.query({ name: 'microphone' });
+        var camP = await navigator.permissions.query({ name: 'camera' });
+        if (micP && micP.state === 'granted' && camP && camP.state === 'granted') {
+          return true;
+        }
+      } catch (e) {
+        // Fallback to saved permissions from setup
+      }
     }
-    try {
-      var micP = await navigator.permissions.query({ name: 'microphone' });
-      var camP = await navigator.permissions.query({ name: 'camera' });
-      return !!(micP && micP.state === 'granted' && camP && camP.state === 'granted');
-    } catch (e) {
-      return false;
-    }
+    return !!(settings && settings.micPermission === 'granted' && settings.cameraPermission === 'granted');
   }
 
-  // Check microphone permission via navigator.permissions.query without prompting
+  // Check microphone permission without prompting
   async function isMicrophonePermissionGranted() {
-    if (!navigator.permissions || !navigator.permissions.query) {
-      return false;
+    var settings = getSettings();
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        var res = await navigator.permissions.query({ name: 'microphone' });
+        if (res && res.state === 'granted') {
+          return true;
+        }
+      } catch (e) {
+        // Fallback to saved permission from setup
+      }
     }
-    try {
-      var res = await navigator.permissions.query({ name: 'microphone' });
-      return !!(res && res.state === 'granted');
-    } catch (e) {
-      // If query throws or descriptor unsupported -> do NOT prompt; skip recording
-      return false;
-    }
+    return !!(settings && settings.micPermission === 'granted');
   }
 
   // ─── 8a. Silent SOS Audio Recording (Discreet & Standalone 10s Chunks) ───
@@ -667,14 +672,32 @@ SafeHer.vault = (function() {
   // Stopping requires PIN during an active SOS; outside an SOS, stopping is free.
   async function startEmergencySession(alertId) {
     var settings = getSettings();
-    if (!settings.enabled || !settings.recordEmergencyVideo) {
+    if (!settings.enabled) {
       return;
     }
-    var granted = await areEmergencyPermissionsGranted();
-    if (!granted) {
-      return; // Do not ask, do not show anything; skip auto-start
+    if (!alertId && SafeHer.sos && typeof SafeHer.sos.getCurrentAlertId === 'function') {
+      alertId = SafeHer.sos.getCurrentAlertId();
     }
-    await startVisibleRecording({ isAudioOnly: false, alertId: alertId });
+
+    if (settings.recordEmergencyVideo) {
+      var granted = await areEmergencyPermissionsGranted();
+      if (granted) {
+        await startVisibleRecording({ isAudioOnly: false, alertId: alertId });
+        return;
+      }
+      // If camera wasn't granted or supported, check mic and fallback to audio recording
+      var micGranted = await isMicrophonePermissionGranted();
+      if (micGranted) {
+        await startVisibleRecording({ isAudioOnly: true, alertId: alertId });
+        return;
+      }
+    } else if (settings.recordSilentAudio) {
+      var micOnly = await isMicrophonePermissionGranted();
+      if (micOnly) {
+        await startSilentSession(alertId);
+        return;
+      }
+    }
   }
 
   function openEvidenceScreen(fromScreen) {
@@ -930,9 +953,23 @@ SafeHer.vault = (function() {
       currentMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       bindPreviewStream(currentMediaStream);
     } catch (err) {
-      endSession();
-      if (SafeHer.toast) SafeHer.toast('Camera / microphone access failed');
-      return;
+      if (!isAudio) {
+        // Fallback to audio if video capture fails or camera is busy
+        try {
+          currentMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          isAudio = true;
+          activeSession.kind = 'audio';
+          activeSession.isAudioOnly = true;
+          activeSession.mime = getSupportedAudioMime();
+          bindPreviewStream(currentMediaStream);
+        } catch (e2) {
+          endSession();
+          return;
+        }
+      } else {
+        endSession();
+        return;
+      }
     }
 
     updateVisibleRecordingUI(true);
@@ -1029,9 +1066,24 @@ SafeHer.vault = (function() {
     var recBadge = document.getElementById('evidence-rec-badge');
     var startStopBtn = document.getElementById('evidence-start-stop-btn');
     var sosNote = document.getElementById('evidence-sos-note');
+    var sosEvidenceBtn = document.getElementById('sos-record-evidence-btn');
 
     if (recBadge) recBadge.style.display = recording ? 'inline-flex' : 'none';
     if (sosNote) sosNote.style.display = (recording && isUserSosActive()) ? 'block' : 'none';
+
+    if (sosEvidenceBtn) {
+      if (recording) {
+        sosEvidenceBtn.innerHTML = '<span class="material-symbols-rounded" style="color:#DC2626;font-size:18px;">fiber_manual_record</span>Evidence Recording Active';
+        sosEvidenceBtn.style.borderColor = '#DC2626';
+        sosEvidenceBtn.style.color = '#DC2626';
+        sosEvidenceBtn.style.background = '#FEF2F2';
+      } else {
+        sosEvidenceBtn.innerHTML = '<span class="material-symbols-rounded">videocam</span>Record Evidence (Video / Audio)';
+        sosEvidenceBtn.style.borderColor = 'var(--crimson)';
+        sosEvidenceBtn.style.color = 'var(--crimson)';
+        sosEvidenceBtn.style.background = '';
+      }
+    }
 
     if (startStopBtn) {
       if (recording) {
@@ -1378,6 +1430,7 @@ SafeHer.vault = (function() {
       var endedSessionId = activeSession.id;
       activeSession = null;
       isRecording = false;
+      updateVisibleRecordingUI(false);
 
       // Update endedAt in DB
       getDB(function(err, db) {
