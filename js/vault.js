@@ -28,7 +28,10 @@ SafeHer.vault = (function() {
   var currentMediaRecorder = null;
   var currentMediaStream = null;
   var sessionLimitTimer = null;
+  var chunkIntervalTimer = null;
   var isRecording = false;
+  var uploadQueue = [];
+  var isProcessingUploadQueue = false;
 
   // ─── 1. Support Detection & MIME Selection ─────────────────
   function isSupported() {
@@ -411,7 +414,209 @@ SafeHer.vault = (function() {
 
   // ─── 8. Session Management ────────────────────────────────
   // Limits: stop at 15 minutes for audio and 3 minutes for video per session.
+
+  // Strict check: Discreet recording is ONLY permitted inside an active SOS started by the user!
+  function isUserSosActive() {
+    if (SafeHer.sos && typeof SafeHer.sos.isAlertActive === 'function') {
+      return SafeHer.sos.isAlertActive();
+    }
+    if (SafeHer.api && SafeHer.api.getActiveSos) {
+      var sos = SafeHer.api.getActiveSos();
+      return !!(sos && sos.status === 'active');
+    }
+    return false;
+  }
+
+  // Check microphone permission via navigator.permissions.query without prompting
+  async function isMicrophonePermissionGranted() {
+    if (!navigator.permissions || !navigator.permissions.query) {
+      return false;
+    }
+    try {
+      var res = await navigator.permissions.query({ name: 'microphone' });
+      return !!(res && res.state === 'granted');
+    } catch (e) {
+      // If query throws or descriptor unsupported -> do NOT prompt; skip recording
+      return false;
+    }
+  }
+
+  // ─── 8a. Silent SOS Audio Recording (Discreet & Standalone 10s Chunks) ───
+  // When Silent mode starts and the setting “Record audio quietly during Silent SOS” is on
+  // and the microphone permission is already “granted” (check with navigator.permissions.query),
+  // start an audio session with no on-screen change at all: the screen stays pure black,
+  // no text, no sound, no vibration, no toast.
+  // If the permission isn’t already granted, do not ask and do not show anything; skip recording.
+  // Record in standalone 10-second chunks by stopping and restarting the MediaRecorder every 10 seconds
+  // so each chunk is a playable file, encrypt each chunk, add it to the hash chain, and queue it for upload.
+  // Strict Constraint: This recording must only run inside an active SOS the user started;
+  // do not create any other way to start discreet recording.
+  async function startSilentSession(alertId) {
+    // 1. Strict guard: Must only run inside an active SOS the user started
+    if (!isUserSosActive()) {
+      return;
+    }
+    if (!alertId && SafeHer.sos && typeof SafeHer.sos.getCurrentAlertId === 'function') {
+      alertId = SafeHer.sos.getCurrentAlertId();
+    }
+    if (!alertId) {
+      return;
+    }
+
+    // 2. Setting check: “Record audio quietly during Silent SOS”
+    var settings = getSettings();
+    if (!settings.enabled || !settings.recordSilentAudio) {
+      return;
+    }
+
+    // 3. Technical support check
+    if (!isSupported()) {
+      return;
+    }
+
+    // 4. Permission check via navigator.permissions.query
+    // If permission isn't already granted, do NOT ask and do NOT show anything; skip recording!
+    var granted = await isMicrophonePermissionGranted();
+    if (!granted) {
+      return;
+    }
+
+    // 5. End any previous session quietly (no toast, no sound)
+    if (activeSession) {
+      endSession();
+    }
+
+    var mimeType = getSupportedAudioMime();
+    var sessionId = 'vault_silent_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    var maxDurationMs = 15 * 60 * 1000; // 15 mins audio limit
+
+    var sessionRecord = {
+      id: sessionId,
+      alertId: alertId,
+      kind: 'audio',
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      mime: mimeType,
+      isSilent: true
+    };
+
+    // Save session in IndexedDB
+    getDB(function(err, db) {
+      if (!err && db) {
+        try {
+          var tx = db.transaction([SESSIONS_STORE], 'readwrite');
+          tx.objectStore(SESSIONS_STORE).put(sessionRecord);
+        } catch (e) {}
+      }
+    });
+
+    activeSession = {
+      id: sessionId,
+      alertId: alertId,
+      kind: 'audio',
+      mime: mimeType,
+      currentIndex: 0,
+      prevHash: '0'.repeat(64),
+      startTime: Date.now(),
+      isSilent: true
+    };
+    isRecording = true;
+
+    // Auto-stop at 15-minute duration limit
+    sessionLimitTimer = setTimeout(function() {
+      endSession();
+    }, maxDurationMs);
+
+    // Acquire audio stream: mic permission is already "granted", so no prompt is shown!
+    try {
+      currentMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      endSession();
+      return;
+    }
+
+    // Begin standalone 10-second chunk recording cycle
+    recordNextSilentChunk();
+  }
+
+  function recordNextSilentChunk() {
+    if (!activeSession || !activeSession.isSilent || !isUserSosActive()) {
+      endSession();
+      return;
+    }
+
+    // Ensure audio track is active and not ended
+    if (!currentMediaStream || currentMediaStream.getAudioTracks().every(function(t) { return t.readyState === 'ended'; })) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function(newStream) {
+        currentMediaStream = newStream;
+        recordNextSilentChunk();
+      }).catch(function() {
+        endSession();
+      });
+      return;
+    }
+
+    var mimeType = activeSession.mime;
+    var recorderOptions = mimeType ? { mimeType: mimeType } : {};
+
+    try {
+      var recorder = new MediaRecorder(currentMediaStream, recorderOptions);
+      currentMediaRecorder = recorder;
+      var chunkParts = [];
+
+      recorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) {
+          chunkParts.push(e.data);
+        }
+      };
+
+      // By stopping the recorder every 10 seconds, the browser writes container headers,
+      // guaranteeing each chunk is a standalone, playable media file!
+      recorder.onstop = async function() {
+        if (chunkParts.length > 0 && activeSession) {
+          var standaloneBlob = new Blob(chunkParts, { type: mimeType });
+          try {
+            var chunkRecord = await addChunk(standaloneBlob);
+            if (chunkRecord) {
+              queueUpload(chunkRecord);
+            }
+          } catch (ex) {}
+        }
+      };
+
+      // Start without timeslice argument so whole 10s chunk is cleanly packaged on stop()
+      recorder.start();
+
+      clearTimeout(chunkIntervalTimer);
+      chunkIntervalTimer = setTimeout(function() {
+        if (!activeSession || !isUserSosActive()) {
+          endSession();
+          return;
+        }
+
+        // Stopping finalizes the container into a standalone playable chunk
+        if (recorder && recorder.state !== 'inactive') {
+          try {
+            recorder.stop();
+          } catch (e) {}
+        }
+
+        // Immediately begin the next 10-second standalone chunk
+        recordNextSilentChunk();
+      }, 10000);
+
+    } catch (err) {
+      endSession();
+    }
+  }
+
+  // ─── 8b. General Session (Emergency Video / Audio) ─────────
   async function startSession(kind, alertId) {
+    // If Silent mode is active or silent audio requested, route directly to startSilentSession
+    if (kind === 'silent_audio' || (SafeHer.sos && SafeHer.sos.getCurrentMode && SafeHer.sos.getCurrentMode() === 'silent')) {
+      return startSilentSession(alertId);
+    }
+
     var settings = getSettings();
     if (!settings.enabled) return;
     if (!isSupported()) return;
@@ -425,7 +630,7 @@ SafeHer.vault = (function() {
     var mimeType = isVideo ? getSupportedVideoMime() : getSupportedAudioMime();
     var maxDurationMs = isVideo ? (3 * 60 * 1000) : (15 * 60 * 1000); // 3 mins video, 15 mins audio
 
-    // Warn if storage is low
+    // Warn if storage is low for non-silent sessions
     checkStorageSpace();
 
     var sessionId = 'vault_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
@@ -435,7 +640,8 @@ SafeHer.vault = (function() {
       kind: kind,
       startedAt: new Date().toISOString(),
       endedAt: null,
-      mime: mimeType
+      mime: mimeType,
+      isSilent: false
     };
 
     // Save session in IndexedDB
@@ -455,7 +661,8 @@ SafeHer.vault = (function() {
       mime: mimeType,
       currentIndex: 0,
       prevHash: '0'.repeat(64),
-      startTime: Date.now()
+      startTime: Date.now(),
+      isSilent: false
     };
 
     // Auto-stop at duration limit
@@ -463,8 +670,6 @@ SafeHer.vault = (function() {
       endSession();
     }, maxDurationMs);
 
-    // Request stream: permissions are pre-granted in Settings, so NO prompt appears!
-    // Never show a permission prompt during SOS: if stream fails, catch quietly.
     try {
       var constraints = isVideo ? { audio: true, video: { facingMode: 'user' } } : { audio: true };
       var stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -474,10 +679,10 @@ SafeHer.vault = (function() {
       var recorder = new MediaRecorder(stream, recorderOptions);
       currentMediaRecorder = recorder;
 
-      // Slice recording into 5-second encrypted chunks so evidence is preserved incrementally
-      recorder.ondataavailable = function(e) {
+      recorder.ondataavailable = async function(e) {
         if (e.data && e.data.size > 0 && activeSession) {
-          addChunk(e.data);
+          var record = await addChunk(e.data);
+          if (record) queueUpload(record);
         }
       };
 
@@ -485,16 +690,15 @@ SafeHer.vault = (function() {
         endSession();
       };
 
-      recorder.start(5000); // Emit chunk every 5 seconds
+      recorder.start(5000); // 5s timeslice for emergency video
       isRecording = true;
     } catch (err) {
-      // Stream failed or blocked: silently abort without prompting during an emergency
       endSession();
     }
   }
 
   async function addChunk(blob) {
-    if (!activeSession) return;
+    if (!activeSession) return null;
     var sess = activeSession;
     var idx = sess.currentIndex;
     var prev = sess.prevHash;
@@ -507,8 +711,46 @@ SafeHer.vault = (function() {
       if (record && record.chainHash) {
         sess.prevHash = record.chainHash;
       }
+      return record;
     } catch (e) {
       console.warn('[Vault] Chunk encryption error:', e);
+      return null;
+    }
+  }
+
+  // ─── Upload Queue ──────────────────────────────────────────
+  function queueUpload(chunkRecord) {
+    if (!chunkRecord) return;
+    uploadQueue.push(chunkRecord);
+    processUploadQueue();
+  }
+
+  async function processUploadQueue() {
+    if (isProcessingUploadQueue || uploadQueue.length === 0) return;
+    isProcessingUploadQueue = true;
+    try {
+      while (uploadQueue.length > 0) {
+        var chunk = uploadQueue[0];
+        if (SafeHer.api && typeof SafeHer.api.uploadEvidenceChunk === 'function') {
+          try {
+            await SafeHer.api.uploadEvidenceChunk(chunk);
+            chunk.uploaded = true;
+            getDB(function(err, db) {
+              if (!err && db) {
+                try {
+                  var tx = db.transaction([CHUNKS_STORE], 'readwrite');
+                  tx.objectStore(CHUNKS_STORE).put(chunk);
+                } catch (e) {}
+              }
+            });
+          } catch (e) {
+            break;
+          }
+        }
+        uploadQueue.shift();
+      }
+    } finally {
+      isProcessingUploadQueue = false;
     }
   }
 
@@ -516,6 +758,10 @@ SafeHer.vault = (function() {
     if (sessionLimitTimer) {
       clearTimeout(sessionLimitTimer);
       sessionLimitTimer = null;
+    }
+    if (chunkIntervalTimer) {
+      clearTimeout(chunkIntervalTimer);
+      chunkIntervalTimer = null;
     }
 
     if (currentMediaRecorder && currentMediaRecorder.state !== 'inactive') {
@@ -556,6 +802,19 @@ SafeHer.vault = (function() {
       });
     }
   }
+
+  // ─── Page Visibility Change ────────────────────────────────
+  // If the page becomes hidden and then visible again, restart the recorder seamlessly.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      if (activeSession && activeSession.isSilent && isUserSosActive()) {
+        if (!currentMediaRecorder || currentMediaRecorder.state === 'inactive') {
+          clearTimeout(chunkIntervalTimer);
+          recordNextSilentChunk();
+        }
+      }
+    }
+  });
 
   // ─── 9. Storage Estimation & Warnings ─────────────────────
   function checkStorageSpace(callback) {
@@ -805,6 +1064,9 @@ SafeHer.vault = (function() {
     requestPermissions: requestPermissions,
     checkPermissionsStatus: checkPermissionsStatus,
     startSession: startSession,
+    startSilentSession: startSilentSession,
+    isMicrophonePermissionGranted: isMicrophonePermissionGranted,
+    isUserSosActive: isUserSosActive,
     addChunk: addChunk,
     endSession: endSession,
     unlock: unlock,

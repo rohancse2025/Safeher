@@ -313,7 +313,9 @@ SafeHer.sos = (function() {
       }
     } else if (currentMode === 'silent') {
       renderSilentMode();
-      if (SafeHer.vault && SafeHer.vault.getSettings().enabled && SafeHer.vault.getSettings().recordSilentAudio) {
+      if (SafeHer.vault && SafeHer.vault.startSilentSession) {
+        SafeHer.vault.startSilentSession(currentAlertId);
+      } else if (SafeHer.vault && SafeHer.vault.startSession) {
         SafeHer.vault.startSession('audio', currentAlertId);
       }
     } else if (currentMode === 'emergency') {
@@ -1183,6 +1185,9 @@ SafeHer.sos = (function() {
     resendAllServer: resendAllServer,
     copyAlertLink: copyAlertLink,
     sendOfflineSmsAll: sendOfflineSmsAll,
-    sendOfflineWhatsAppAll: sendOfflineWhatsAppAll
+    sendOfflineWhatsAppAll: sendOfflineWhatsAppAll,
+    isAlertActive: function() { return !!currentAlertId; },
+    getCurrentAlertId: function() { return currentAlertId; },
+    getCurrentMode: function() { return currentMode; }
   };
 })();
