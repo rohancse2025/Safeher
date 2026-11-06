@@ -164,35 +164,48 @@ def init_db():
         );
     ''')
 
-    # 9. Evidence public keys table
+    # 9. Evidence public & wrapped keys table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS evidence_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
+            user_id TEXT PRIMARY KEY,
             public_key TEXT NOT NULL,
+            wrapped_private_key TEXT,
+            salt TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id)
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
 
-    # 10. Evidence encrypted chunks table
+    # 10. Evidence sessions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS evidence_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            alert_id TEXT,
+            kind TEXT DEFAULT 'audio',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 11. Evidence chunks table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS evidence_chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY,
             session_id TEXT NOT NULL,
-            chunk_index INTEGER NOT NULL,
-            user_id TEXT,
-            alert_id TEXT,
+            idx INTEGER NOT NULL,
             mime TEXT,
-            size INTEGER,
-            encrypted_data TEXT,
+            size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            prev_hash TEXT NOT NULL,
+            chain_hash TEXT NOT NULL,
+            file_path TEXT NOT NULL,
             encrypted_key TEXT,
             iv TEXT,
-            sha256 TEXT,
-            prev_hash TEXT,
-            chain_hash TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(session_id, chunk_index)
+            UNIQUE(session_id, idx),
+            FOREIGN KEY (session_id) REFERENCES evidence_sessions(id) ON DELETE CASCADE
         );
     ''')
 
@@ -205,7 +218,9 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteers_available ON volunteers(available);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_push_subs_endpoint ON push_subscriptions(endpoint);')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_session ON evidence_chunks(session_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_sessions_user ON evidence_sessions(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_chunks_session ON evidence_chunks(session_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_evidence_chunks_session_idx ON evidence_chunks(session_id, idx);')
 
     conn.commit()
     conn.close()

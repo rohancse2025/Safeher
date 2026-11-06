@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import time
+import hashlib
 import requests
 
 BASE_URL = "http://127.0.0.1:5000"
@@ -205,7 +206,29 @@ def run_tests():
     res = s.get(f"{BASE_URL}/api/alerts", headers=headers)
     assert_test("Retrieve Alert History (Includes Uneasy Mode)", res.status_code == 200 and len(res.json().get("data", [])) >= 2)
 
-    # 19. Cascading Account Deletion
+    # 19. Evidence Vault Endpoints
+    ev_key_res = s.post(f"{BASE_URL}/api/evidence/key", json={"publicKey": {"kty": "RSA"}, "wrappedPrivateKey": "wrap_key", "salt": "salt1"}, headers=headers)
+    assert_test("Register Evidence Encryption Key", ev_key_res.status_code == 200)
+
+    ev_key_get = s.get(f"{BASE_URL}/api/evidence/key", headers=headers)
+    assert_test("Retrieve Evidence Encryption Key", ev_key_get.status_code == 200 and ev_key_get.json().get("publicKey"))
+
+    ev_sess_res = s.post(f"{BASE_URL}/api/evidence/sessions", json={"kind": "audio"}, headers=headers)
+    ev_sess_id = ev_sess_res.json().get("session", {}).get("id")
+    assert_test("Create Evidence Session", ev_sess_res.status_code == 201 and bool(ev_sess_id))
+
+    ev_data = b"evidence audio stream chunk"
+    ev_sha = hashlib.sha256(ev_data).hexdigest()
+    ev_chunk_res = s.post(f"{BASE_URL}/api/evidence/sessions/{ev_sess_id}/chunks", files={"file": ("chunk_0.bin", ev_data)}, data={"idx": 0, "sha256": ev_sha}, headers=headers)
+    assert_test("Upload Multipart Evidence Chunk with SHA-256", ev_chunk_res.status_code == 201)
+
+    ev_verify_res = s.get(f"{BASE_URL}/api/evidence/sessions/{ev_sess_id}/verify", headers=headers)
+    assert_test("Verify Evidence Session Hash Chain", ev_verify_res.status_code == 200 and ev_verify_res.json().get("verified") is True)
+
+    ev_del_res = s.delete(f"{BASE_URL}/api/evidence/sessions/{ev_sess_id}", json={"pin": "1234"}, headers=headers)
+    assert_test("Delete Evidence Session with PIN", ev_del_res.status_code == 200)
+
+    # 20. Cascading Account Deletion
     res = s.delete(f"{BASE_URL}/api/me", json={"pin": "1234"}, headers=headers)
     assert_test("Cascading Account & Data Deletion (GDPR/Privacy)", res.status_code == 200)
 

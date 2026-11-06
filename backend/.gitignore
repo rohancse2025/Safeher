@@ -11,3 +11,5 @@ logs/
 *.log
 venv/
 .venv/
+evidence/
+backend/evidence/

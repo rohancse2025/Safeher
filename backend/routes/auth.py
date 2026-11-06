@@ -2,6 +2,7 @@
 import os
 import re
 import time
+import shutil
 import datetime
 from functools import wraps
 from flask import Blueprint, request, jsonify, g
@@ -324,7 +325,15 @@ def delete_current_user():
     cursor.execute('DELETE FROM alerts WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM volunteers WHERE user_id = ?;', (user_id,))
     cursor.execute('DELETE FROM push_subscriptions WHERE user_id = ?;', (user_id,))
+    cursor.execute('DELETE FROM evidence_keys WHERE user_id = ?;', (str(user_id),))
+    cursor.execute('DELETE FROM evidence_chunks WHERE session_id IN (SELECT id FROM evidence_sessions WHERE user_id = ?);', (str(user_id),))
+    cursor.execute('DELETE FROM evidence_sessions WHERE user_id = ?;', (str(user_id),))
     cursor.execute('DELETE FROM users WHERE id = ?;', (user_id,))
+
+    # Delete on-disk evidence files for this user
+    evidence_user_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', str(user_id)))
+    if os.path.exists(evidence_user_dir):
+        shutil.rmtree(evidence_user_dir, ignore_errors=True)
 
     conn.commit()
     conn.close()

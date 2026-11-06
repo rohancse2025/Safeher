@@ -136,6 +136,23 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/admin/volunteers/<id>/approve`** – Approves a volunteer for alert matching.
 - **`POST /api/admin/volunteers/<id>/reject`** – Rejects a volunteer application.
 
+### 12. Evidence Vault (Auth Required, Owner Only)
+*Zero-Knowledge, Tamper-Proof Evidence Storage. Contacts, volunteers, and the admin page never get access to evidence.*
+- **`POST /api/evidence/key`** *(Auth required, owner only)* – Stores the user's plain RSA-OAEP public key, AES-GCM wrapped private key, and PBKDF2 salt.
+- **`GET /api/evidence/key`** *(Auth required, owner only)* – Retrieves the authenticated owner's public and wrapped private keys.
+- **`POST /api/evidence/sessions`** *(Auth required, owner only)* – Initiates an evidence recording session (`id`, optional `alertId`, `kind`: `"audio"|"video"`).
+- **`POST /api/evidence/sessions/<id>/chunks`** *(Auth required, owner only)* – Uploads an encrypted evidence chunk via multipart form-data (`file`, `idx`, `sha256`, `prev_hash`, optional `encrypted_key`, `iv`):
+  - Enforces chunk size limit of at most 3 MB.
+  - Enforces total user storage limit of at most 200 MB.
+  - Validates `idx` is strictly sequential (`0, 1, 2...`).
+  - Recomputes the SHA-256 of the received file bytes and rejects mismatches.
+  - Computes `chain_hash = sha256(prev_hash + sha256)` and saves the chunk to `backend/evidence/<user_id>/<session_id>/chunk_<idx>.bin`.
+- **`GET /api/evidence/sessions`** *(Auth required, owner only)* – Lists all recorded sessions with chunk counts and total sizes for the authenticated owner.
+- **`GET /api/evidence/sessions/<id>/verify`** *(Auth required, owner only)* – Validates the cryptographic SHA-256 hash chain and on-disk file integrity across all session chunks. Returns `{"verified": true}` or reports the first `brokenIndex`.
+- **`GET /api/evidence/chunks/<id>`** *(Auth required, owner only)* – Streams/downloads the raw encrypted chunk binary file.
+- **`DELETE /api/evidence/sessions/<id>`** *(Auth required, owner only)* – Requires the user's 4-digit Safety PIN. Permanently deletes the session, its chunk records, and its on-disk files.
+- **Automated Retention Scheduler**: Background scheduler purges sessions and chunk directories older than 30 days automatically.
+
 ---
 
 ## Response Convention
@@ -158,3 +175,6 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`responses`**: Volunteer dispatch responses to active alerts.
 - **`timers`**: Safe Timer records and automatic escalation deadlines.
 - **`push_subscriptions`**: Web Push subscription endpoints and crypto keys per user (`endpoint`, `p256dh`, `auth`).
+- **`evidence_keys`**: Public and wrapped private keys with salt per user (`user_id`, `public_key`, `wrapped_private_key`, `salt`).
+- **`evidence_sessions`**: Evidence recording sessions (`id`, `user_id`, `alert_id`, `kind`, `started_at`, `ended_at`).
+- **`evidence_chunks`**: Cryptographically chained encrypted media chunks (`id`, `session_id`, `idx`, `mime`, `size`, `sha256`, `prev_hash`, `chain_hash`, `file_path`, `created_at`).
