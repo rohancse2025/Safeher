@@ -262,6 +262,23 @@
         <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">chevron_right</span>
       </div>
 
+      <!-- Active Uneasy Alert Banner (shown when quiet check-in is active) -->
+      <div id="uneasy-active-home-banner" class="uneasy-active-banner" style="display: none;">
+        <div class="uneasy-active-banner-inner">
+          <div style="flex: 1; min-width: 0;">
+            <div class="uneasy-banner-title">
+              <span class="material-symbols-rounded" style="font-size: 18px; color: #D97706;">sentiment_dissatisfied</span>
+              <span>Quiet Check-in Active</span>
+            </div>
+            <div class="uneasy-banner-sub" id="uneasy-banner-elapsed">Started just now &bull; Close contacts notified</div>
+          </div>
+          <div class="uneasy-banner-actions">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I'm OK</button>
+            <button type="button" class="btn btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="padding: 4px 10px; font-size: 12px; height: 32px; min-height: 32px;">I need more help</button>
+          </div>
+        </div>
+      </div>
+
       <!-- SOS section -->
       <div class="sos-section">
         <p class="sos-heading" data-i18n="homeEmergencyTitle">Are you in emergency?</p>
@@ -274,6 +291,19 @@
                       onclick="SafeHer.home.triggerSOS()">SOS</button>
             </div>
           </div>
+        </div>
+
+        <!-- Graduated Alerts: Uneasy, Help, Emergency -->
+        <div class="graduated-alert-row">
+          <button type="button" class="btn-graduated btn-grad-uneasy" onclick="SafeHer.sos.openUneasySheet()">
+            <span class="material-symbols-rounded" style="font-size: 16px;">sentiment_dissatisfied</span>Uneasy
+          </button>
+          <button type="button" class="btn-graduated btn-grad-help" onclick="SafeHer.home.triggerSOS()">
+            <span class="material-symbols-rounded" style="font-size: 16px;">help</span>Help
+          </button>
+          <button type="button" class="btn-graduated btn-grad-emergency" onclick="SafeHer.sos.triggerDirectEmergency()">
+            <span class="material-symbols-rounded" style="font-size: 16px;">warning</span>Emergency
+          </button>
         </div>
 
         <div class="sos-status">
@@ -1298,7 +1328,30 @@
         <!-- Choose Saved Contacts -->
         <div class="settings-card" style="margin-bottom: 16px;">
           <p class="settings-section-title" style="margin-bottom: 8px;">Share Ride With Contacts</p>
-          <div id="ride-contacts-list"></div>
+          <div id="ride-contacts-list">
+            <div style="background:#FFF5F7;border:1px solid #F3C2CE;border-radius:var(--radius-tile);padding:14px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span class="material-symbols-rounded" style="color:var(--crimson);font-size:22px;">person_add</span>
+                <span style="font-size:13px;font-weight:700;color:var(--crimson);">Emergency Contacts</span>
+              </div>
+              <p style="font-size:12px;color:var(--text-gray);margin:0 0 10px 0;line-height:1.4;">Enter a trusted phone number to share your ride details and live tracking with:</p>
+              <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-bottom:8px;">
+                <input type="text" id="ride-direct-name" class="form-input" placeholder="Name (e.g. Dad)" style="font-size:12px;padding:8px 10px;" />
+                <input type="tel" id="ride-direct-phone" class="form-input" placeholder="10-digit WhatsApp/SMS" style="font-size:12px;padding:8px 10px;" />
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.ride.saveQuickContact()" style="font-size:12px;padding:6px 12px;height:32px;min-height:32px;">
+                  <span class="material-symbols-rounded" style="font-size:16px;">check</span>Save & Select Contact
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="SafeHer.router.go('contacts')" style="font-size:11px;padding:6px 10px;height:32px;min-height:32px;">Open Contacts Tab</button>
+              </div>
+              <div style="border-top:1px dashed #F3C2CE;padding-top:8px;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:11px;color:var(--text-gray);">Quick Helplines:</span>
+                <button type="button" class="btn btn-secondary" onclick="SafeHer.ride.addPresetContact('National Emergency', '112')" style="font-size:11px;padding:2px 8px;min-height:24px;height:24px;">+ 112 Police</button>
+                <button type="button" class="btn btn-secondary" onclick="SafeHer.ride.addPresetContact('Women Helpline', '1091')" style="font-size:11px;padding:2px 8px;min-height:24px;height:24px;">+ 1091 Helpline</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Start Ride Button -->
@@ -1654,6 +1707,13 @@
               <option value="Other">Other</option>
             </select>
           </div>
+          <div class="form-group" style="margin-top: 10px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-dark);">
+              <input type="checkbox" id="contact-close" style="width: 16px; height: 16px; accent-color: var(--crimson);" />
+              Close contact
+            </label>
+            <span class="form-hint" style="display: block; font-size: 11px; color: var(--text-gray); margin-top: 3px; margin-left: 24px;">Close contacts get &lsquo;Uneasy&rsquo; check-ins</span>
+          </div>
           <div class="form-submit-wrap" style="display: flex; gap: 8px; margin-top: 14px;">
             <button type="button" class="btn btn-secondary" onclick="SafeHer.contacts.closeModal()" style="flex: 1;">Cancel</button>
             <button type="submit" class="btn btn-primary" id="contact-submit-btn" style="flex: 1;">Save</button>
@@ -1790,6 +1850,74 @@
             <p style="font-size: 11px; color: var(--text-gray); margin: 0; line-height: 1.4;">
               * Web Push notifications require browser permission and HTTPS (or localhost). Supported on Chrome, Edge, Firefox, and Safari (iOS 16.4+ / macOS 13+ when added to Home Screen).
             </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evidence Recording Settings -->
+      <div class="settings-section">
+        <p class="settings-section-title">Evidence Recording</p>
+        <div class="settings-card" id="vault-settings-card">
+          <!-- Main Switch -->
+          <div class="setting-toggle-row">
+            <div>
+              <p class="setting-toggle-title">Enable evidence recording</p>
+              <p class="setting-toggle-sub">Tamper-proof encrypted audio &amp; video during emergencies</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="vault-enable-switch" onchange="SafeHer.vault.onToggleEnabled(this.checked)" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Plain explanation & permission status (shown when enabled) -->
+          <div id="vault-enabled-panel" style="display: none; padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px;">
+            <div style="background: var(--light-pink); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; margin-bottom: 14px;">
+              <p style="font-size: 12px; color: var(--crimson); font-weight: 500; margin: 0; line-height: 1.4;">
+                Records only during your own SOS. You can delete recordings any time.
+              </p>
+            </div>
+
+            <!-- Current Permission Status Row -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+              <div style="flex: 1; background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 11px;">
+                <span style="color: var(--text-gray); display: block; margin-bottom: 2px;">Microphone Permission</span>
+                <span id="vault-mic-status" style="font-weight: 600; color: #059669;">Not requested</span>
+              </div>
+              <div style="flex: 1; background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 11px;">
+                <span style="color: var(--text-gray); display: block; margin-bottom: 2px;">Camera Permission</span>
+                <span id="vault-cam-status" style="font-weight: 600; color: var(--text-gray);">Not requested</span>
+              </div>
+            </div>
+
+            <!-- Switch 2: Silent SOS Audio -->
+            <div class="setting-toggle-row">
+              <div>
+                <p class="setting-toggle-title">Record audio quietly during Silent SOS</p>
+                <p class="setting-toggle-sub">Stealth microphone recording without sound or screen activity</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="vault-silent-audio-switch" onchange="SafeHer.vault.onToggleSilentAudio(this.checked)" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- Switch 3: Emergency SOS Audio & Video -->
+            <div class="setting-toggle-row" style="border-bottom: none;">
+              <div>
+                <p class="setting-toggle-title">Record audio and video during Emergency SOS</p>
+                <p class="setting-toggle-sub">Captures camera and audio when emergency siren alert triggers</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="vault-emergency-video-switch" onchange="SafeHer.vault.onToggleEmergencyVideo(this.checked)" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <!-- Security Footnote -->
+            <div style="font-size: 11px; color: var(--text-gray); margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
+              RSA-OAEP 2048 + AES-GCM Encrypted &bull; Safety PIN required for playback
+            </div>
           </div>
         </div>
       </div>
@@ -2201,32 +2329,89 @@
     </button>
   </nav>
 
+  <!-- ── Uneasy Quiet Check-in Sheet Modal ─────────────────── -->
+  <div id="uneasy-sheet-modal" class="modal-backdrop" style="display: none; align-items: flex-end;">
+    <div class="modal-sheet" style="border-radius: 16px 16px 0 0; padding: 20px; max-width: 480px; margin: 0 auto; width: 100%;">
+      <div id="uneasy-form-view">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: #FFF9EB; color: #D97706; display: flex; align-items: center; justify-content: center;">
+              <span class="material-symbols-rounded" style="font-size: 20px;">sentiment_dissatisfied</span>
+            </div>
+            <h3 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0;">Quiet Check-in</h3>
+          </div>
+          <button type="button" class="btn-text-link" onclick="SafeHer.sos.closeUneasySheet()" style="font-size: 22px; line-height: 1; color: var(--text-gray); border: none; background: none; cursor: pointer;">&times;</button>
+        </div>
+
+        <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 14px 0; line-height: 1.4;">
+          Send a quiet check-in to your close contacts? Your live location will be shared for 2 hours with no loud siren or flashing screen.
+        </p>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="uneasy-note" style="font-size: 12px;">Optional note</label>
+          <textarea class="form-input" id="uneasy-note" rows="2" placeholder="e.g. Walking home, feels dark, just keeping you posted..." style="resize: none; font-size: 13px; padding: 8px 10px;"></textarea>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.closeUneasySheet()" style="flex: 1;">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="SafeHer.sos.sendUneasyCheckin()" style="flex: 1; background: #D97706; border-color: #B45309;">Send</button>
+        </div>
+      </div>
+
+      <div id="uneasy-sent-view" style="display: none; text-align: center; padding: 10px 0;">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: #FFF9EB; color: #D97706; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;">
+          <span class="material-symbols-rounded" style="font-size: 28px;">check_circle</span>
+        </div>
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text-dark); margin: 0 0 6px;">Check-in sent</h3>
+        <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 14px;">Your close contacts have been notified with your live tracking link.</p>
+        <div style="background: #F9FAFB; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; word-break: break-all; font-size: 12px; color: var(--text-dark); text-align: left;" id="uneasy-track-link-preview"></div>
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.closeUneasySheet()" style="width: 100%;">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Uneasy 'Are you OK?' 10-Minute Modal ───────────────── -->
+  <div id="uneasy-are-you-ok-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
+    <div class="modal-sheet" style="text-align: center; padding: 24px 20px; border-radius: 12px; max-width: 360px; width: 90%;">
+      <span class="material-symbols-rounded" style="font-size: 40px; color: #D97706; margin-bottom: 8px;">help</span>
+      <h3 style="font-size: 18px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">Are you OK?</h3>
+      <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 16px; line-height: 1.4;">
+        It has been 10 minutes since your quiet check-in. Auto-escalating to normal SOS in <strong id="uneasy-countdown-seconds" style="color: var(--crimson);">60</strong> seconds.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="width: 100%;">I'm OK</button>
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="width: 100%;">I need more help</button>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=17"></script>
-<script src="./js/storage.js?v=17"></script>
-<script src="./js/api.js?v=17"></script>
-<script src="./js/i18n.js?v=17"></script>
-<script src="./js/helpdata.js?v=17"></script>
-<script src="./js/help_rights.js?v=17"></script>
-<script src="./js/app.js?v=17"></script>
-<script src="./js/onboarding.js?v=17"></script>
-<script src="./js/auth.js?v=17"></script>
-<script src="./js/pin.js?v=17"></script>
-<script src="./js/home.js?v=17"></script>
-<script src="./js/contacts.js?v=17"></script>
-<script src="./js/tips.js?v=17"></script>
-<script src="./js/profile.js?v=17"></script>
-<script src="./js/sos.js?v=17"></script>
-<script src="./js/map.js?v=17"></script>
-<script src="./js/share_location.js?v=17"></script>
-<script src="./js/police.js?v=17"></script>
-<script src="./js/places.js?v=18"></script>
-<script src="./js/ride.js?v=19"></script>
-<script src="./js/volunteer.js?v=17"></script>
-<script src="./js/timer.js?v=17"></script>
-<script src="./js/fakecall.js?v=17"></script>
-<script src="./js/evidence.js?v=17"></script>
+<script src="./js/config.js?v=29"></script>
+<script src="./js/storage.js?v=29"></script>
+<script src="./js/api.js?v=29"></script>
+<script src="./js/i18n.js?v=29"></script>
+<script src="./js/helpdata.js?v=29"></script>
+<script src="./js/help_rights.js?v=29"></script>
+<script src="./js/app.js?v=29"></script>
+<script src="./js/onboarding.js?v=29"></script>
+<script src="./js/auth.js?v=29"></script>
+<script src="./js/pin.js?v=29"></script>
+<script src="./js/home.js?v=29"></script>
+<script src="./js/contacts.js?v=29"></script>
+<script src="./js/tips.js?v=29"></script>
+<script src="./js/profile.js?v=29"></script>
+<script src="./js/sos.js?v=29"></script>
+<script src="./js/map.js?v=29"></script>
+<script src="./js/share_location.js?v=29"></script>
+<script src="./js/police.js?v=29"></script>
+<script src="./js/places.js?v=29"></script>
+<script src="./js/ride.js?v=29"></script>
+<script src="./js/volunteer.js?v=29"></script>
+<script src="./js/timer.js?v=29"></script>
+<script src="./js/fakecall.js?v=29"></script>
+<script src="./js/evidence.js?v=29"></script>
+<script src="./js/vault.js?v=29"></script>
 </body>
 </html>

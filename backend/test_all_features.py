@@ -70,23 +70,25 @@ def run_tests():
     res = s.post(f"{BASE_URL}/api/pin/change", json={"old_pin": "4321", "new_pin": "1234"}, headers=headers)
     assert_test("Change Security PIN", res.status_code == 200 and res.json().get("ok") is True)
 
-    # 6. Contacts CRUD
+    # 6. Contacts CRUD (with close contact support)
     contact_payload = {
         "name": "Ananya (Sister)",
         "phone": "9876543210",
         "email": "ananya@test.com",
-        "relationship": "Sister"
+        "relationship": "Sister",
+        "close": True
     }
     res = s.post(f"{BASE_URL}/api/contacts", json=contact_payload, headers=headers)
-    contact_id = res.json().get("data", {}).get("id")
-    assert_test("Add Trusted Emergency Contact", res.status_code in (200, 201) and contact_id is not None)
+    contact_data = res.json().get("data", {})
+    contact_id = contact_data.get("id")
+    assert_test("Add Trusted Emergency Contact (Close=True)", res.status_code in (200, 201) and contact_id is not None and contact_data.get("close") is True)
 
     res = s.get(f"{BASE_URL}/api/contacts", headers=headers)
     contacts_list = res.json().get("data", [])
-    assert_test("List Trusted Contacts", res.status_code == 200 and len(contacts_list) >= 1)
+    assert_test("List Trusted Contacts with Close flag", res.status_code == 200 and len(contacts_list) >= 1 and contacts_list[0].get("close") is True)
 
-    res = s.put(f"{BASE_URL}/api/contacts/{contact_id}", json={"name": "Ananya Sharma", "phone": "9876543210", "relationship": "Sister"}, headers=headers)
-    assert_test("Update Trusted Contact", res.status_code == 200)
+    res = s.put(f"{BASE_URL}/api/contacts/{contact_id}", json={"name": "Ananya Sharma", "phone": "9876543210", "relationship": "Sister", "close": True}, headers=headers)
+    assert_test("Update Trusted Contact", res.status_code == 200 and res.json().get("data", {}).get("close") is True)
 
     # 7. Safe Timers
     timer_payload = {"minutes": 15, "contact_id": contact_id}
@@ -177,11 +179,33 @@ def run_tests():
     res = s.post(f"{BASE_URL}/api/alerts/{alert_id}/end", json={"pin": "1234"}, headers=headers)
     assert_test("End SOS Alert with Correct PIN", res.status_code == 200)
 
-    # 17. Alert History
-    res = s.get(f"{BASE_URL}/api/alerts", headers=headers)
-    assert_test("Retrieve Alert History", res.status_code == 200 and len(res.json().get("data", [])) >= 1)
+    # 17. Graduated Alerts: Uneasy Alert Mode, Escalation & OK Resolution
+    uneasy_payload = {
+        "mode": "uneasy",
+        "lat": 12.9716,
+        "lng": 77.5946,
+        "note": "Walking home in poorly lit area"
+    }
+    res = s.post(f"{BASE_URL}/api/alerts", json=uneasy_payload, headers=headers)
+    uneasy_data = res.json().get("data", {})
+    uneasy_id = uneasy_data.get("id")
+    assert_test("Create Uneasy Alert (Close Contacts Only)", res.status_code in (200, 201) and uneasy_id is not None and uneasy_data.get("mode") == "uneasy")
 
-    # 18. Cascading Account Deletion
+    # Escalate to normal
+    res = s.post(f"{BASE_URL}/api/alerts/{uneasy_id}/escalate", json={"to": "normal"}, headers=headers)
+    assert_test("Escalate Alert to Normal", res.status_code == 200 and res.json().get("data", {}).get("mode") == "normal")
+
+    # Create another uneasy alert to test ending with /ok (no PIN)
+    res = s.post(f"{BASE_URL}/api/alerts", json=uneasy_payload, headers=headers)
+    uneasy_id_2 = res.json().get("data", {}).get("id")
+    res = s.post(f"{BASE_URL}/api/alerts/{uneasy_id_2}/ok", headers=headers)
+    assert_test("Resolve Uneasy Alert without PIN ('I am OK')", res.status_code == 200 and res.json().get("data", {}).get("status") == "resolved")
+
+    # 18. Alert History (Includes Uneasy mode)
+    res = s.get(f"{BASE_URL}/api/alerts", headers=headers)
+    assert_test("Retrieve Alert History (Includes Uneasy Mode)", res.status_code == 200 and len(res.json().get("data", [])) >= 2)
+
+    # 19. Cascading Account Deletion
     res = s.delete(f"{BASE_URL}/api/me", json={"pin": "1234"}, headers=headers)
     assert_test("Cascading Account & Data Deletion (GDPR/Privacy)", res.status_code == 200)
 

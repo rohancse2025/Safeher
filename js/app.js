@@ -149,6 +149,9 @@ window.addEventListener('DOMContentLoaded', function() {
   SafeHer.fakecall.init();
   SafeHer.evidence.init();
   if (SafeHer.helpRights && SafeHer.helpRights.init) SafeHer.helpRights.init();
+  if (SafeHer.places && SafeHer.places.init) SafeHer.places.init();
+  if (SafeHer.ride && SafeHer.ride.init) SafeHer.ride.init();
+  if (SafeHer.vault && SafeHer.vault.init) SafeHer.vault.init();
 
   // Handle incoming notification click messages from service worker
   if ('serviceWorker' in navigator) {

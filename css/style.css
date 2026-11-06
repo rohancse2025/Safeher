@@ -5050,3 +5050,120 @@ button, a, input[type="button"], input[type="submit"] {
     background: transparent;
   }
 }
+
+/* ── Graduated Alert Buttons Row ─────────────────────────── */
+.graduated-alert-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin: 10px 0 14px 0;
+  width: 100%;
+  max-width: 330px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.btn-graduated {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border-radius: var(--radius-btn, 8px);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+  color: var(--text-dark);
+  transition: all 0.15s ease;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+.btn-grad-uneasy {
+  background: #FFFBEB;
+  border-color: #FDE68A;
+  color: #B45309;
+}
+.btn-grad-uneasy:hover, .btn-grad-uneasy:active {
+  background: #FEF3C7;
+}
+
+.btn-grad-help {
+  background: #FFFFFF;
+  border-color: #E5E7EB;
+  color: var(--text-dark);
+}
+.btn-grad-help:hover, .btn-grad-help:active {
+  background: #F9FAFB;
+  border-color: var(--crimson);
+}
+
+.btn-grad-emergency {
+  background: #FCEFF3;
+  border-color: #F3C6D3;
+  color: var(--crimson);
+}
+.btn-grad-emergency:hover, .btn-grad-emergency:active {
+  background: var(--crimson);
+  color: #FFFFFF;
+}
+
+/* ── Active Uneasy Home Banner ────────────────────────────── */
+.uneasy-active-banner {
+  background: #FFFDF5;
+  border: 1.5px solid #F59E0B;
+  border-radius: var(--radius-tile, 10px);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.uneasy-active-banner-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.uneasy-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #92400E;
+}
+.uneasy-banner-sub {
+  font-size: 11px;
+  color: #B45309;
+  margin-top: 2px;
+}
+.uneasy-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Close Contact Tag / Badge ────────────────────────────── */
+.contact-close-badge {
+  display: inline-block;
+  background: #FFFBEB;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ── Alert History Uneasy Badge ───────────────────────────── */
+.alert-mode-uneasy {
+  background: #FFFBEB !important;
+  color: #B45309 !important;
+  border: 1px solid #FDE68A !important;
+}

@@ -13,7 +13,7 @@ import jwt
 
 alerts_bp = Blueprint('alerts', __name__)
 
-VALID_MODES = {'normal', 'silent', 'emergency', 'timer'}
+VALID_MODES = {'normal', 'silent', 'emergency', 'timer', 'uneasy'}
 
 
 def get_user_from_request():
@@ -112,6 +112,8 @@ def create_alert():
     if mode not in VALID_MODES:
         return jsonify({"ok": False, "error": f"Invalid mode. Must be one of: {', '.join(VALID_MODES)}"}), 400
 
+    note = (data.get('note') or '').strip()
+
     lat = data.get('lat')
     lng = data.get('lng')
     if lat is None or lng is None or not is_valid_coord(lat, lng):
@@ -125,12 +127,30 @@ def create_alert():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Rate limiting: 10 per hour for uneasy, 5 per hour for standard SOS
+    if mode == 'uneasy':
+        cursor.execute('''
+            SELECT COUNT(*) AS count FROM alerts
+            WHERE user_id = ? AND mode = 'uneasy' AND started_at >= datetime('now', '-1 hour');
+        ''', (user_id,))
+        if cursor.fetchone()['count'] >= 10:
+            conn.close()
+            return jsonify({"ok": False, "error": "Rate limit exceeded: maximum 10 uneasy check-ins per hour"}), 429
+    else:
+        cursor.execute('''
+            SELECT COUNT(*) AS count FROM alerts
+            WHERE user_id = ? AND mode != 'uneasy' AND started_at >= datetime('now', '-1 hour');
+        ''', (user_id,))
+        if cursor.fetchone()['count'] >= 5:
+            conn.close()
+            return jsonify({"ok": False, "error": "Rate limit exceeded: maximum 5 SOS alerts per hour"}), 429
+
     try:
         # 1. Insert alert record
         cursor.execute('''
-            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress)
-            VALUES (?, ?, 'active', ?, ?, ?, 0, 0);
-        ''', (user_id, mode, lat, lng, share_token))
+            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress, note)
+            VALUES (?, ?, 'active', ?, ?, ?, 0, 0, ?);
+        ''', (user_id, mode, lat, lng, share_token, note or None))
         alert_id = cursor.lastrowid
 
         # 2. Insert first location row
@@ -139,11 +159,17 @@ def create_alert():
             VALUES (?, ?, ?);
         ''', (alert_id, lat, lng))
 
-        # 3. Retrieve contacts with phone numbers and email addresses
-        cursor.execute('''
-            SELECT phone, email FROM contacts
-            WHERE user_id = ?;
-        ''', (user_id,))
+        # 3. Retrieve contacts: for uneasy mode, strictly notify close=true contacts only
+        if mode == 'uneasy':
+            cursor.execute('''
+                SELECT phone, email FROM contacts
+                WHERE user_id = ? AND close = 1;
+            ''', (user_id,))
+        else:
+            cursor.execute('''
+                SELECT phone, email FROM contacts
+                WHERE user_id = ?;
+            ''', (user_id,))
         contact_rows = cursor.fetchall()
         recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
         recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
@@ -155,7 +181,7 @@ def create_alert():
 
     conn.close()
 
-    # 4. Trigger background email dispatch to contacts (works for all modes including silent)
+    # 4. Trigger background email dispatch to contacts (works for all modes including silent and uneasy)
     if recipient_emails:
         send_alert_notifications_background(
             alert_id=alert_id,
@@ -165,7 +191,8 @@ def create_alert():
             lat=lat,
             lng=lng,
             share_token=share_token,
-            recipient_emails=recipient_emails
+            recipient_emails=recipient_emails,
+            note=note
         )
 
     # 5. Trigger background automated WhatsApp dispatch to contacts
@@ -181,21 +208,22 @@ def create_alert():
             recipient_phones=recipient_phones
         )
 
-    # Log alert creation event (without tokens or raw phone numbers)
+    # Log alert creation event
     app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode={mode}, lat={lat}, lng={lng}")
 
-    # 5. Trigger Web Push notification to available approved volunteers within 2 km
-    try:
-        from routes.push import notify_nearby_volunteers_on_alert
-        notify_nearby_volunteers_on_alert(
-            alert_id=alert_id,
-            alert_mode=mode,
-            alert_lat=lat,
-            alert_lng=lng,
-            exclude_user_id=user_id
-        )
-    except Exception as push_err:
-        app_logger.error(f"[Alert] Volunteer push trigger error: {push_err}")
+    # 6. Trigger Web Push notification to available approved volunteers (UNEASY MODE SENDS NOTHING TO VOLUNTEERS)
+    if mode != 'uneasy':
+        try:
+            from routes.push import notify_nearby_volunteers_on_alert
+            notify_nearby_volunteers_on_alert(
+                alert_id=alert_id,
+                alert_mode=mode,
+                alert_lat=lat,
+                alert_lng=lng,
+                exclude_user_id=user_id
+            )
+        except Exception as push_err:
+            app_logger.error(f"[Alert] Volunteer push trigger error: {push_err}")
 
     return jsonify({
         "ok": True,
@@ -482,6 +510,157 @@ def end_alert(alert_id):
     return jsonify({"ok": False, "error": "Incorrect safety PIN"}), 403
 
 
+# ─── Route: POST /api/alerts/<id>/escalate ───────────────────
+@alerts_bp.route('/api/alerts/<int:alert_id>/escalate', methods=['POST'])
+def escalate_alert(alert_id):
+    """
+    Escalate an active alert {to: "normal"|"emergency"}.
+    Changes the mode, resends to ALL contacts, notifies volunteers, and logs event.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    user_name = user['name']
+    data = request.get_json(silent=True) or {}
+    to_mode = (data.get('to') or 'normal').strip().lower()
+    if to_mode not in ('normal', 'emergency'):
+        return jsonify({"ok": False, "error": "Invalid target mode. Must be 'normal' or 'emergency'"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, mode, status, lat, lng, share_token FROM alerts WHERE id = ?;', (alert_id,))
+    alert = cursor.fetchone()
+    if not alert:
+        cursor.execute("SELECT id, mode, status, lat, lng, share_token FROM alerts WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+        alert = cursor.fetchone()
+
+    if not alert:
+        conn.close()
+        return jsonify({"ok": False, "error": "Alert not found"}), 404
+
+    target_id = alert['id']
+    old_mode = alert['mode']
+    lat = alert['lat']
+    lng = alert['lng']
+    share_token = alert['share_token']
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Update alert mode in database
+    cursor.execute('UPDATE alerts SET mode = ? WHERE id = ?;', (to_mode, target_id))
+
+    # Retrieve ALL contacts (both close and standard)
+    cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+    contact_rows = cursor.fetchall()
+    recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
+    recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+    conn.commit()
+    conn.close()
+
+    # Log the escalation event
+    app_logger.info(f"[ALERT ESCALATED] alert_id={target_id}, user_id={user_id}, from={old_mode}, to={to_mode}")
+
+    # Resend emails to all contacts
+    if recipient_emails:
+        send_alert_notifications_background(
+            alert_id=target_id,
+            user_name=user_name,
+            mode=to_mode,
+            started_at_str=now_str,
+            lat=lat,
+            lng=lng,
+            share_token=share_token,
+            recipient_emails=recipient_emails
+        )
+
+    # Resend WhatsApp to all contacts
+    if recipient_phones:
+        send_whatsapp_notifications_background(
+            alert_id=target_id,
+            user_name=user_name,
+            mode=to_mode,
+            started_at_str=now_str,
+            lat=lat,
+            lng=lng,
+            share_token=share_token,
+            recipient_phones=recipient_phones
+        )
+
+    # Notify volunteers (as for normal alerts)
+    try:
+        from routes.push import notify_nearby_volunteers_on_alert
+        notify_nearby_volunteers_on_alert(
+            alert_id=target_id,
+            alert_mode=to_mode,
+            alert_lat=lat,
+            alert_lng=lng,
+            exclude_user_id=user_id
+        )
+    except Exception as push_err:
+        app_logger.error(f"[Alert] Volunteer push trigger on escalation error: {push_err}")
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": target_id,
+            "mode": to_mode,
+            "previous_mode": old_mode,
+            "status": alert['status'],
+            "notified_count": len(recipient_emails),
+            "message": f"Alert escalated to {to_mode}"
+        }
+    }), 200
+
+
+# ─── Route: POST /api/alerts/<id>/ok ─────────────────────────
+@alerts_bp.route('/api/alerts/<int:alert_id>/ok', methods=['POST'])
+def resolve_uneasy_alert_ok(alert_id):
+    """
+    End an 'uneasy' alert without a PIN (since it isn't an emergency).
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+
+    user_id = user['id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, mode, status FROM alerts WHERE id = ?;', (alert_id,))
+    alert = cursor.fetchone()
+    if not alert:
+        cursor.execute("SELECT id, mode, status FROM alerts WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+        alert = cursor.fetchone()
+
+    if not alert:
+        conn.close()
+        return jsonify({
+            "ok": True,
+            "data": {
+                "alert_id": alert_id,
+                "status": "resolved",
+                "message": "Alert ended successfully (I'm OK)"
+            }
+        }), 200
+
+    target_id = alert['id']
+    cursor.execute("UPDATE alerts SET status = 'resolved', ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (target_id,))
+    conn.commit()
+    conn.close()
+    app_logger.info(f"[ALERT OK] alert_id={target_id}, mode={alert['mode']}, status=resolved")
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "alert_id": target_id,
+            "status": "resolved",
+            "message": "Alert ended successfully (I'm OK)"
+        }
+    }), 200
+
+
 # ─── Route: GET /api/alerts ──────────────────────────────────
 @alerts_bp.route('/api/alerts', methods=['GET'])
 @login_required
@@ -641,11 +820,12 @@ def get_public_track(share_token):
     alert_id = alert['id']
     status = alert['status']
 
-    # Auto-expire active alerts running for more than 6 hours
+    # Auto-expire active alerts: 2 hours for uneasy mode, 6 hours for others
     if status == 'active' and alert['started_at']:
         try:
             started_dt = datetime.datetime.strptime(alert['started_at'], "%Y-%m-%d %H:%M:%S")
-            if datetime.datetime.now() - started_dt > datetime.timedelta(hours=6):
+            expire_hours = 2 if alert['mode'] == 'uneasy' else 6
+            if datetime.datetime.now() - started_dt > datetime.timedelta(hours=expire_hours):
                 cursor.execute("UPDATE alerts SET status = 'expired', ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (alert_id,))
                 conn.commit()
                 status = 'expired'

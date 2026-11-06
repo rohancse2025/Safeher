@@ -313,8 +313,19 @@ SafeHer.sos = (function() {
       }
     } else if (currentMode === 'silent') {
       renderSilentMode();
+      if (SafeHer.vault && SafeHer.vault.getSettings().enabled && SafeHer.vault.getSettings().recordSilentAudio) {
+        SafeHer.vault.startSession('audio', currentAlertId);
+      }
     } else if (currentMode === 'emergency') {
       renderEmergencyMode();
+      if (SafeHer.vault && SafeHer.vault.getSettings().enabled) {
+        var vSettings = SafeHer.vault.getSettings();
+        if (vSettings.recordEmergencyVideo) {
+          SafeHer.vault.startSession('video', currentAlertId);
+        } else if (vSettings.recordSilentAudio) {
+          SafeHer.vault.startSession('audio', currentAlertId);
+        }
+      }
     }
 
     // Now resolve real location in the background
@@ -417,6 +428,9 @@ SafeHer.sos = (function() {
     stopDurationCounter();
     stopVolunteerStatusPolling();
     releaseWakeLock();
+    if (SafeHer.vault && SafeHer.vault.endSession) {
+      SafeHer.vault.endSession();
+    }
 
     if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(function() {});
@@ -786,6 +800,9 @@ SafeHer.sos = (function() {
     stopSiren();
     stopVibration();
     releaseWakeLock();
+    if (SafeHer.vault && SafeHer.vault.endSession) {
+      SafeHer.vault.endSession();
+    }
 
     var endTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (currentAlertId) {
@@ -907,6 +924,243 @@ SafeHer.sos = (function() {
     if (overlay) {
       overlay.onclick = onOverlayTap;
     }
+
+    if (SafeHer.router && SafeHer.router.onShow) {
+      SafeHer.router.onShow('home', function() {
+        updateUneasyBanner();
+      });
+    }
+
+    var existingUneasy = getActiveUneasyAlert();
+    if (existingUneasy) {
+      updateUneasyBanner();
+      startUneasyMonitoring();
+    }
+  }
+
+  // ─── Graduated Alerts: Uneasy Alert & Direct Emergency ───
+  var activeUneasyAlert = null;
+  var uneasyTenMinTimer = null;
+  var uneasyAutoEscalateInterval = null;
+  var uneasyAutoEscalateRemaining = 60;
+
+  function triggerDirectEmergency() {
+    startEmergencyMode();
+  }
+
+  function getActiveUneasyAlert() {
+    if (activeUneasyAlert) return activeUneasyAlert;
+    try {
+      var saved = localStorage.getItem('safeher_active_uneasy');
+      if (saved) activeUneasyAlert = JSON.parse(saved);
+    } catch(e) {}
+    return activeUneasyAlert;
+  }
+
+  function saveActiveUneasyAlert(alertObj) {
+    activeUneasyAlert = alertObj;
+    try {
+      if (alertObj) {
+        localStorage.setItem('safeher_active_uneasy', JSON.stringify(alertObj));
+      } else {
+        localStorage.removeItem('safeher_active_uneasy');
+      }
+    } catch(e) {}
+    updateUneasyBanner();
+  }
+
+  function openUneasySheet() {
+    var modal = document.getElementById('uneasy-sheet-modal');
+    var formView = document.getElementById('uneasy-form-view');
+    var sentView = document.getElementById('uneasy-sent-view');
+    var noteInput = document.getElementById('uneasy-note');
+    if (!modal) return;
+    if (formView) formView.style.display = 'block';
+    if (sentView) sentView.style.display = 'none';
+    if (noteInput) noteInput.value = '';
+    modal.style.display = 'flex';
+  }
+
+  function closeUneasySheet() {
+    var modal = document.getElementById('uneasy-sheet-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function sendUneasyCheckin() {
+    var noteInput = document.getElementById('uneasy-note');
+    var note = noteInput ? noteInput.value.trim() : '';
+
+    var defaultLat = 12.9716;
+    var defaultLng = 77.5946;
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        doSend(pos.coords.latitude, pos.coords.longitude);
+      }, function() {
+        doSend(defaultLat, defaultLng);
+      }, { timeout: 5000, enableHighAccuracy: true });
+    } else {
+      doSend(defaultLat, defaultLng);
+    }
+
+    function doSend(lat, lng) {
+      var payload = {
+        mode: 'uneasy',
+        lat: lat,
+        lng: lng,
+        note: note
+      };
+
+      SafeHer.api.triggerAlert(payload, function(err, alertData) {
+        var alertId = (alertData && alertData.id) ? alertData.id : Date.now();
+        var token = (alertData && alertData.shareToken) ? alertData.shareToken : ((alertData && alertData.share_token) || ('track_' + alertId));
+
+        var uneasyInfo = {
+          id: alertId,
+          shareToken: token,
+          lat: lat,
+          lng: lng,
+          note: note,
+          startTime: Date.now()
+        };
+        saveActiveUneasyAlert(uneasyInfo);
+
+        // Update sent view in sheet
+        var formView = document.getElementById('uneasy-form-view');
+        var sentView = document.getElementById('uneasy-sent-view');
+        var previewEl = document.getElementById('uneasy-track-link-preview');
+        var trackingUrl = (window.location.origin + window.location.pathname).replace(/index\.html$/, '') + 'track.html?t=' + token;
+
+        if (formView) formView.style.display = 'none';
+        if (sentView) sentView.style.display = 'block';
+        if (previewEl) {
+          previewEl.innerHTML = '<div style="margin-bottom:6px;font-weight:600;color:var(--text-dark);">Live Tracking Link:</div>' +
+            '<a href="' + trackingUrl + '" target="_blank" style="color:var(--crimson);word-break:break-all;font-size:12px;font-weight:600;display:block;margin-bottom:8px;">' + trackingUrl + '</a>' +
+            '<button type="button" class="btn btn-secondary" onclick="navigator.clipboard.writeText(\'' + trackingUrl + '\');SafeHer.toast(\'Link copied!\');" style="font-size:11px;padding:3px 10px;min-height:28px;">Copy Link</button>';
+        }
+
+        SafeHer.toast('Check-in sent');
+        startUneasyMonitoring();
+      });
+    }
+  }
+
+  function updateUneasyBanner() {
+    var banner = document.getElementById('uneasy-active-home-banner');
+    if (!banner) return;
+    var uneasy = getActiveUneasyAlert();
+    if (uneasy) {
+      banner.style.display = 'block';
+      var elapsedEl = document.getElementById('uneasy-banner-elapsed');
+      if (elapsedEl) {
+        var elapsedMins = Math.floor((Date.now() - uneasy.startTime) / 60000);
+        elapsedEl.textContent = 'Started ' + (elapsedMins > 0 ? elapsedMins + 'm ago' : 'just now') + ' · Close contacts notified';
+      }
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  function startUneasyMonitoring() {
+    if (uneasyTenMinTimer) {
+      clearTimeout(uneasyTenMinTimer);
+      uneasyTenMinTimer = null;
+    }
+    var uneasy = getActiveUneasyAlert();
+    if (!uneasy) return;
+
+    var elapsedMs = Date.now() - uneasy.startTime;
+    var tenMinsMs = 10 * 60 * 1000;
+    var remainingMs = tenMinsMs - elapsedMs;
+
+    if (remainingMs <= 0) {
+      showUneasyAreYouOkModal();
+    } else {
+      uneasyTenMinTimer = setTimeout(function() {
+        showUneasyAreYouOkModal();
+      }, remainingMs);
+    }
+  }
+
+  function showUneasyAreYouOkModal() {
+    var uneasy = getActiveUneasyAlert();
+    if (!uneasy) return;
+
+    var modal = document.getElementById('uneasy-are-you-ok-modal');
+    if (modal) modal.style.display = 'flex';
+
+    if (uneasyAutoEscalateInterval) {
+      clearInterval(uneasyAutoEscalateInterval);
+      uneasyAutoEscalateInterval = null;
+    }
+
+    uneasyAutoEscalateRemaining = 60;
+    var secEl = document.getElementById('uneasy-countdown-seconds');
+    if (secEl) secEl.textContent = uneasyAutoEscalateRemaining;
+
+    uneasyAutoEscalateInterval = setInterval(function() {
+      uneasyAutoEscalateRemaining--;
+      if (secEl) secEl.textContent = uneasyAutoEscalateRemaining;
+      if (uneasyAutoEscalateRemaining <= 0) {
+        clearInterval(uneasyAutoEscalateInterval);
+        uneasyAutoEscalateInterval = null;
+        if (modal) modal.style.display = 'none';
+        escalateUneasyAlert('normal');
+      }
+    }, 1000);
+  }
+
+  function resolveUneasyAlert() {
+    if (uneasyTenMinTimer) {
+      clearTimeout(uneasyTenMinTimer);
+      uneasyTenMinTimer = null;
+    }
+    if (uneasyAutoEscalateInterval) {
+      clearInterval(uneasyAutoEscalateInterval);
+      uneasyAutoEscalateInterval = null;
+    }
+
+    var okModal = document.getElementById('uneasy-are-you-ok-modal');
+    if (okModal) okModal.style.display = 'none';
+    closeUneasySheet();
+
+    var uneasy = getActiveUneasyAlert();
+    if (uneasy && uneasy.id) {
+      SafeHer.api.resolveAlertOk(uneasy.id);
+    }
+    saveActiveUneasyAlert(null);
+    SafeHer.toast("Glad you're safe! Check-in ended.");
+  }
+
+  function escalateUneasyAlert(toMode) {
+    toMode = toMode || 'normal';
+
+    if (uneasyTenMinTimer) {
+      clearTimeout(uneasyTenMinTimer);
+      uneasyTenMinTimer = null;
+    }
+    if (uneasyAutoEscalateInterval) {
+      clearInterval(uneasyAutoEscalateInterval);
+      uneasyAutoEscalateInterval = null;
+    }
+
+    var okModal = document.getElementById('uneasy-are-you-ok-modal');
+    if (okModal) okModal.style.display = 'none';
+    closeUneasySheet();
+
+    var uneasy = getActiveUneasyAlert();
+    if (uneasy && uneasy.id) {
+      SafeHer.api.escalateAlert(uneasy.id, toMode);
+    }
+    saveActiveUneasyAlert(null);
+
+    SafeHer.toast('Alert escalated to ' + toMode + ' SOS');
+
+    if (toMode === 'emergency') {
+      startEmergencyMode();
+    } else {
+      triggerActiveAlert('normal');
+    }
   }
 
   return {
@@ -915,6 +1169,13 @@ SafeHer.sos = (function() {
     cancelCountdown: cancelCountdown,
     startSilentMode: startSilentMode,
     startEmergencyMode: startEmergencyMode,
+    triggerDirectEmergency: triggerDirectEmergency,
+    openUneasySheet: openUneasySheet,
+    closeUneasySheet: closeUneasySheet,
+    sendUneasyCheckin: sendUneasyCheckin,
+    resolveUneasyAlert: resolveUneasyAlert,
+    escalateUneasyAlert: escalateUneasyAlert,
+    updateUneasyBanner: updateUneasyBanner,
     onSilentScreenTap: onSilentScreenTap,
     requestEndAlert: requestEndAlert,
     requestStopAlarm: requestStopAlarm,

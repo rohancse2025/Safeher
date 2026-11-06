@@ -42,6 +42,7 @@ SafeHer.contacts = (function() {
       var c = contacts[i];
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var relation = c.relation || 'Contact';
+      var closeBadge = c.close ? '<span class="contact-close-badge">Close</span>' : '';
 
       html += '<div class="contact-card">' +
         '<div class="contact-left">' +
@@ -50,6 +51,7 @@ SafeHer.contacts = (function() {
             '<div class="contact-name-row">' +
               '<span class="contact-name">' + escapeHtml(c.name) + '</span>' +
               '<span class="contact-badge">' + escapeHtml(relation) + '</span>' +
+              closeBadge +
             '</div>' +
             '<span class="contact-phone">' + escapeHtml(c.phone) + '</span>' +
           '</div>' +
@@ -80,6 +82,7 @@ SafeHer.contacts = (function() {
     var phoneInput = document.getElementById('contact-phone');
     var emailInput = document.getElementById('contact-email');
     var relSelect = document.getElementById('contact-relation');
+    var closeCheckbox = document.getElementById('contact-close');
 
     if (!modal) return;
 
@@ -96,6 +99,7 @@ SafeHer.contacts = (function() {
         phoneInput.value = c.phone || '';
         emailInput.value = c.email || '';
         relSelect.value = c.relation || 'Parent';
+        if (closeCheckbox) closeCheckbox.checked = !!c.close;
       }
     } else {
       titleEl.textContent = 'Add Contact';
@@ -104,6 +108,7 @@ SafeHer.contacts = (function() {
       phoneInput.value = '';
       emailInput.value = '';
       relSelect.value = 'Parent';
+      if (closeCheckbox) closeCheckbox.checked = false;
     }
 
     modal.style.display = 'flex';
@@ -120,11 +125,13 @@ SafeHer.contacts = (function() {
     var phoneInput = document.getElementById('contact-phone');
     var emailInput = document.getElementById('contact-email');
     var relSelect = document.getElementById('contact-relation');
+    var closeCheckbox = document.getElementById('contact-close');
 
     var name = nameInput.value.trim();
     var phone = phoneInput.value.trim();
     var email = emailInput.value.trim();
     var relation = relSelect.value;
+    var isClose = closeCheckbox ? closeCheckbox.checked : false;
     var editId = idInput.value ? Number(idInput.value) : null;
 
     clearErrs();
@@ -156,7 +163,8 @@ SafeHer.contacts = (function() {
         name: name,
         phone: phone,
         email: email,
-        relation: relation
+        relation: relation,
+        close: isClose
       });
       SafeHer.toast('Contact updated');
     } else {
@@ -165,7 +173,8 @@ SafeHer.contacts = (function() {
         name: name,
         phone: phone,
         email: email,
-        relation: relation
+        relation: relation,
+        close: isClose
       });
       SafeHer.toast('Contact added');
     }

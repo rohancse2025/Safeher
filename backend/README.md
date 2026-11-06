@@ -85,14 +85,18 @@ The database (`safeher.db`) and all 7 tables (`users`, `contacts`, `alerts`, `lo
 - **`POST /api/pin/verify`** *(Auth required)* – Validates PIN; returns `"ok"`, `"duress"`, or `"wrong"`. Implements 30-second lockout after 5 failed attempts.
 
 ### 4. Emergency Contacts (Per-User)
-- **`GET /api/contacts`** *(Auth required)* – Lists contacts for authenticated user.
-- **`POST /api/contacts`** *(Auth required)* – Adds contact (`name`, 10-digit `phone`, optional `email`, `relationship`).
-- **`PUT /api/contacts/<id>`** *(Auth required)* – Updates user's contact.
+- **`GET /api/contacts`** *(Auth required)* – Lists contacts for authenticated user (includes `close` boolean flag).
+- **`POST /api/contacts`** *(Auth required)* – Adds contact (`name`, 10-digit `phone`, optional `email`, `relationship`, optional boolean `close` default `false`).
+- **`PUT /api/contacts/<id>`** *(Auth required)* – Updates user's contact (including `close` status).
 - **`DELETE /api/contacts/<id>`** *(Auth required)* – Deletes user's contact.
 
 ### 5. Emergency Alerts & Live Tracking
-- **`POST /api/alerts`** *(Auth required)* – Initiates an emergency alert (`mode`: `"normal"|"silent"|"emergency"`, `lat`, `lng`). Generates random `share_token`, records first location, and dispatches background emails to emergency contacts.
+- **`POST /api/alerts`** *(Auth required)* – Initiates an emergency alert (`mode`: `"normal"|"silent"|"emergency"|"uneasy"`, `lat`, `lng`, optional `note`).
+  - **`uneasy` mode**: Sends quiet check-in with live tracking link and optional note to close contacts only (`close=true`). Sends nothing to volunteers. Uses a separate rate limit of 10 alerts per hour. The tracking link expires after 2 hours.
+  - **`normal` / `emergency` / `silent`**: Notifies all contacts and nearby volunteers.
 - **`POST /api/alerts/<id>/location`** *(Auth required)* – Appends real-time coordinates to tracking history for an active alert.
+- **`POST /api/alerts/<id>/escalate`** *(Auth required)* – Escalates alert `{to: "normal"|"emergency"}`: updates mode, resends to all contacts, notifies volunteers, and logs the event.
+- **`POST /api/alerts/<id>/ok`** *(Auth required)* – Resolves an "uneasy" alert without requiring a safety PIN (since it's a quiet check-in).
 - **`POST /api/alerts/<id>/end`** *(Auth required)* – Ends alert with 4-digit PIN. If duress PIN is submitted, returns success to attacker while silently keeping alert active with `duress=1`.
 - **`GET /api/alerts`** *(Auth required)* – Returns full chronological alert history for current user.
 

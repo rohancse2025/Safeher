@@ -213,8 +213,8 @@ SafeHer.profile = (function() {
       var html = '';
       for (var i = 0; i < alerts.length; i++) {
         var a = alerts[i];
-        var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : (a.mode === 'timer' ? 'Timer' : 'Normal'));
-        var modeClass = a.mode === 'emergency' ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : 'alert-mode-normal');
+        var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : (a.mode === 'timer' ? 'Timer' : (a.mode === 'uneasy' ? 'Uneasy' : 'Normal')));
+        var modeClass = a.mode === 'emergency' ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : (a.mode === 'uneasy' ? 'alert-mode-uneasy' : 'alert-mode-normal'));
         var statusLabel = a.status === 'active' ? 'Active' : 'Resolved';
         var statusClass = a.status === 'active' ? 'alert-status-active' : 'alert-status-resolved';
 
