@@ -4,6 +4,7 @@ SafeHer.volunteer = (function() {
   var dismissedAlertId = null;
   var respondedAlertId = null;
   var currentAlertId = null;
+  var currentVerificationCode = null;
   var pollingTimer = null;
 
   function escapeHtml(str) {
@@ -17,7 +18,6 @@ SafeHer.volunteer = (function() {
   }
 
   // ─── Haversine Distance (in km) ───────────────────────────
-  // Note: Kept on the front end for offline/local scenarios; server provides pre-calculated distance_km.
   function haversineDistance(lat1, lon1, lat2, lon2) {
     var R = 6371; // Earth radius in km
     var dLat = (lat2 - lat1) * Math.PI / 180;
@@ -29,11 +29,13 @@ SafeHer.volunteer = (function() {
     return R * c;
   }
 
-  function formatDistance(distKm) {
-    if (distKm < 1) {
-      return Math.round(distKm * 1000) + ' m away';
-    }
-    return distKm.toFixed(1) + ' km away';
+  function formatDistanceBand(distKm, distanceBand) {
+    if (distanceBand) return distanceBand;
+    if (distKm === undefined || distKm === null) return 'Nearby';
+    if (distKm < 0.5) return 'under 500m';
+    if (distKm < 1.3) return 'about 1 km';
+    if (distKm < 1.7) return 'about 1.5 km';
+    return 'about 2 km';
   }
 
   // ─── 5-Second Real-Time Polling ───────────────────────────
@@ -71,8 +73,7 @@ SafeHer.volunteer = (function() {
           return;
         }
 
-        // Use precalculated distance_km returned from the server
-        showAlertCardData(id, firstAlert.time || firstAlert.started_at, firstAlert.distance_km, firstAlert.maps_link);
+        showAlertCardData(firstAlert);
       } else {
         hideAlertCard();
       }
@@ -81,10 +82,24 @@ SafeHer.volunteer = (function() {
 
   // ─── Save & Toggle Availability ───────────────────────────
   function toggleAvailable(isAvailable) {
+    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
+    var status = profile.status || 'draft';
+
+    // (2) The "Available to help" switch works only when approved.
+    if (status !== 'approved') {
+      var toggle = document.getElementById('volunteer-available-toggle');
+      if (toggle) toggle.checked = false;
+      if (status === 'suspended') {
+        SafeHer.toast('Your account is paused while we review a report');
+      } else {
+        SafeHer.toast('Available to help works only when your volunteer status is approved');
+      }
+      return;
+    }
+
     var descEl = document.getElementById('volunteer-status-desc');
     var posRow = document.getElementById('volunteer-pos-row');
     var posText = document.getElementById('volunteer-pos-text');
-    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
 
     if (isAvailable) {
       function saveWithCoords(lat, lng) {
@@ -97,7 +112,7 @@ SafeHer.volunteer = (function() {
           SafeHer.api.setVolunteerProfile(profile, function(err, saved) {
             if (saved && saved.status) {
               profile.status = saved.status;
-              renderVerificationBadge(saved.status);
+              renderProfileCard(profile);
             }
           });
         }
@@ -152,31 +167,88 @@ SafeHer.volunteer = (function() {
     if (card) card.style.display = 'none';
   }
 
-  function showAlertCardData(alertId, timeStr, distKm, mapsUrl) {
+  function showAlertCardData(alertData) {
     var card = document.getElementById('volunteer-alert-card');
     var timeEl = document.getElementById('volunteer-alert-time');
     var distEl = document.getElementById('volunteer-alert-dist-text');
-    var mapLink = document.getElementById('volunteer-alert-map-link');
+    var approxAreaEl = document.getElementById('volunteer-alert-approx-area');
+    var silentWarningEl = document.getElementById('volunteer-alert-silent-warning');
     var actionsGroup = document.getElementById('volunteer-alert-actions');
-    var respondedBox = document.getElementById('volunteer-responded-status');
+    var confirmedContainer = document.getElementById('volunteer-confirmed-coming-container');
+    var mapLink = document.getElementById('volunteer-alert-map-link');
+    var codeDisplay = document.getElementById('volunteer-verification-code-display');
 
-    if (timeEl) timeEl.textContent = timeStr || 'Active now';
-    if (distEl) distEl.textContent = formatDistance(distKm !== undefined ? distKm : 0);
-    if (mapLink && mapsUrl) mapLink.href = mapsUrl;
+    var alertId = alertData.alert_id || alertData.id;
+    currentAlertId = alertId;
 
-    if (respondedAlertId === alertId) {
+    if (timeEl) timeEl.textContent = alertData.time || alertData.started_at || 'Active now';
+
+    // (3) Distance band and approximate area first
+    var bandText = formatDistanceBand(alertData.distance_km, alertData.distance_band);
+    if (distEl) distEl.textContent = bandText;
+
+    if (approxAreaEl) {
+      if (alertData.approximate_area) {
+        approxAreaEl.textContent = alertData.approximate_area;
+      } else if (alertData.approximate_lat && alertData.approximate_lng) {
+        approxAreaEl.textContent = 'Approximate area: ~' + alertData.approximate_lat + ', ' + alertData.approximate_lng;
+      } else {
+        approxAreaEl.textContent = 'Approximate area (exact location hidden until you confirm)';
+      }
+    }
+
+    // (4) Silent-mode alerts appear only for Trusted volunteers and carry extra warning
+    if (silentWarningEl) {
+      if (alertData.mode === 'silent') {
+        silentWarningEl.style.display = 'block';
+      } else {
+        silentWarningEl.style.display = 'none';
+      }
+    }
+
+    // Has volunteer already responded "coming"?
+    var hasRespondedComing = (alertData.responded === true) || (respondedAlertId === alertId);
+
+    if (hasRespondedComing) {
       if (actionsGroup) actionsGroup.style.display = 'none';
-      if (respondedBox) respondedBox.style.display = 'flex';
+      if (confirmedContainer) confirmedContainer.style.display = 'block';
+
+      var destLat = alertData.lat;
+      var destLng = alertData.lng;
+      var mapsHref = alertData.maps_link || (destLat && destLng ? ('https://www.google.com/maps/dir/?api=1&destination=' + destLat + ',' + destLng) : '#');
+      if (mapLink) {
+        mapLink.href = mapsHref;
+        mapLink.target = '_blank';
+      }
+
+      var code = alertData.verification_code || currentVerificationCode || '----';
+      if (codeDisplay) codeDisplay.textContent = code;
     } else {
       if (actionsGroup) actionsGroup.style.display = 'flex';
-      if (respondedBox) respondedBox.style.display = 'none';
+      if (confirmedContainer) confirmedContainer.style.display = 'none';
     }
 
     if (card) card.style.display = 'block';
   }
 
-  // ─── Volunteer Response: "I'm coming" ─────────────────────
-  function respondComing() {
+  // ─── Volunteer Response: "I'm coming" confirmation modal ──
+  function promptSafeConfirm() {
+    var modal = document.getElementById('volunteer-safe-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+    } else {
+      confirmSafeComing();
+    }
+  }
+
+  function cancelSafeConfirm() {
+    var modal = document.getElementById('volunteer-safe-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function confirmSafeComing() {
+    cancelSafeConfirm();
+
     var alertId = currentAlertId;
     if (!alertId) {
       SafeHer.toast('No active alert selected');
@@ -186,21 +258,60 @@ SafeHer.volunteer = (function() {
     respondedAlertId = alertId;
 
     if (SafeHer.api && SafeHer.api.respondToAlert) {
-      SafeHer.api.respondToAlert(alertId, 'coming', function(err) {
+      SafeHer.api.respondToAlert(alertId, 'coming', function(err, data) {
         if (err) {
           SafeHer.toast(err);
           return;
         }
+
+        if (data && data.verification_code) {
+          currentVerificationCode = data.verification_code;
+        }
+
+        // Re-poll nearby alerts immediately to get exact coordinates and directions link
+        if (SafeHer.api.getNearbyAlerts) {
+          SafeHer.api.getNearbyAlerts(function(pErr, alerts) {
+            if (!pErr && alerts && alerts.length > 0) {
+              var matching = alerts.find(function(a) { return (a.id || a.alert_id) === alertId; }) || alerts[0];
+              matching.responded = true;
+              if (currentVerificationCode && !matching.verification_code) {
+                matching.verification_code = currentVerificationCode;
+              }
+              showAlertCardData(matching);
+            }
+          });
+        }
       });
     }
 
-    // Update volunteer UI immediately
+    // Update UI to reveal code and directions
     var actionsGroup = document.getElementById('volunteer-alert-actions');
-    var respondedBox = document.getElementById('volunteer-responded-status');
+    var confirmedContainer = document.getElementById('volunteer-confirmed-coming-container');
     if (actionsGroup) actionsGroup.style.display = 'none';
-    if (respondedBox) respondedBox.style.display = 'flex';
+    if (confirmedContainer) confirmedContainer.style.display = 'block';
 
-    SafeHer.toast('Status sent: You are on the way');
+    SafeHer.toast('Confirmed: You are on the way. Check your 4-digit code.');
+  }
+
+  // ─── Volunteer Response: "Can't continue" ─────────────────
+  function respondCantContinue() {
+    var alertId = currentAlertId || respondedAlertId;
+    if (alertId) {
+      dismissedAlertId = alertId;
+      respondedAlertId = null;
+      currentVerificationCode = null;
+
+      if (SafeHer.api && SafeHer.api.respondToAlert) {
+        SafeHer.api.respondToAlert(alertId, 'cannot', function(err) {
+          if (!err) {
+            SafeHer.toast('Response updated: You cannot continue');
+          }
+        });
+      }
+    }
+
+    hideAlertCard();
+    SafeHer.toast('Response updated: You cannot continue');
   }
 
   // ─── Volunteer Response: "Can't help" ──────────────────────
@@ -247,30 +358,114 @@ SafeHer.volunteer = (function() {
     }
   }
 
-  function renderVerificationBadge(status) {
-    var badge = document.getElementById('volunteer-verification-badge');
-    var textEl = document.getElementById('volunteer-verification-text');
-    var noteBox = document.getElementById('volunteer-note-box');
-    var noteInput = document.getElementById('volunteer-note-input');
-    var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : {};
+  // ─── Render Volunteer Badge & Verification Card ───────────
+  function renderProfileCard(profile) {
+    var status = profile.status || 'draft';
+    var level = profile.level || 'provisional';
+    var badge = profile.badge || (level === 'trusted' ? 'Trusted' : 'Provisional');
+    var completed = profile.completed_responses || 0;
+    var validUntil = profile.valid_until;
 
-    if (!badge || !textEl) return;
+    // 1. Suspended banner
+    var suspendedBox = document.getElementById('volunteer-suspended-box');
+    var toggle = document.getElementById('volunteer-available-toggle');
 
-    if (status === 'approved') {
-      badge.style.display = 'inline-flex';
-      badge.className = 'volunteer-badge-approved';
-      badge.innerHTML = '<span class="material-symbols-rounded" style="font-size:14px;">verified</span> Approved Volunteer';
-      if (noteBox) noteBox.style.display = 'none';
+    if (status === 'suspended') {
+      if (suspendedBox) suspendedBox.style.display = 'block';
+      if (toggle) {
+        toggle.checked = false;
+        toggle.disabled = true;
+      }
+      var descEl = document.getElementById('volunteer-status-desc');
+      if (descEl) descEl.textContent = 'Your account is paused while we review a report.';
     } else {
-      // Default: Pending approval
-      badge.style.display = 'inline-flex';
-      badge.className = 'volunteer-badge-pending';
-      badge.innerHTML = '<span class="material-symbols-rounded" style="font-size:14px;">hourglass_top</span> Pending approval';
-      if (noteBox) {
-        noteBox.style.display = 'block';
-        if (noteInput && profile.note) noteInput.value = profile.note;
+      if (suspendedBox) suspendedBox.style.display = 'none';
+      if (toggle) {
+        // (2) The "Available to help" switch works only when approved.
+        toggle.disabled = (status !== 'approved');
       }
     }
+
+    // 2. Badge & Status pill
+    var levelBadge = document.getElementById('volunteer-level-badge');
+    var levelText = document.getElementById('volunteer-level-text');
+    var statusPill = document.getElementById('volunteer-status-pill');
+    var completedEl = document.getElementById('volunteer-completed-responses');
+    var explanationEl = document.getElementById('volunteer-level-explanation');
+    var expiryTextEl = document.getElementById('volunteer-expiry-text');
+    var reverifyBtn = document.getElementById('volunteer-reverify-btn');
+
+    if (levelText) levelText.textContent = badge;
+    if (levelBadge) {
+      if (badge === 'Trusted') {
+        levelBadge.style.background = '#E8F5E9';
+        levelBadge.style.color = '#2E7D32';
+        levelBadge.style.borderColor = '#A5D6A7';
+      } else {
+        levelBadge.style.background = '#FCEFF3';
+        levelBadge.style.color = 'var(--crimson)';
+        levelBadge.style.borderColor = 'var(--crimson)';
+      }
+    }
+
+    if (statusPill) {
+      var displayStatus = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+      statusPill.textContent = 'Status: ' + displayStatus;
+      if (status === 'approved') {
+        statusPill.style.background = '#E8F5E9';
+        statusPill.style.color = '#2E7D32';
+      } else if (status === 'suspended' || status === 'rejected') {
+        statusPill.style.background = '#FFEBEE';
+        statusPill.style.color = '#C62828';
+      } else {
+        statusPill.style.background = '#F0F0F0';
+        statusPill.style.color = '#555';
+      }
+    }
+
+    if (completedEl) {
+      completedEl.textContent = completed + ' response' + (completed === 1 ? '' : 's');
+    }
+
+    if (explanationEl) {
+      explanationEl.textContent = 'Provisional volunteers see an approximate location first. You become Trusted after 3 good responses and 30 days.';
+    }
+
+    // Expiration date and Re-verify prompt 30 days before
+    if (expiryTextEl) {
+      if (validUntil) {
+        var dateOnly = String(validUntil).split(' ')[0];
+        expiryTextEl.textContent = 'Verification valid until: ' + dateOnly;
+
+        try {
+          var expDate = new Date(validUntil.replace(' ', 'T'));
+          var now = new Date();
+          var diffDays = (expDate - now) / (1000 * 60 * 60 * 24);
+
+          // If within 30 days of expiration or already expired, show "Re-verify" prompt
+          if (reverifyBtn) {
+            if (diffDays <= 30) {
+              reverifyBtn.style.display = 'inline-block';
+              reverifyBtn.textContent = diffDays <= 0 ? 'Expired - Re-verify' : 'Re-verify';
+            } else {
+              reverifyBtn.style.display = 'none';
+            }
+          }
+        } catch (e) {
+          if (reverifyBtn) reverifyBtn.style.display = 'none';
+        }
+      } else {
+        expiryTextEl.textContent = status === 'approved' ? 'Verification active' : 'Verification pending';
+        if (reverifyBtn) reverifyBtn.style.display = 'none';
+      }
+    }
+  }
+
+  function reverify() {
+    if (SafeHer.volunteerApply && SafeHer.volunteerApply.initOrRender) {
+      SafeHer.volunteerApply.initOrRender();
+    }
+    SafeHer.toast('Please review and re-submit your verification details');
   }
 
   function saveNote() {
@@ -288,7 +483,7 @@ SafeHer.volunteer = (function() {
       SafeHer.api.setVolunteerProfile(profile, function(err, saved) {
         if (!err) {
           SafeHer.toast('Note submitted. Status: Pending approval');
-          renderVerificationBadge((saved && saved.status) || 'pending');
+          renderProfileCard(saved || profile);
         } else {
           SafeHer.toast('Failed to save note');
         }
@@ -304,9 +499,13 @@ SafeHer.volunteer = (function() {
     var posText = document.getElementById('volunteer-pos-text');
 
     var isAvail = !!(profile && profile.isAvailable);
-    if (toggle) toggle.checked = isAvail;
+    if (toggle) {
+      toggle.checked = isAvail;
+      // Switch works only when approved
+      toggle.disabled = (profile.status !== 'approved');
+    }
 
-    if (isAvail) {
+    if (isAvail && profile.status === 'approved') {
       if (descEl) descEl.textContent = 'You are available to help nearby users in distress.';
       if (posRow) posRow.style.display = 'flex';
       if (posText && profile.lat && profile.lng) {
@@ -314,14 +513,22 @@ SafeHer.volunteer = (function() {
       }
       startPolling();
     } else {
-      if (descEl) descEl.textContent = 'Turn on to receive emergency alerts near you.';
+      if (descEl) {
+        if (profile.status === 'suspended') {
+          descEl.textContent = 'Your account is paused while we review a report.';
+        } else if (profile.status !== 'approved') {
+          descEl.textContent = 'Available to help is enabled only after application approval.';
+        } else {
+          descEl.textContent = 'Turn on to receive emergency alerts near you.';
+        }
+      }
       if (posRow) posRow.style.display = 'none';
       stopPolling();
       hideAlertCard();
     }
 
-    // Render verification state
-    renderVerificationBadge(profile.status || 'pending');
+    // Render verification state & badge
+    renderProfileCard(profile);
 
     // Trigger volunteer 5-step wizard or status screen
     if (SafeHer.volunteerApply && SafeHer.volunteerApply.initOrRender) {
@@ -332,7 +539,11 @@ SafeHer.volunteer = (function() {
     if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
       SafeHer.api.getVolunteerServerProfile(function(err, serverProf) {
         if (!err && serverProf) {
-          renderVerificationBadge(serverProf.status || 'pending');
+          renderProfileCard(serverProf);
+          if (toggle) {
+            toggle.disabled = (serverProf.status !== 'approved');
+            if (serverProf.status !== 'approved') toggle.checked = false;
+          }
         }
       });
     }
@@ -353,8 +564,13 @@ SafeHer.volunteer = (function() {
     init: init,
     render: render,
     toggleAvailable: toggleAvailable,
-    respondComing: respondComing,
+    promptSafeConfirm: promptSafeConfirm,
+    cancelSafeConfirm: cancelSafeConfirm,
+    confirmSafeComing: confirmSafeComing,
+    respondComing: promptSafeConfirm,
+    respondCantContinue: respondCantContinue,
     respondCantHelp: respondCantHelp,
+    reverify: reverify,
     saveNote: saveNote,
     startPolling: startPolling,
     stopPolling: stopPolling

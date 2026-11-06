@@ -392,6 +392,30 @@ SafeHer.profile = (function() {
         }
       }
 
+      // Incident Timeline
+      var timelineListEl = document.getElementById('detail-timeline-list');
+      if (timelineListEl) {
+        var events = data.timeline || [];
+        if (events.length === 0) {
+          timelineListEl.innerHTML = '<p style="font-size: 12px; color: var(--text-gray); margin: 0;">No timeline events recorded.</p>';
+        } else {
+          var tHtml = '';
+          for (var t = 0; t < events.length; t++) {
+            var ev = events[t];
+            var timeStr = ev.time ? String(ev.time).slice(11, 19) : '';
+            var detailsText = ev.details || (ev.actor_label + ' responded');
+            tHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-color);font-size:12px;">' +
+              '<div style="display:flex;align-items:center;gap:8px;">' +
+                '<span class="material-symbols-rounded" style="color:var(--crimson);font-size:16px;">timeline</span>' +
+                '<span style="color:var(--text-dark);font-weight:600;">' + escapeHtml(detailsText) + '</span>' +
+              '</div>' +
+              '<span style="font-size:11px;color:var(--text-gray);">' + escapeHtml(timeStr) + '</span>' +
+            '</div>';
+          }
+          timelineListEl.innerHTML = tHtml;
+        }
+      }
+
       // Render Leaflet route map
       setTimeout(function() {
         renderAlertDetailsMap(data);

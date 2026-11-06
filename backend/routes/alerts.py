@@ -793,6 +793,24 @@ def get_alert_details(alert_id):
         for row in cursor.fetchall()
     ]
 
+    # Fetch incident timeline events
+    cursor.execute('''
+        SELECT id, event_type, actor_label, details, created_at
+        FROM incident_events
+        WHERE alert_id = ?
+        ORDER BY id ASC;
+    ''', (alert_id,))
+    incident_timeline = [
+        {
+            "id": row['id'],
+            "event_type": row['event_type'],
+            "actor_label": row['actor_label'],
+            "details": row['details'],
+            "time": row['created_at']
+        }
+        for row in cursor.fetchall()
+    ]
+
     conn.close()
 
     return jsonify({
@@ -806,6 +824,7 @@ def get_alert_details(alert_id):
             "duration": duration_str,
             "contacts_notified": alert['notified_count'],
             "volunteers_responded": volunteers,
+            "timeline": incident_timeline,
             "route": route_points,
             "lat": alert['lat'],
             "lng": alert['lng'],
@@ -1182,6 +1201,14 @@ def submit_volunteer_feedback(alert_id):
         INSERT INTO volunteer_feedback (alert_id, volunteer_id, user_id, helpful, respectful, report_type, comment)
         VALUES (?, ?, ?, ?, ?, ?, ?);
     ''', (alert_id, volunteer_id, user['id'], 1 if helpful else 0, 1 if respectful else 0, report_type, comment))
+
+    # Add volunteer feedback summary to incident timeline as "Volunteer 1 responded" without names
+    from routes.volunteers import get_volunteer_alert_label
+    actor_label = get_volunteer_alert_label(cursor, alert_id, volunteer_id)
+    cursor.execute('''
+        INSERT INTO incident_events (alert_id, event_type, actor_label, details)
+        VALUES (?, 'volunteer_feedback', ?, ?);
+    ''', (alert_id, actor_label, f"{actor_label} responded"))
 
     # 5. Check if unsafe or inappropriate report -> immediately suspend volunteer
     suspended = False

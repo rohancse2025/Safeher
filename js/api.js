@@ -962,6 +962,10 @@ SafeHer.api = (function() {
                 lat: json.data.lat,
                 lng: json.data.lng,
                 status: json.data.status || 'pending',
+                level: json.data.level || 'provisional',
+                badge: json.data.badge || 'Provisional',
+                completed_responses: json.data.completed_responses || 0,
+                valid_until: json.data.valid_until || null,
                 note: json.data.note || '',
                 updatedAt: Date.now()
               };
@@ -1029,6 +1033,43 @@ SafeHer.api = (function() {
       } else {
         if (callback) callback(null, null);
       }
+    },
+
+    submitVolunteerFeedback: function(alertId, feedbackData, callback) {
+      if (useBackend()) {
+        apiFetch('/api/alerts/' + alertId + '/volunteer-feedback', {
+          method: 'POST',
+          body: JSON.stringify(feedbackData)
+        }).then(function(json) {
+          if (callback) callback(null, json.data);
+        }).catch(function(err) {
+          if (callback) callback(err.message, null);
+        });
+      } else {
+        if (callback) callback(null, { ok: true });
+      }
+    },
+
+    fetchResponderSelfieBlobUrl: function(selfieUrl, callback) {
+      if (!useBackend() || !selfieUrl) {
+        if (callback) callback(null, null);
+        return;
+      }
+      var token = this.getToken ? this.getToken() : null;
+      var headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      var url = selfieUrl.startsWith('http') ? selfieUrl : ((window.BACKEND_URL || 'http://localhost:5000') + (selfieUrl.startsWith('/') ? '' : '/') + selfieUrl);
+      fetch(url, {
+        headers: headers
+      }).then(function(res) {
+        if (!res.ok) throw new Error('Selfie fetch failed with status ' + res.status);
+        return res.blob();
+      }).then(function(blob) {
+        var blobUrl = URL.createObjectURL(blob);
+        if (callback) callback(null, blobUrl);
+      }).catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
     },
 
     getAvailableVolunteersCount: function(callback, coords) {

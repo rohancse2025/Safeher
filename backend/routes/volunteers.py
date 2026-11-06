@@ -246,20 +246,59 @@ def get_volunteer_profile():
     user_id = user['id']
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, available, lat, lng, status, note, updated_at FROM volunteers WHERE user_id = ?;', (user_id,))
+    cursor.execute('''
+        SELECT id, available, lat, lng, status, level, valid_until, note, updated_at
+        FROM volunteers WHERE user_id = ?;
+    ''', (user_id,))
     vol = cursor.fetchone()
-    conn.close()
 
     if not vol:
+        conn.close()
         return jsonify({
             "ok": True,
             "data": {
                 "registered": False,
                 "status": "pending",
+                "level": "provisional",
+                "badge": "Provisional",
                 "available": False,
+                "completed_responses": 0,
+                "valid_until": None,
                 "note": ""
             }
         }), 200
+
+    vol_id = vol['id']
+    cursor.execute('''
+        SELECT COUNT(*) AS cnt
+        FROM responses resp
+        JOIN alerts a ON resp.alert_id = a.id
+        WHERE resp.volunteer_id = ? AND resp.status = 'coming' AND a.status != 'active';
+    ''', (vol_id,))
+    comp_row = cursor.fetchone()
+    completed_responses = comp_row['cnt'] if comp_row else 0
+    conn.close()
+
+    lvl = vol['level'] or 'provisional'
+    badge = 'Trusted' if lvl == 'trusted' else 'Provisional'
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "registered": True,
+            "volunteer_id": vol['id'],
+            "status": vol['status'] or 'pending',
+            "level": lvl,
+            "badge": badge,
+            "available": bool(vol['available']),
+            "lat": vol['lat'],
+            "lng": vol['lng'],
+            "note": vol['note'] or '',
+            "completed_responses": completed_responses,
+            "valid_until": vol['valid_until'],
+            "updated_at": vol['updated_at']
+        }
+    }), 200
 
     return jsonify({
         "ok": True,
@@ -586,11 +625,29 @@ def respond_to_alert(alert_id):
         return jsonify({"ok": False, "error": f"Only approved volunteers can respond to alerts (current status: {vol_status})"}), 400
 
     # Check if volunteer has already responded to this alert
-    cursor.execute('SELECT id, verification_code FROM responses WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
+    cursor.execute('SELECT id, status, verification_code FROM responses WHERE alert_id = ? AND volunteer_id = ?;', (alert_id, volunteer_id))
     existing_resp = cursor.fetchone()
     if existing_resp:
-        conn.close()
-        return jsonify({"ok": False, "error": "You have already responded to this alert"}), 400
+        if status == 'cannot':
+            cursor.execute('''
+                UPDATE responses SET status = 'cannot' WHERE id = ?;
+            ''', (existing_resp['id'],))
+            actor_label = get_volunteer_alert_label(cursor, alert_id, volunteer_id)
+            log_incident_event(cursor, alert_id, 'volunteer_cannot', actor_label, f"{actor_label} cannot continue")
+            conn.commit()
+            conn.close()
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "alert_id": alert_id,
+                    "volunteer_id": volunteer_id,
+                    "status": "cannot",
+                    "message": "Response updated: You cannot continue"
+                }
+            }), 200
+        else:
+            conn.close()
+            return jsonify({"ok": False, "error": "You have already responded to this alert"}), 400
 
     verification_code = None
     if status == 'coming':

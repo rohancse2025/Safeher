@@ -32,6 +32,12 @@ SafeHer.sos = (function() {
   var BENGALURU_LAT = 12.9716;
   var BENGALURU_LNG = 77.5946;
 
+  // Active Responders and Post-Alert Feedback
+  var currentAlertResponders = [];
+  var feedbackAlertId = null;
+  var feedbackQueue = [];
+  var currentFeedbackVol = null;
+
   function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str)
@@ -453,6 +459,9 @@ SafeHer.sos = (function() {
       document.exitFullscreen().catch(function() {});
     }
 
+    var alertIdForFeedback = currentAlertId;
+    var respondersForFeedback = (currentAlertResponders && currentAlertResponders.length > 0) ? currentAlertResponders.slice() : [];
+
     if (currentAlertId) {
       if (SafeHer.api && SafeHer.api.endAlert) {
         SafeHer.api.endAlert(currentAlertId, enteredPin || '');
@@ -473,8 +482,15 @@ SafeHer.sos = (function() {
       SafeHer.home.setSOSActive(false);
     }
 
-    SafeHer.toast('SOS ended');
-    SafeHer.router.go('home');
+    renderResponders([]);
+    renderContactsResponding([]);
+
+    if (alertIdForFeedback && respondersForFeedback.length > 0) {
+      startFeedbackQueue(alertIdForFeedback, respondersForFeedback);
+    } else {
+      SafeHer.toast('SOS ended');
+      SafeHer.router.go('home');
+    }
   }
 
   // ─── Emergency Mode ───────────────────────────────────────
@@ -822,6 +838,9 @@ SafeHer.sos = (function() {
     }
 
     var endTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    var alertIdForFeedback = currentAlertId;
+    var respondersForFeedback = (currentAlertResponders && currentAlertResponders.length > 0) ? currentAlertResponders.slice() : [];
+
     if (currentAlertId) {
       if (SafeHer.api && SafeHer.api.endAlert) {
         SafeHer.api.endAlert(currentAlertId, enteredPin || '');
@@ -840,14 +859,19 @@ SafeHer.sos = (function() {
 
     var volunteerSubEl = document.getElementById('sos-status-sub');
     if (volunteerSubEl) volunteerSubEl.textContent = 'Waiting for volunteers...';
+    renderResponders([]);
     renderContactsResponding([]);
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
       SafeHer.home.setSOSActive(false);
     }
 
-    SafeHer.toast('SOS ended');
-    SafeHer.router.go('home');
+    if (alertIdForFeedback && respondersForFeedback.length > 0) {
+      startFeedbackQueue(alertIdForFeedback, respondersForFeedback);
+    } else {
+      SafeHer.toast('SOS ended');
+      SafeHer.router.go('home');
+    }
   }
 
   // ─── Volunteer Status Polling (every 5s) ───────────────────
@@ -877,14 +901,18 @@ SafeHer.sos = (function() {
         if (err || !data) return;
         var coming = data.volunteers_coming !== undefined ? data.volunteers_coming : 0;
         var contactResponses = data.contact_responses || [];
+        var responders = data.responders || [];
+        currentAlertResponders = responders;
         var act = SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
         if (act) {
           act.volunteersEnRoute = coming;
           act.volunteerStatus = coming > 0 ? (coming + ' volunteer' + (coming > 1 ? 's are' : ' is') + ' on the way') : 'Waiting for volunteers...';
           act.contactResponses = contactResponses;
+          act.responders = responders;
           SafeHer.api.setActiveSos(act);
         }
         updateVolunteerStatusDisplay();
+        renderResponders(responders);
         renderContactsResponding(contactResponses);
       });
     }
@@ -1237,8 +1265,240 @@ SafeHer.sos = (function() {
     }
   }
 
+  // ─── Responders List on Victim's Screen ───────────────────────
+  function renderResponders(responders) {
+    var listEl = document.getElementById('sos-responders-list');
+    var countEl = document.getElementById('sos-responders-count');
+    if (!listEl) return;
+
+    if (!responders || !Array.isArray(responders) || responders.length === 0) {
+      listEl.innerHTML = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Waiting for volunteers to respond...</p>';
+      if (countEl) countEl.textContent = '0 coming';
+      return;
+    }
+
+    if (countEl) {
+      countEl.textContent = responders.length + (responders.length === 1 ? ' coming' : ' coming');
+    }
+
+    var html = responders.map(function(r) {
+      var name = escapeHtml(r.first_name || 'Volunteer');
+      var badgeText = r.badge === 'Trusted' ? 'Verified volunteer, Trusted' : (r.completed_responses > 0 ? 'Verified volunteer' : 'Verified volunteer, New');
+      var completedCount = r.completed_responses || 0;
+      var code = escapeHtml(r.verification_code || '----');
+      var volId = r.volunteer_id;
+
+      return '<div class="responder-card" style="display: flex; align-items: center; justify-content: space-between; background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; gap: 10px;">' +
+        '<div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">' +
+          '<div style="position: relative; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: var(--crimson-bg); display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); flex-shrink: 0;">' +
+            '<img id="responder-selfie-' + volId + '" src="" alt="' + name + '" style="width: 100%; height: 100%; object-fit: cover; display: none;" />' +
+            '<span id="responder-placeholder-' + volId + '" class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">person</span>' +
+          '</div>' +
+          '<div style="min-width: 0; flex: 1;">' +
+            '<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">' +
+              '<strong style="font-size: 14px; color: var(--text-dark);">' + name + '</strong>' +
+              '<span style="font-size: 10px; font-weight: 700; background: #FCEFF3; color: var(--crimson); border: 1px solid var(--crimson); border-radius: 10px; padding: 1px 6px; white-space: nowrap;">' +
+                escapeHtml(badgeText) +
+              '</span>' +
+            '</div>' +
+            '<p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0;">' +
+              completedCount + ' completed response' + (completedCount === 1 ? '' : 's') +
+            '</p>' +
+            '<p style="font-size: 11px; font-weight: 600; color: #C62828; margin: 2px 0 0;">' +
+              'Ask them for the code' +
+            '</p>' +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align: right; background: #FFF; border: 1px dashed var(--crimson); border-radius: 6px; padding: 6px 10px; flex-shrink: 0;">' +
+          '<span style="font-size: 10px; font-weight: 600; color: var(--text-gray); display: block; text-transform: uppercase;">Code</span>' +
+          '<strong style="font-size: 18px; letter-spacing: 2px; color: var(--crimson); font-family: monospace;">' + code + '</strong>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    listEl.innerHTML = html;
+
+    // Asynchronously load authenticated selfies for responders
+    responders.forEach(function(r) {
+      if (r.selfie_url && SafeHer.api && SafeHer.api.fetchResponderSelfieBlobUrl) {
+        SafeHer.api.fetchResponderSelfieBlobUrl(r.selfie_url, function(err, blobUrl) {
+          if (!err && blobUrl) {
+            var imgEl = document.getElementById('responder-selfie-' + r.volunteer_id);
+            var phEl = document.getElementById('responder-placeholder-' + r.volunteer_id);
+            if (imgEl) {
+              imgEl.src = blobUrl;
+              imgEl.style.display = 'block';
+            }
+            if (phEl) phEl.style.display = 'none';
+          }
+        });
+      }
+    });
+  }
+
+  // ─── Post-Alert Volunteer Feedback Sheet ──────────────────────
+  function startFeedbackQueue(alertId, responders) {
+    feedbackAlertId = alertId;
+    feedbackQueue = responders.slice();
+    showNextFeedbackVolunteer();
+  }
+
+  function showNextFeedbackVolunteer() {
+    if (!feedbackQueue || feedbackQueue.length === 0) {
+      var modal = document.getElementById('sos-feedback-modal');
+      if (modal) modal.style.display = 'none';
+      currentFeedbackVol = null;
+      SafeHer.toast('SOS ended');
+      SafeHer.router.go('home');
+      return;
+    }
+
+    currentFeedbackVol = feedbackQueue[0];
+    var modal = document.getElementById('sos-feedback-modal');
+    if (!modal) {
+      SafeHer.toast('SOS ended');
+      SafeHer.router.go('home');
+      return;
+    }
+
+    var total = currentAlertResponders.length || 1;
+    var currentIdx = total - feedbackQueue.length + 1;
+    var queueBadge = document.getElementById('sos-feedback-queue-badge');
+    if (queueBadge) queueBadge.textContent = currentIdx + ' of ' + total;
+
+    var nameEl = document.getElementById('sos-feedback-vol-name');
+    var badgeEl = document.getElementById('sos-feedback-vol-badge');
+    var selfieImg = document.getElementById('sos-feedback-vol-selfie');
+    var avatarPh = document.getElementById('sos-feedback-vol-avatar-placeholder');
+
+    var firstName = currentFeedbackVol.first_name || 'Volunteer';
+    if (nameEl) nameEl.textContent = firstName;
+
+    var badgeText = currentFeedbackVol.badge === 'Trusted' ? 'Verified volunteer, Trusted' : (currentFeedbackVol.completed_responses > 0 ? 'Verified volunteer' : 'Verified volunteer, New');
+    if (badgeEl) badgeEl.textContent = badgeText;
+
+    if (currentFeedbackVol.selfie_url && SafeHer.api && SafeHer.api.fetchResponderSelfieBlobUrl) {
+      SafeHer.api.fetchResponderSelfieBlobUrl(currentFeedbackVol.selfie_url, function(err, blobUrl) {
+        if (!err && blobUrl && selfieImg) {
+          selfieImg.src = blobUrl;
+          selfieImg.style.display = 'block';
+          if (avatarPh) avatarPh.style.display = 'none';
+        } else {
+          if (selfieImg) selfieImg.style.display = 'none';
+          if (avatarPh) {
+            avatarPh.style.display = 'flex';
+            avatarPh.textContent = firstName.charAt(0).toUpperCase();
+          }
+        }
+      });
+    } else {
+      if (selfieImg) selfieImg.style.display = 'none';
+      if (avatarPh) {
+        avatarPh.style.display = 'flex';
+        avatarPh.textContent = firstName.charAt(0).toUpperCase();
+      }
+    }
+
+    // Reset radio buttons to Yes
+    var helpfulRadios = document.querySelectorAll('input[name="feedback-helpful"]');
+    helpfulRadios.forEach(function(r) { r.checked = (r.value === '1'); });
+
+    var respectRadios = document.querySelectorAll('input[name="feedback-respectful"]');
+    respectRadios.forEach(function(r) { r.checked = (r.value === '1'); });
+
+    // Reset report problem section
+    var reportFields = document.getElementById('sos-feedback-report-fields');
+    if (reportFields) reportFields.style.display = 'none';
+
+    var reportRadios = document.querySelectorAll('input[name="feedback-report-type"]');
+    reportRadios.forEach(function(r) { r.checked = false; });
+
+    var commentEl = document.getElementById('sos-feedback-comment');
+    if (commentEl) commentEl.value = '';
+
+    modal.style.display = 'flex';
+  }
+
+  function toggleFeedbackReport() {
+    var fields = document.getElementById('sos-feedback-report-fields');
+    if (!fields) return;
+    if (fields.style.display === 'none' || !fields.style.display) {
+      fields.style.display = 'block';
+      var firstRadio = document.querySelector('input[name="feedback-report-type"][value="unsafe"]');
+      if (firstRadio) firstRadio.checked = true;
+    } else {
+      fields.style.display = 'none';
+      var reportRadios = document.querySelectorAll('input[name="feedback-report-type"]');
+      reportRadios.forEach(function(r) { r.checked = false; });
+    }
+  }
+
+  function skipVolunteerFeedback() {
+    if (feedbackQueue && feedbackQueue.length > 0) {
+      feedbackQueue.shift();
+    }
+    showNextFeedbackVolunteer();
+  }
+
+  function submitVolunteerFeedback() {
+    if (!currentFeedbackVol || !feedbackAlertId) {
+      skipVolunteerFeedback();
+      return;
+    }
+
+    var helpfulRadio = document.querySelector('input[name="feedback-helpful"]:checked');
+    var helpful = helpfulRadio ? (helpfulRadio.value === '1') : true;
+
+    var respectRadio = document.querySelector('input[name="feedback-respectful"]:checked');
+    var respectful = respectRadio ? (respectRadio.value === '1') : true;
+
+    var reportFields = document.getElementById('sos-feedback-report-fields');
+    var reportType = 'none';
+    if (reportFields && reportFields.style.display !== 'none') {
+      var repRadio = document.querySelector('input[name="feedback-report-type"]:checked');
+      if (repRadio) reportType = repRadio.value;
+    }
+
+    var commentEl = document.getElementById('sos-feedback-comment');
+    var comment = commentEl ? commentEl.value.trim() : '';
+
+    var payload = {
+      volunteer_id: currentFeedbackVol.volunteer_id,
+      helpful: helpful,
+      respectful: respectful,
+      report_type: reportType,
+      comment: comment
+    };
+
+    if (SafeHer.api && SafeHer.api.submitVolunteerFeedback) {
+      SafeHer.api.submitVolunteerFeedback(feedbackAlertId, payload, function(err) {
+        if (err) {
+          SafeHer.toast('Feedback error: ' + err);
+        } else {
+          if (reportType === 'unsafe' || reportType === 'inappropriate') {
+            SafeHer.toast('Report recorded. Volunteer paused pending review.');
+          } else {
+            SafeHer.toast('Feedback submitted. Thank you.');
+          }
+        }
+        if (feedbackQueue && feedbackQueue.length > 0) {
+          feedbackQueue.shift();
+        }
+        showNextFeedbackVolunteer();
+      });
+    } else {
+      if (feedbackQueue && feedbackQueue.length > 0) {
+        feedbackQueue.shift();
+      }
+      showNextFeedbackVolunteer();
+    }
+  }
+
   return {
     init: init,
+    toggleFeedbackReport: toggleFeedbackReport,
+    skipVolunteerFeedback: skipVolunteerFeedback,
+    submitVolunteerFeedback: submitVolunteerFeedback,
     startCountdown: startCountdown,
     cancelCountdown: cancelCountdown,
     startSilentMode: startSilentMode,

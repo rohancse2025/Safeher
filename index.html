@@ -428,10 +428,30 @@
         </div>
       </div>
 
-      <!-- Live Volunteers Status -->
-      <div class="sos-status-box">
-        <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">hourglass_top</span>
-        <span class="sos-status-label" id="sos-status-sub">Waiting for volunteers...</span>
+      <!-- Call 112 Button (Prominent above responders) -->
+      <div class="sos-call-112-row" style="margin-bottom: 10px;">
+        <a href="tel:112" class="btn btn-primary btn-crimson" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--crimson); color: var(--white); font-weight: 700; font-size: 16px; padding: 14px; text-decoration: none; border-radius: 8px; width: 100%;">
+          <span class="material-symbols-rounded" style="font-size: 22px;">call</span>Call 112
+        </a>
+      </div>
+
+      <!-- Code Mismatch Warning Note -->
+      <div id="sos-code-mismatch-note" style="background: #FFF5F5; border: 1px solid #FFCDD2; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 8px;">
+        <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 18px; margin-top: 1px;">security</span>
+        <span style="font-size: 12px; font-weight: 600; color: #C62828; line-height: 1.4;">If the code does not match, do not open the door and call 112.</span>
+      </div>
+
+      <!-- Live Responders List (Replaces "N volunteers on the way" line) -->
+      <div id="sos-responders-container" style="margin-bottom: 14px; background: var(--white); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--crimson); display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 17px;">shield_person</span>Responders on the way
+          </span>
+          <span id="sos-responders-count" style="font-size: 11px; font-weight: 600; color: var(--crimson); background: var(--crimson-bg); padding: 2px 8px; border-radius: 10px;">0 coming</span>
+        </div>
+        <div id="sos-responders-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Waiting for volunteers to respond...</p>
+        </div>
       </div>
 
       <!-- Contacts responding list -->
@@ -445,13 +465,6 @@
         <div id="sos-contacts-responding-list" style="display: flex; flex-direction: column; gap: 6px;">
           <p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 4px 0;">Waiting for contact responses...</p>
         </div>
-      </div>
-
-      <!-- Call 112 Button -->
-      <div class="sos-call-112-row" style="margin-bottom: 14px;">
-        <a href="tel:112" class="btn btn-primary btn-crimson" style="background: var(--crimson); color: var(--white); gap: 8px; font-weight: 600; text-decoration: none;">
-          <span class="material-symbols-rounded">call</span>Call 112
-        </a>
       </div>
 
       <!-- Notified Contacts Section -->
@@ -1439,6 +1452,48 @@
       <!-- Volunteer Application Wizard & Status Container -->
       <div id="volunteer-app-container" style="margin-bottom:16px;"></div>
 
+      <!-- Suspended Account Warning -->
+      <div id="volunteer-suspended-box" style="display: none; background: #FFF5F5; border: 1px solid #FFCDD2; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 22px; margin-top: 1px;">block</span>
+          <div>
+            <strong style="font-size: 13px; color: #C62828; display: block; margin-bottom: 2px;">Your account is paused while we review a report</strong>
+            <p style="font-size: 12px; color: var(--text-gray); margin: 0; line-height: 1.4;">
+              Volunteer matching and availability are temporarily paused while our team reviews recent feedback.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Volunteer Status and Badge Card -->
+      <div id="volunteer-badge-profile-card" class="volunteer-status-card" style="margin-bottom: 12px; padding: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="volunteer-level-badge" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; background: #FCEFF3; color: var(--crimson); border: 1px solid var(--crimson);">
+              <span class="material-symbols-rounded" style="font-size: 14px;">shield</span>
+              <span id="volunteer-level-text">Provisional</span>
+            </span>
+            <span id="volunteer-status-pill" style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #F0F0F0; color: #555;">
+              Status: Draft
+            </span>
+          </div>
+          <span id="volunteer-completed-responses" style="font-size: 12px; font-weight: 600; color: var(--text-dark);">
+            0 responses
+          </span>
+        </div>
+
+        <p id="volunteer-level-explanation" style="font-size: 12px; color: var(--text-gray); margin: 0 0 10px; line-height: 1.4;">
+          Provisional volunteers see an approximate location first. You become Trusted after 3 good responses and 30 days.
+        </p>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-gray); border-top: 1px solid var(--border-color); padding-top: 8px;">
+          <span id="volunteer-expiry-text">Verification valid until: -</span>
+          <button type="button" id="volunteer-reverify-btn" class="btn btn-outline" onclick="SafeHer.volunteer.reverify()" style="display: none; padding: 3px 8px; font-size: 11px; color: var(--crimson); border-color: var(--crimson);">
+            Re-verify
+          </button>
+        </div>
+      </div>
+
       <!-- Volunteer Status Card with Toggle -->
       <div class="volunteer-status-card">
         <div class="volunteer-toggle-row">
@@ -1476,27 +1531,58 @@
         <div class="volunteer-alert-body">
           <div class="volunteer-alert-info">
             <p class="volunteer-alert-title">User needs emergency help nearby</p>
-            <p class="volunteer-alert-distance">
+            <!-- Distance Band & Approximate Area first -->
+            <p class="volunteer-alert-distance" style="margin-bottom: 2px;">
               <span class="material-symbols-rounded" style="font-size:16px;">near_me</span>
               <span id="volunteer-alert-dist-text">Calculating distance...</span>
             </p>
+            <p id="volunteer-alert-approx-area" style="font-size: 12px; color: var(--text-gray); margin: 0 0 8px;">
+              Approximate area
+            </p>
           </div>
 
-          <!-- Google Maps Link -->
-          <a id="volunteer-alert-map-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline volunteer-map-btn">
-            <span class="material-symbols-rounded">map</span>Open Location on Map
-          </a>
+          <!-- Silent Alert Extra Warning (Trusted volunteers only) -->
+          <div id="volunteer-alert-silent-warning" style="display: none; background: #FFF0F2; border: 1px solid #FFCDD2; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-rounded" style="font-size: 18px; color: var(--crimson);">warning</span>
+              <strong style="font-size: 12px; color: var(--crimson);">High-risk alert. Call 112. Do not call or message her.</strong>
+            </div>
+          </div>
 
-          <!-- Safety Guidance -->
-          <div class="volunteer-safety-box">
+          <!-- Safety Reminder (Always visible first) -->
+          <div class="volunteer-safety-box" style="margin-bottom: 10px;">
             <span class="material-symbols-rounded volunteer-safety-icon">warning</span>
-            <p class="volunteer-safety-text">Call 112. Do not confront anyone.</p>
+            <p class="volunteer-safety-text">Call 112 first. Do not confront anyone.</p>
+          </div>
+
+          <!-- Exact Location & Verification Code Container (revealed when responded 'coming') -->
+          <div id="volunteer-confirmed-coming-container" style="display: none; margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+            <!-- Directions Button -->
+            <a id="volunteer-alert-map-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline volunteer-map-btn" style="margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none;">
+              <span class="material-symbols-rounded">directions</span>Directions to Her Location
+            </a>
+
+            <!-- 4-digit verification code block -->
+            <div style="background: #FCEFF3; border: 1px solid var(--crimson); border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 10px;">
+              <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--crimson); display: block; margin-bottom: 4px;">Your 4-Digit Verification Code</span>
+              <div id="volunteer-verification-code-display" style="font-size: 28px; font-weight: 800; letter-spacing: 6px; color: var(--crimson); font-family: monospace; margin: 4px 0 6px;">
+                ----
+              </div>
+              <p style="font-size: 12px; color: var(--text-dark); margin: 0; font-weight: 500; line-height: 1.4;">
+                Tell her this code when you arrive. Do not go if you feel unsafe.
+              </p>
+            </div>
+
+            <!-- Can't Continue Button -->
+            <button type="button" class="btn btn-outline" onclick="SafeHer.volunteer.respondCantContinue()" style="width: 100%; border-color: #999; color: var(--text-dark); font-size: 13px;">
+              Can’t continue
+            </button>
           </div>
         </div>
 
-        <!-- Action Buttons -->
+        <!-- Action Buttons (I'm coming / Can't help) -->
         <div class="volunteer-alert-actions" id="volunteer-alert-actions">
-          <button class="btn btn-crimson volunteer-btn" onclick="SafeHer.volunteer.respondComing()">
+          <button class="btn btn-crimson volunteer-btn" onclick="SafeHer.volunteer.promptSafeConfirm()">
             <span class="material-symbols-rounded">directions_run</span>I’m coming
           </button>
           <button class="btn btn-outline volunteer-btn" onclick="SafeHer.volunteer.respondCantHelp()">
@@ -2265,6 +2351,14 @@
           <p style="font-size: 12px; color: var(--text-gray); margin: 0;">Loading responses...</p>
         </div>
       </div>
+
+      <!-- Incident Timeline Card -->
+      <div class="settings-section" id="detail-timeline-section">
+        <p class="settings-section-title">Incident Timeline</p>
+        <div id="detail-timeline-list" class="settings-card" style="padding: 12px;">
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0;">No timeline events recorded.</p>
+        </div>
+      </div>
     </div>
 
     <!-- Too Many Alerts Abuse Limit Modal -->
@@ -2537,6 +2631,108 @@
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <button type="button" class="btn btn-secondary" onclick="SafeHer.sos.resolveUneasyAlert()" style="width: 100%;">I'm OK</button>
         <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.escalateUneasyAlert('normal')" style="width: 100%;">I need more help</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Volunteer Safety Confirmation Modal ───────────────── -->
+  <div id="volunteer-safe-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
+    <div class="modal-sheet" style="text-align: center; padding: 24px 20px; border-radius: 8px; max-width: 340px; width: 90%;">
+      <span class="material-symbols-rounded" style="font-size: 40px; color: var(--crimson); margin-bottom: 8px;">health_and_safety</span>
+      <h3 style="font-size: 17px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">Are you safe to go?</h3>
+      <p style="font-size: 13px; color: var(--text-gray); margin: 0 0 18px; line-height: 1.4;">
+        Call 112 first. Do not confront anyone. Only proceed if your route and immediate surroundings are safe.
+      </p>
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn btn-outline" onclick="SafeHer.volunteer.cancelSafeConfirm()" style="flex: 1;">Cancel</button>
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.volunteer.confirmSafeComing()" style="flex: 1;">Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SOS Post-Alert Volunteer Feedback Modal ───────────── -->
+  <div id="sos-feedback-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center;">
+    <div class="modal-sheet" style="padding: 20px 18px; border-radius: 8px; max-width: 380px; width: 92%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+        <h3 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0; display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">rate_review</span>Volunteer Feedback
+        </h3>
+        <span id="sos-feedback-queue-badge" style="font-size: 11px; background: var(--crimson-bg); color: var(--crimson); font-weight: 600; padding: 2px 8px; border-radius: 10px;">1 of 1</span>
+      </div>
+
+      <!-- Volunteer Card in Feedback Form -->
+      <div style="display: flex; align-items: center; gap: 12px; background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 14px;">
+        <img id="sos-feedback-vol-selfie" src="" alt="Volunteer" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--crimson); display: none;" />
+        <div id="sos-feedback-vol-avatar-placeholder" style="width: 44px; height: 44px; border-radius: 50%; background: var(--crimson-bg); color: var(--crimson); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;">
+          V
+        </div>
+        <div>
+          <strong id="sos-feedback-vol-name" style="font-size: 14px; color: var(--text-dark); display: block;">Volunteer</strong>
+          <span id="sos-feedback-vol-badge" style="font-size: 11px; color: var(--crimson); font-weight: 600;">Verified Volunteer</span>
+        </div>
+      </div>
+
+      <!-- Question 1: Was this person helpful? -->
+      <div style="margin-bottom: 14px;">
+        <label style="font-size: 13px; font-weight: 600; color: var(--text-dark); display: block; margin-bottom: 6px;">
+          Was this person helpful?
+        </label>
+        <div style="display: flex; gap: 10px;">
+          <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+            <input type="radio" name="feedback-helpful" value="1" checked style="accent-color: var(--crimson);" /> Yes
+          </label>
+          <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+            <input type="radio" name="feedback-helpful" value="0" style="accent-color: var(--crimson);" /> No
+          </label>
+        </div>
+      </div>
+
+      <!-- Question 2: Were they respectful? -->
+      <div style="margin-bottom: 14px;">
+        <label style="font-size: 13px; font-weight: 600; color: var(--text-dark); display: block; margin-bottom: 6px;">
+          Were they respectful?
+        </label>
+        <div style="display: flex; gap: 10px;">
+          <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+            <input type="radio" name="feedback-respectful" value="1" checked style="accent-color: var(--crimson);" /> Yes
+          </label>
+          <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+            <input type="radio" name="feedback-respectful" value="0" style="accent-color: var(--crimson);" /> No
+          </label>
+        </div>
+      </div>
+
+      <!-- Report a Problem Section -->
+      <div style="margin-bottom: 14px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
+        <button type="button" id="sos-feedback-report-toggle" class="btn btn-outline" onclick="SafeHer.sos.toggleFeedbackReport()" style="width: 100%; font-size: 12px; color: #C62828; border-color: #EF9A9A; padding: 6px 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span class="material-symbols-rounded" style="font-size: 16px;">flag</span>Report a problem
+        </button>
+
+        <div id="sos-feedback-report-fields" style="display: none; margin-top: 10px; background: #FFF5F5; border: 1px solid #FFCDD2; border-radius: 6px; padding: 10px;">
+          <p style="font-size: 11px; font-weight: 600; color: #C62828; margin: 0 0 8px;">
+            ⚠️ A report pauses the volunteer until it is reviewed by administrators.
+          </p>
+          <label style="font-size: 12px; font-weight: 600; color: var(--text-dark); display: block; margin-bottom: 4px;">Reason:</label>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="feedback-report-type" value="unsafe" style="accent-color: var(--crimson);" /> Felt unsafe
+            </label>
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="feedback-report-type" value="inappropriate" style="accent-color: var(--crimson);" /> Inappropriate behaviour
+            </label>
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="feedback-report-type" value="other" style="accent-color: var(--crimson);" /> Other
+            </label>
+          </div>
+          <label style="font-size: 12px; font-weight: 600; color: var(--text-dark); display: block; margin-bottom: 4px;">Comment / Details:</label>
+          <textarea id="sos-feedback-comment" class="form-input" rows="2" placeholder="Please describe what happened..." style="font-size: 12px; resize: vertical;"></textarea>
+        </div>
+      </div>
+
+      <!-- Actions: Skip and Submit -->
+      <div style="display: flex; gap: 10px; margin-top: 14px;">
+        <button type="button" class="btn btn-outline" onclick="SafeHer.sos.skipVolunteerFeedback()" style="flex: 1;">Skip</button>
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.submitVolunteerFeedback()" style="flex: 1;">Submit</button>
       </div>
     </div>
   </div>
