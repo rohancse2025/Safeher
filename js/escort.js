@@ -15,6 +15,8 @@ SafeHer.escort = (function() {
   var selectedCheckin = '10'; // 5, 10, 15, 30 or 'off'
   var selectedDeviation = 200; // 100, 200, 300, 500
   var isPickingOnMap = false;
+  var currentTravelMode = 'driving'; // 'driving', 'walking', 'transit'
+  var userOverrodeMode = false;
 
   var polylineLayer = null;
   var startMarker = null;
@@ -281,8 +283,7 @@ SafeHer.escort = (function() {
         attributionControl: false
       }).setView([userOrigin.lat, userOrigin.lng], 13);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19
       }).addTo(setupMap);
 
@@ -440,6 +441,26 @@ SafeHer.escort = (function() {
       });
   }
 
+  // ─── Travel Mode Selection ────────────────────────────────
+  function setTravelMode(mode, fromClick) {
+    if (fromClick) userOverrodeMode = true;
+    currentTravelMode = mode || 'driving';
+    ['driving', 'walking', 'transit'].forEach(function(m) {
+      var btn = document.getElementById('escort-mode-' + m);
+      if (btn) {
+        if (m === currentTravelMode) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }
+    });
+    var autoBadge = document.getElementById('escort-mode-auto-badge');
+    if (autoBadge) {
+      autoBadge.style.display = (!userOverrodeMode) ? 'inline-block' : 'none';
+    }
+    if (currentDest) {
+      fetchRoute();
+    }
+  }
+
   // ─── OSRM Route Fetching & Display ──────────────────────────
   function fetchRoute() {
     if (!currentDest || currentDest.lat === undefined || currentDest.lng === undefined) {
@@ -460,49 +481,93 @@ SafeHer.escort = (function() {
       var destLat = currentDest.lat;
       var destLng = currentDest.lng;
 
-      var walkingUrl = 'https://router.project-osrm.org/route/v1/walking/' +
+      var directDistM = haversineDistM(startLat, startLng, destLat, destLng);
+      var directKm = directDistM / 1000.0;
+
+      // Unhide travel mode options
+      var modeWrap = document.getElementById('escort-travel-mode-wrap');
+      if (modeWrap) modeWrap.style.display = 'block';
+
+      // Auto-detect realistic travel mode based on distance if user has not overridden
+      if (!userOverrodeMode) {
+        currentTravelMode = (directKm > 2.5) ? 'driving' : 'walking';
+        ['driving', 'walking', 'transit'].forEach(function(m) {
+          var btn = document.getElementById('escort-mode-' + m);
+          if (btn) {
+            if (m === currentTravelMode) btn.classList.add('active');
+            else btn.classList.remove('active');
+          }
+        });
+        var autoBadge = document.getElementById('escort-mode-auto-badge');
+        if (autoBadge) autoBadge.style.display = 'inline-block';
+      }
+
+      // Check walk safety warning (walking alone > 5 km is a high safety concern)
+      var walkWarn = document.getElementById('escort-walk-warning');
+      var walkWarnKm = document.getElementById('escort-walk-warn-km');
+      if (walkWarn) {
+        if (currentTravelMode === 'walking' && directKm > 5.0) {
+          if (walkWarnKm) walkWarnKm.textContent = directKm.toFixed(1) + ' km';
+          walkWarn.style.display = 'block';
+        } else {
+          walkWarn.style.display = 'none';
+        }
+      }
+
+      var osrmProfile = (currentTravelMode === 'walking') ? 'walking' : 'driving';
+      var osrmUrl = 'https://router.project-osrm.org/route/v1/' + osrmProfile + '/' +
         startLng + ',' + startLat + ';' + destLng + ',' + destLat +
         '?overview=full&geometries=geojson';
 
-      fetchWithTimeout(walkingUrl, 7000)
+      fetchWithTimeout(osrmUrl, 7000)
         .then(function(res) {
-          if (!res.ok) throw new Error('Walking route HTTP ' + res.status);
+          if (!res.ok) throw new Error(osrmProfile + ' route HTTP ' + res.status);
           return res.json();
         })
         .then(function(data) {
           if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
-            applyRouteData(data.routes[0], 'Walking Route', null);
+            var label = (currentTravelMode === 'driving') ? 'Auto / Cab (~30 km/h)' :
+                        (currentTravelMode === 'transit') ? 'Public Transit (~22 km/h)' :
+                        'Walking (Footpath ~4.5 km/h)';
+            applyRouteData(data.routes[0], label, null);
           } else {
-            throw new Error('Walking profile unavailable');
+            throw new Error('OSRM route unavailable');
           }
         })
         .catch(function() {
-          var drivingUrl = 'https://router.project-osrm.org/route/v1/driving/' +
+          var fallbackProfile = (osrmProfile === 'walking') ? 'driving' : 'walking';
+          var fallbackUrl = 'https://router.project-osrm.org/route/v1/' + fallbackProfile + '/' +
             startLng + ',' + startLat + ';' + destLng + ',' + destLat +
             '?overview=full&geometries=geojson';
 
-          fetchWithTimeout(drivingUrl, 7000)
-            .then(function(res) {
-              if (!res.ok) throw new Error('Driving route HTTP ' + res.status);
-              return res.json();
+          fetchWithTimeout(fallbackUrl, 6000)
+            .then(function(res2) {
+              if (!res2.ok) throw new Error('Fallback HTTP ' + res2.status);
+              return res2.json();
             })
             .then(function(drvData) {
               if (drvData && drvData.code === 'Ok' && drvData.routes && drvData.routes.length > 0) {
-                applyRouteData(drvData.routes[0], 'Approximate route (driving)', null);
+                applyRouteData(drvData.routes[0], 'Approximate route (' + fallbackProfile + ')', null);
               } else {
-                throw new Error('Driving profile unavailable');
+                throw new Error('Fallback failed');
               }
             })
             .catch(function() {
               var directPoints = [[startLat, startLng], [destLat, destLng]];
-              var directDistM = haversineDistM(startLat, startLng, destLat, destLng);
-              var estMins = Math.max(5, Math.round((directDistM / 1000) / 4.5 * 60));
+              var estMins;
+              if (currentTravelMode === 'driving') {
+                estMins = Math.max(5, Math.round((directKm / 30.0) * 60 + 3));
+              } else if (currentTravelMode === 'transit') {
+                estMins = Math.max(10, Math.round((directKm / 22.0) * 60 + 8));
+              } else {
+                estMins = Math.max(3, Math.round((directKm / 4.5) * 60));
+              }
 
               applyStraightLineRoute(
                 directPoints,
                 directDistM,
                 estMins,
-                'Could not calculate road route from OSRM. Falling back to direct straight line.'
+                'Could not calculate road route from OSRM. Direct path used for tracking.'
               );
             });
         });
@@ -519,14 +584,28 @@ SafeHer.escort = (function() {
       }
 
       var distM = routeObj.distance || haversineDistM(userOrigin.lat, userOrigin.lng, currentDest.lat, currentDest.lng);
-      var durSec = routeObj.duration || ((distM / 1000) / 4.5 * 3600);
-      var durMins = Math.max(5, Math.round(durSec / 60));
+      var distKm = distM / 1000.0;
+      var durMins;
+
+      if (currentTravelMode === 'driving') {
+        durMins = Math.max(5, Math.round((distKm / 30.0) * 60 + 3));
+      } else if (currentTravelMode === 'transit') {
+        durMins = Math.max(10, Math.round((distKm / 22.0) * 60 + 8));
+      } else {
+        durMins = Math.max(3, Math.round((distKm / 4.5) * 60));
+      }
 
       if (profileLabel) profileLabel.textContent = label;
       if (distLabel) {
-        distLabel.textContent = distM >= 1000 ? (distM / 1000).toFixed(1) + ' km' : Math.round(distM) + ' m';
+        distLabel.textContent = distM >= 1000 ? distKm.toFixed(1) + ' km' : Math.round(distM) + ' m';
       }
       if (minsInput) minsInput.value = durMins;
+
+      var etaText = document.getElementById('escort-route-eta-text');
+      if (etaText) {
+        var etaTime = new Date(Date.now() + durMins * 60000);
+        etaText.textContent = etaTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + durMins + ' min)';
+      }
 
       if (warningBox) {
         if (warningMsg) {
@@ -544,11 +623,18 @@ SafeHer.escort = (function() {
 
     function applyStraightLineRoute(points, distM, estMins, warningMsg) {
       currentRoutePoints = points;
-      if (profileLabel) profileLabel.textContent = 'Straight Line Route';
+      var distKm = distM / 1000.0;
+      if (profileLabel) profileLabel.textContent = 'Direct Path Route';
       if (distLabel) {
-        distLabel.textContent = distM >= 1000 ? (distM / 1000).toFixed(1) + ' km' : Math.round(distM) + ' m';
+        distLabel.textContent = distM >= 1000 ? distKm.toFixed(1) + ' km' : Math.round(distM) + ' m';
       }
       if (minsInput) minsInput.value = estMins;
+
+      var etaText = document.getElementById('escort-route-eta-text');
+      if (etaText) {
+        var etaTime = new Date(Date.now() + estMins * 60000);
+        etaText.textContent = etaTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + estMins + ' min)';
+      }
 
       if (warningBox) {
         warningBox.textContent = warningMsg;
@@ -638,19 +724,20 @@ SafeHer.escort = (function() {
     if (!listEl) return;
 
     if (!SafeHer.api || !SafeHer.api.getContacts) {
-      listEl.innerHTML = '<p style="font-size:12px;color:var(--text-gray);padding:8px;">No contacts API available.</p>';
+      renderEmptyContacts(listEl);
       return;
     }
 
     SafeHer.api.getContacts(function(err, contacts) {
-      if (err || !contacts || contacts.length === 0) {
-        listEl.innerHTML = '<p style="font-size:12px;color:var(--text-gray);padding:8px;">No contacts found. Please add contacts in the Contacts tab.</p>';
+      var list = (contacts && Array.isArray(contacts)) ? contacts : [];
+      if (list.length === 0) {
+        renderEmptyContacts(listEl);
         return;
       }
 
       var html = '';
-      contacts.forEach(function(c) {
-        var isClose = !!(c.is_close || c.close || (c.relation && /emergency|family|parent|spouse|close/i.test(c.relation)));
+      list.forEach(function(c) {
+        var isClose = !!(c.is_close || c.close || (c.relation && /emergency|family|parent|spouse|close|mom|dad/i.test(c.relation)));
 
         html += '<label class="escort-contact-row" style="cursor:pointer;">' +
           '<input type="checkbox" class="escort-contact-cb" value="' + c.id + '" ' + (isClose ? 'checked' : '') + ' style="accent-color:var(--crimson);width:16px;height:16px;" />' +
@@ -665,6 +752,46 @@ SafeHer.escort = (function() {
       });
       listEl.innerHTML = html;
     });
+  }
+
+  function renderEmptyContacts(listEl) {
+    listEl.innerHTML = 
+      '<div style="padding:12px 8px;text-align:center;background:#FFF9FA;border-radius:8px;">' +
+        '<div style="display:inline-flex;align-items:center;gap:6px;color:#9E1B32;font-size:12px;font-weight:600;margin-bottom:6px;">' +
+          '<span class="material-symbols-rounded" style="font-size:18px;">shield</span> Solo Journey Protection' +
+        '</div>' +
+        '<p style="font-size:11px;color:var(--text-gray);margin:0 0 10px 0;line-height:1.4;">' +
+          'No contacts added yet. Your phone will actively monitor your route, detect abnormal stops, and sound local alarms.' +
+        '</p>' +
+        '<button type="button" class="btn btn-outline" onclick="SafeHer.escort.addDemoContact()" style="padding:6px 14px;font-size:11px;font-weight:600;color:var(--crimson);border-color:var(--crimson);width:auto;margin:0 auto;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">' +
+          '<span class="material-symbols-rounded" style="font-size:16px;">person_add</span> + Add Sample Contact (Mom)' +
+        '</button>' +
+      '</div>';
+  }
+
+  function addDemoContact() {
+    var sample = {
+      name: 'Mom (Trusted Contact)',
+      phone: '+91 98765 43210',
+      email: 'mom.safeher@example.com',
+      relationship: 'Family',
+      is_close: true,
+      close: 1
+    };
+
+    if (SafeHer.api && SafeHer.api.addContact) {
+      SafeHer.api.addContact(sample, function() {
+        if (SafeHer.toast) SafeHer.toast('Sample contact added and pre-selected!');
+        loadContactsList();
+      });
+    } else {
+      var all = (SafeHer.storage && SafeHer.storage.get('contacts')) || [];
+      sample.id = Date.now();
+      all.push(sample);
+      if (SafeHer.storage) SafeHer.storage.set('contacts', all);
+      if (SafeHer.toast) SafeHer.toast('Sample contact added and pre-selected!');
+      loadContactsList();
+    }
   }
 
   // ─── Start Escort Journey ──────────────────────────────────
@@ -712,8 +839,37 @@ SafeHer.escort = (function() {
         startBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">route</span>Start Escort';
       }
 
-      if (err) {
-        if (SafeHer.toast) SafeHer.toast('Error starting escort: ' + err);
+      // Autonomous Local Guardian Fallback when offline or server unreachable
+      if (err || !result || !result.id) {
+        console.warn('[Escort] Backend unreachable or unauthenticated (' + err + '). Starting Autonomous Local Guardian.');
+        var localId = 'local_' + Date.now();
+        var localEscort = {
+          id: localId,
+          is_local_only: true,
+          user_id: 'local_user',
+          dest_name: currentDest.name,
+          dest_lat: currentDest.lat,
+          dest_lng: currentDest.lng,
+          route: routePayload,
+          route_distance_m: haversineDistM(userOrigin.lat, userOrigin.lng, currentDest.lat, currentDest.lng),
+          started_at: new Date().toISOString(),
+          expected_end: new Date(Date.now() + expectedMinutes * 60000).toISOString(),
+          status: 'On route',
+          checkin_interval_min: selectedCheckin === 'off' ? null : parseInt(selectedCheckin, 10),
+          deviation_m: selectedDeviation,
+          tokens: {},
+          share_links: {}
+        };
+
+        var shareMsg = encodeURIComponent("I started a journey to " + currentDest.name + ". Expected arrival: " + (document.getElementById('escort-route-eta-text') ? document.getElementById('escort-route-eta-text').textContent : (expectedMinutes + ' mins')) + ". Tracking via SafeHer.");
+        localEscort.share_links['local'] = 'https://wa.me/?text=' + shareMsg;
+
+        activeEscort = localEscort;
+        saveActiveEscortToStorage();
+        requestWakeLock();
+
+        if (SafeHer.toast) SafeHer.toast('🛡️ Solo Guardian Active! Your phone is actively tracking your journey.');
+        showActiveView(localEscort);
         return;
       }
 
@@ -788,7 +944,22 @@ SafeHer.escort = (function() {
 
       var tokenEntries = Object.keys(tokens);
       if (tokenEntries.length === 0) {
-        container.innerHTML = '<p style="font-size:12px;color:var(--text-gray);margin:0;">No contacts selected for tracking links.</p>';
+        var msgText = userName + ' started a journey to ' + dest + ', expected by ' + etaStr + '. SafeHer Escort Mode active.';
+        var encodedMsg = encodeURIComponent(msgText);
+        var waUrl = 'https://wa.me/?text=' + encodedMsg;
+        var smsUrl = 'sms:?body=' + encodedMsg;
+        container.innerHTML = 
+          '<div style="padding:4px 0;">' +
+            '<p style="font-size:11px;color:var(--text-gray);margin:0 0 6px 0;">Share your journey status with anyone:</p>' +
+            '<div style="display:flex;gap:6px;">' +
+              '<a href="' + waUrl + '" target="_blank" rel="noopener" class="escort-share-btn wa" style="padding:6px 12px;text-decoration:none;">' +
+                '<span>Share via WhatsApp</span>' +
+              '</a>' +
+              '<a href="' + smsUrl + '" class="escort-share-btn sms" style="padding:6px 12px;text-decoration:none;">' +
+                '<span>Share via SMS</span>' +
+              '</a>' +
+            '</div>' +
+          '</div>';
         return;
       }
 
@@ -839,8 +1010,7 @@ SafeHer.escort = (function() {
         attributionControl: false
       }).setView([escortData.dest_lat, escortData.dest_lng], 14);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19
       }).addTo(activeMap);
     }
@@ -895,16 +1065,18 @@ SafeHer.escort = (function() {
           var now = Date.now();
           if (now - lastSentPositionTime >= 10000) {
             lastSentPositionTime = now;
-            SafeHer.api.sendEscortPosition(escortId, { lat: lat, lng: lng }, function(err, res) {
-              if (res && res.status) {
-                if (activeEscort) {
-                  activeEscort.status = res.status;
-                  if (res.alert_id) activeEscort.alert_id = res.alert_id;
-                  saveActiveEscortToStorage();
+            if (activeEscort && !activeEscort.is_local_only) {
+              SafeHer.api.sendEscortPosition(escortId, { lat: lat, lng: lng }, function(err, res) {
+                if (res && res.status) {
+                  if (activeEscort) {
+                    activeEscort.status = res.status;
+                    if (res.alert_id) activeEscort.alert_id = res.alert_id;
+                    saveActiveEscortToStorage();
+                  }
+                  updateActiveStatusChip(res.status);
                 }
-                updateActiveStatusChip(res.status);
-              }
-            });
+              });
+            }
           }
         },
         function(err) {
@@ -917,6 +1089,20 @@ SafeHer.escort = (function() {
     // Status polling every 5 seconds (monitors status & contact check-in pings)
     pollIntervalId = setInterval(function() {
       if (!activeEscort || !activeEscort.id) return;
+      if (activeEscort.is_local_only) {
+        // Local check for late arrival
+        if (activeEscort.expected_end) {
+          var expTime = new Date(activeEscort.expected_end).getTime();
+          var nowMs = Date.now();
+          if (nowMs > expTime + 10 * 60000 && activeEscort.status !== 'Alerted') {
+            activeEscort.status = 'Alerted';
+            updateActiveStatusChip('Alerted');
+            playBuzzerSound();
+            if (SafeHer.toast) SafeHer.toast('⚠️ Late Arrival: Expected time exceeded by 10 mins!');
+          }
+        }
+        return;
+      }
       SafeHer.api.getEscort(activeEscort.id, function(err, escort) {
         if (escort) {
           activeEscort.status = escort.status;
@@ -1138,6 +1324,19 @@ SafeHer.escort = (function() {
     if (modal) modal.style.display = 'none';
 
     if (!activeEscort || !activeEscort.id) return;
+
+    if (activeEscort.is_local_only) {
+      activeEscort.checkins_done = (activeEscort.checkins_done || 0) + 1;
+      activeEscort.last_checkin_at = new Date().toISOString();
+      if (activeEscort.checkin_interval_min) {
+        activeEscort.next_checkin_due = new Date(Date.now() + activeEscort.checkin_interval_min * 60000).toISOString();
+      }
+      saveActiveEscortToStorage();
+      if (SafeHer.toast) SafeHer.toast("You're safe! Check-in confirmed.");
+      updateActiveStatusChip('On route');
+      return;
+    }
+
     SafeHer.api.checkinEscort(activeEscort.id, function(err, res) {
       if (err) {
         if (SafeHer.toast) SafeHer.toast('Check-in error: ' + err);
@@ -1348,6 +1547,23 @@ SafeHer.escort = (function() {
   function pause(mins) {
     if (!activeEscort || !activeEscort.id) return;
     var minutesToPause = mins || 15;
+
+    if (activeEscort.is_local_only) {
+      activeEscort.pauses_used = (activeEscort.pauses_used || 0) + 1;
+      activeEscort.status = 'paused';
+      updateActiveStatusChip('Paused');
+      saveActiveEscortToStorage();
+      setTimeout(function() {
+        if (activeEscort && activeEscort.status === 'paused') {
+          activeEscort.status = 'active';
+          updateActiveStatusChip('On route');
+          saveActiveEscortToStorage();
+        }
+      }, minutesToPause * 60000);
+      if (SafeHer.toast) SafeHer.toast('Journey paused for ' + minutesToPause + ' min.');
+      return;
+    }
+
     SafeHer.api.pauseEscort(activeEscort.id, minutesToPause, function(err) {
       if (err) {
         if (SafeHer.toast) SafeHer.toast('Pause failed: ' + err);
@@ -1405,15 +1621,29 @@ SafeHer.escort = (function() {
   function callEndEscort(arrived) {
     if (!activeEscort || !activeEscort.id) return;
     var escortId = activeEscort.id;
+    var startMs = activeEscort.started_at ? new Date(activeEscort.started_at).getTime() : Date.now();
+    var durationMins = Math.max(1, Math.round((Date.now() - startMs) / 60000));
     var fallbackSummary = {
       dest_name: activeEscort.dest_name,
-      duration_minutes: 1,
+      duration_minutes: durationMins,
       distance_m: activeEscort.route_distance_m || 0,
-      checkins_done: 0,
-      checkins_missed: 0,
+      checkins_done: activeEscort.checkins_done || 0,
+      checkins_missed: activeEscort.checkins_missed || 0,
       alert_happened: !!(activeEscort.alert_id || activeEscort.status === 'alerted'),
       arrived: arrived
     };
+
+    if (activeEscort.is_local_only) {
+      stopActiveTracking();
+      stopUiSecondTimer();
+      releaseWakeLock();
+      clearActiveEscortFromStorage();
+      activeEscort = null;
+      arrivalPromptShown = false;
+      if (SafeHer.toast) SafeHer.toast(arrived ? 'Arrived safely!' : 'Journey ended.');
+      showSummaryView(fallbackSummary, escortId);
+      return;
+    }
 
     SafeHer.api.endEscort(escortId, arrived, function(err, res) {
       stopActiveTracking();
@@ -1653,6 +1883,8 @@ SafeHer.escort = (function() {
     togglePickOnMap: togglePickOnMap,
     selectCheckin: selectCheckin,
     selectDeviation: selectDeviation,
+    setTravelMode: function(m) { setTravelMode(m, true); },
+    addDemoContact: addDemoContact,
     startEscort: startEscort,
     checkin: checkin,
     pause: pause,

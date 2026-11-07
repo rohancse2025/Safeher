@@ -1485,20 +1485,54 @@
             👉 Tap anywhere on the map to set your destination pin.
           </p>
 
+          <!-- Travel Mode Selector: Cab / Walk / Transit -->
+          <div id="escort-travel-mode-wrap" style="display: none; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 12px; font-weight: 600; color: var(--text-dark);">How are you traveling?</span>
+              <span id="escort-mode-auto-badge" style="font-size: 10px; background: #E0F2FE; color: #0369A1; padding: 2px 6px; border-radius: 8px; font-weight: 600; display: none;">Auto-selected</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+              <button type="button" class="escort-mode-btn active" id="escort-mode-driving" onclick="SafeHer.escort.setTravelMode('driving')">
+                <span class="material-symbols-rounded" style="font-size: 20px;">local_taxi</span>
+                <span>Auto / Cab</span>
+              </button>
+              <button type="button" class="escort-mode-btn" id="escort-mode-walking" onclick="SafeHer.escort.setTravelMode('walking')">
+                <span class="material-symbols-rounded" style="font-size: 20px;">directions_walk</span>
+                <span>Walk</span>
+              </button>
+              <button type="button" class="escort-mode-btn" id="escort-mode-transit" onclick="SafeHer.escort.setTravelMode('transit')">
+                <span class="material-symbols-rounded" style="font-size: 20px;">directions_subway</span>
+                <span>Transit</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Long walking distance safety warning banner -->
+          <div id="escort-walk-warning" style="display: none; background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; padding: 8px 12px; border-radius: var(--radius-btn); font-size: 12px; margin-bottom: 8px; line-height: 1.4;">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 2px;">
+              <span class="material-symbols-rounded" style="font-size: 16px;">warning</span> Long Distance Walking Advisory
+            </div>
+            <span>Walking <strong id="escort-walk-warn-km">-- km</strong> alone poses high safety risks. We recommend Auto / Cab mode for this journey.</span>
+          </div>
+
           <!-- Route fallback warning / info banner -->
           <div id="escort-route-warning" style="display: none; background: #FFF3CD; border: 1px solid #FFEEBA; color: #856404; padding: 8px 12px; border-radius: var(--radius-btn); font-size: 12px; margin-bottom: 8px;"></div>
 
           <!-- Route stats: Distance & Expected duration -->
           <div id="escort-route-info" style="display: none; background: #FFF5F7; border: 1px solid #F3C2CE; border-radius: var(--radius-btn); padding: 12px; margin-bottom: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-size: 12px; color: var(--text-gray);">Route Type:</span>
-              <span id="escort-route-profile-label" style="font-size: 12px; font-weight: 600; color: var(--crimson);">Walking Route</span>
+              <span style="font-size: 12px; color: var(--text-gray);">Travel Mode:</span>
+              <span id="escort-route-profile-label" style="font-size: 12px; font-weight: 600; color: var(--crimson);">Auto / Cab (~30 km/h)</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-size: 13px; font-weight: 500;">Distance:</span>
+              <span style="font-size: 13px; font-weight: 500;">Road Distance:</span>
               <span id="escort-route-distance" style="font-size: 14px; font-weight: 700; color: var(--crimson);">--</span>
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 12px; color: var(--text-gray);">Estimated Arrival:</span>
+              <span id="escort-route-eta-text" style="font-size: 12px; font-weight: 600; color: var(--text-dark);">--</span>
+            </div>
+            <div class="form-group" style="margin-bottom: 0; margin-top: 6px;">
               <label class="form-label" for="escort-expected-mins" style="font-size: 12px;">Expected Duration (minutes, editable) *</label>
               <input type="number" id="escort-expected-mins" class="form-input" value="30" min="5" max="300" style="font-weight: 600;" />
             </div>

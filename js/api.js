@@ -137,6 +137,8 @@ SafeHer.api = (function() {
     var url = getApiBase().replace(/\/+$/, '') + endpoint;
 
     var isBackground = !!(options._silent ||
+                       endpoint.indexOf('/contacts') !== -1 ||
+                       endpoint.indexOf('/escorts/active') !== -1 ||
                        endpoint.indexOf('/nearby-alerts') !== -1 ||
                        endpoint.indexOf('/volunteers/count') !== -1 ||
                        endpoint.indexOf('/volunteers/profile') !== -1 ||
@@ -449,9 +451,9 @@ SafeHer.api = (function() {
         return (c.userId || 'guest') === userId;
       });
 
-      if (useBackend()) {
+      if (useBackend() && getToken()) {
         var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
-        apiFetch('/api/contacts' + query, { method: 'GET' })
+        apiFetch('/api/contacts' + query, { method: 'GET', _silent: true })
           .then(function(json) {
             var serverContacts = (json.data || []).map(function(c) {
               return {
@@ -467,7 +469,7 @@ SafeHer.api = (function() {
             if (callback) callback(null, serverContacts);
           })
           .catch(function(err) {
-            if (callback) callback(err.message, localList);
+            if (callback) callback(null, localList);
           });
       } else {
         if (callback) callback(null, localList);

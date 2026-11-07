@@ -5127,6 +5127,35 @@ button, a, input[type="button"], input[type="submit"] {
   color: var(--crimson);
   font-weight: 600;
 }
+.escort-mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 6px;
+  background: #FFFFFF;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.escort-mode-btn:hover {
+  border-color: #F3C2CE;
+  background: #FFF5F7;
+}
+.escort-mode-btn.active {
+  background: #FFF5F7;
+  border-color: var(--crimson);
+  color: var(--crimson);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(158, 27, 50, 0.15);
+}
 .escort-contact-row {
   display: flex;
   align-items: center;
