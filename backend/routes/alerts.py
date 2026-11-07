@@ -1,6 +1,8 @@
 # backend/routes/alerts.py – Emergency alerts, live tracking updates, duress PIN handling, and public tracking
 import secrets
 import datetime
+import math
+import json
 from flask import Blueprint, request, jsonify, g
 from werkzeug.security import check_password_hash
 
@@ -15,6 +17,20 @@ import jwt
 alerts_bp = Blueprint('alerts', __name__)
 
 VALID_MODES = {'normal', 'silent', 'emergency', 'timer', 'uneasy'}
+
+EARTH_RADIUS_METERS = 6371000.0
+
+
+def haversine_m(lat1, lon1, lat2, lon2):
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = (math.sin(delta_phi / 2.0) ** 2 +
+         math.cos(phi1) * math.cos(phi2) * (math.sin(delta_lambda / 2.0) ** 2))
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return EARTH_RADIUS_METERS * c
+
 
 
 def get_user_from_request():
@@ -93,62 +109,56 @@ def is_valid_coord(lat, lng):
 
 
 # ─── Route: POST /api/alerts ─────────────────────────────────
-@alerts_bp.route('/api/alerts', methods=['POST'])
-def create_alert():
+def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77.5946, reason='manual', note=None, bypass_rate_limit=False, cursor=None, conn=None):
     """
-    Create a new emergency alert (normal, silent, or emergency).
-    Creates an active alert record, a unique share_token, a first location point,
-    and dispatches background emergency emails and WhatsApp alerts to contacts.
-    Expects JSON: { mode: "normal"|"silent"|"emergency", lat: float, lng: float }
+    Internal alert creation core logic.
+    Reused by user SOS, timer auto-expiration, and escort system alerts.
+    Dispatches background email, whatsapp, volunteer pushes, and logs incident events.
+    Returns (True, result_dict, 201) on success, or (False, error_msg, status_code) on failure.
     """
-    user = get_user_from_request()
-    if not user:
-        return jsonify({"ok": False, "error": "Authorization or user identification required"}), 401
-
-    user_id = user['id']
-    user_name = user['name']
-    data = request.get_json(silent=True) or {}
-
-    mode = (data.get('mode') or 'normal').strip().lower()
+    mode = (mode or 'normal').strip().lower()
     if mode not in VALID_MODES:
-        return jsonify({"ok": False, "error": f"Invalid mode. Must be one of: {', '.join(VALID_MODES)}"}), 400
+        return False, f"Invalid mode. Must be one of: {', '.join(VALID_MODES)}", 400
 
-    note = (data.get('note') or '').strip()
-
-    lat = data.get('lat')
-    lng = data.get('lng')
     if lat is None or lng is None or not is_valid_coord(lat, lng):
-        return jsonify({"ok": False, "error": "Valid latitude and longitude coordinates are required"}), 400
+        return False, "Valid latitude and longitude coordinates are required", 400
 
     lat = float(lat)
     lng = float(lng)
     share_token = secrets.token_urlsafe(16)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = get_db()
-    cursor = conn.cursor()
+    close_conn = False
+    if cursor is None:
+        if conn is None:
+            conn = get_db()
+            close_conn = True
+        cursor = conn.cursor()
 
-    # Rate limiting: 10 per hour for uneasy, 5 per hour for standard SOS
-    if mode == 'uneasy':
-        cursor.execute('''
-            SELECT COUNT(*) AS count FROM alerts
-            WHERE user_id = ? AND mode = 'uneasy' AND started_at >= datetime('now', '-1 hour');
-        ''', (user_id,))
-        if cursor.fetchone()['count'] >= 10:
-            conn.close()
-            return jsonify({"ok": False, "error": "Rate limit exceeded: maximum 10 uneasy check-ins per hour"}), 429
-    else:
-        cursor.execute('''
-            SELECT COUNT(*) AS count FROM alerts
-            WHERE user_id = ? AND mode != 'uneasy' AND started_at >= datetime('now', '-1 hour');
-        ''', (user_id,))
-        if cursor.fetchone()['count'] >= 5:
-            conn.close()
-            return jsonify({"ok": False, "error": "Rate limit exceeded: maximum 5 SOS alerts per hour"}), 429
+    # Rate limiting (bypassed for system alerts like timer and escort monitoring)
+    if not bypass_rate_limit:
+        if mode == 'uneasy':
+            cursor.execute('''
+                SELECT COUNT(*) AS count FROM alerts
+                WHERE user_id = ? AND mode = 'uneasy' AND started_at >= datetime('now', '-1 hour');
+            ''', (user_id,))
+            if cursor.fetchone()['count'] >= 10:
+                if close_conn:
+                    conn.close()
+                return False, "Rate limit exceeded: maximum 10 uneasy check-ins per hour", 429
+        else:
+            cursor.execute('''
+                SELECT COUNT(*) AS count FROM alerts
+                WHERE user_id = ? AND mode != 'uneasy' AND started_at >= datetime('now', '-1 hour');
+            ''', (user_id,))
+            if cursor.fetchone()['count'] >= 5:
+                if close_conn:
+                    conn.close()
+                return False, "Rate limit exceeded: maximum 5 SOS alerts per hour", 429
 
     try:
         # 1. Insert alert record with reason
-        raw_reason = (data.get('reason') or 'manual').strip().lower()
+        raw_reason = (reason or 'manual').strip().lower()
         reason = raw_reason if raw_reason in VALID_ALERT_REASONS else 'manual'
         cursor.execute('''
             INSERT INTO alerts (user_id, mode, reason, status, lat, lng, share_token, notified_count, duress, note)
@@ -160,7 +170,7 @@ def create_alert():
         log_event(
             user_id=user_id,
             type='alert_created',
-            actor='user',
+            actor='system' if bypass_rate_limit else 'user',
             detail={'mode': mode, 'reason': reason},
             alert_id=alert_id,
             cursor=cursor
@@ -201,12 +211,15 @@ def create_alert():
             if r['phone'] and r['phone'].strip():
                 contact_tokens_phone[r['phone'].strip()] = c_token
 
-        conn.commit()
-    except Exception:
-        conn.close()
-        return jsonify({"ok": False, "error": "Failed to create alert"}), 500
-
-    conn.close()
+        if close_conn:
+            conn.commit()
+    except Exception as e:
+        if close_conn:
+            conn.close()
+        return False, f"Failed to create alert: {e}", 500
+    finally:
+        if close_conn:
+            conn.close()
 
     # 4. Trigger background email dispatch to contacts (works for all modes including silent and uneasy)
     if recipient_emails:
@@ -238,7 +251,7 @@ def create_alert():
         )
 
     # Log alert creation event
-    app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode={mode}, lat={lat}, lng={lng}")
+    app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode={mode}, reason={reason}, lat={lat}, lng={lng}")
 
     # 6. Trigger Web Push notification to available approved volunteers (UNEASY MODE SENDS NOTHING TO VOLUNTEERS)
     if mode != 'uneasy':
@@ -254,23 +267,53 @@ def create_alert():
         except Exception as push_err:
             app_logger.error(f"[Alert] Volunteer push trigger error: {push_err}")
 
-    return jsonify({
-        "ok": True,
-        "data": {
-            "id": alert_id,
-            "user_id": user_id,
-            "mode": mode,
-            "status": "active",
-            "lat": lat,
-            "lng": lng,
-            "share_token": share_token,
-            "notified_count": len(recipient_emails),
-            "duress": 0,
-            "started_at": now_str
-        }
-    }), 201
+    result_data = {
+        "id": alert_id,
+        "user_id": user_id,
+        "mode": mode,
+        "status": "active",
+        "lat": lat,
+        "lng": lng,
+        "share_token": share_token,
+        "notified_count": len(recipient_emails) + len(recipient_phones),
+        "created_at": now_str,
+        "note": note or None
+    }
+    return True, result_data, 201
 
 
+# ─── Route: POST /api/alerts ─────────────────────────────────
+@alerts_bp.route('/api/alerts', methods=['POST'])
+def create_alert():
+    """
+    Create a new emergency alert (normal, silent, or emergency).
+    Expects JSON: { mode: "normal"|"silent"|"emergency", lat: float, lng: float, reason?: str, note?: str }
+    """
+    user = get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization or user identification required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    mode = (data.get('mode') or 'normal').strip().lower()
+    note = (data.get('note') or '').strip()
+    lat = data.get('lat')
+    lng = data.get('lng')
+    reason = (data.get('reason') or 'manual').strip().lower()
+
+    ok, res, status_code = create_alert_internal(
+        user_id=user['id'],
+        user_name=user['name'],
+        mode=mode,
+        lat=lat,
+        lng=lng,
+        reason=reason,
+        note=note or None,
+        bypass_rate_limit=False
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": res}), status_code
+
+    return jsonify({"ok": True, "data": res}), status_code
 # ─── Route: POST / GET /api/alerts/quick (Zero-UI Quick Trigger) ──────
 @alerts_bp.route('/api/alerts/quick', methods=['GET', 'POST'])
 def quick_trigger_alert():
@@ -980,6 +1023,124 @@ def get_public_track(token):
         ''', (clean_token,))
         alert = cursor.fetchone()
         if not alert:
+            # 3. Check if clean_token is an escort contact token in escort_contacts
+            cursor.execute('''
+                SELECT ec.id AS ec_id, ec.escort_id, ec.contact_id, ec.token AS contact_token,
+                       c.name AS contact_name,
+                       e.id AS escort_id, e.user_id, e.dest_name, e.dest_lat, e.dest_lng,
+                       e.route_json, e.route_distance_m, e.started_at, e.expected_end,
+                       e.status, e.checkin_interval_min, e.deviation_m,
+                       e.last_lat, e.last_lng, e.last_update_at, e.last_checkin_at,
+                       e.next_checkin_due, e.off_route_since, e.alert_id, e.ended_at,
+                       u.name AS owner_name
+                FROM escort_contacts ec
+                JOIN escorts e ON ec.escort_id = e.id
+                JOIN users u ON e.user_id = u.id
+                JOIN contacts c ON ec.contact_id = c.id
+                WHERE ec.token = ?;
+            ''', (clean_token,))
+            escort_match = cursor.fetchone()
+
+            if escort_match:
+                # Check expiration: links expire 1 hour after the escort ends
+                escort_status = escort_match['status']
+                if escort_status in ('arrived', 'ended'):
+                    end_time_str = escort_match['ended_at'] or escort_match['last_update_at'] or escort_match['expected_end']
+                    if end_time_str:
+                        try:
+                            end_dt = datetime.datetime.fromisoformat(end_time_str.replace('Z', '+00:00')) if 'T' in end_time_str else datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
+                            if end_dt.tzinfo is None:
+                                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+                            now_utc = datetime.datetime.now(datetime.timezone.utc)
+                            if (now_utc - end_dt).total_seconds() > 3600:
+                                conn.close()
+                                return jsonify({"ok": False, "error": "This journey tracking link has expired (links expire 1 hour after arrival or journey completion)."}), 404
+                        except Exception:
+                            pass
+
+                # Status: On route, Off route, Paused, Check-in due, Alerted, Arrived
+                alert_active = False
+                if escort_match['alert_id']:
+                    cursor.execute("SELECT status FROM alerts WHERE id = ?;", (escort_match['alert_id'],))
+                    a_row = cursor.fetchone()
+                    if a_row and a_row['status'] == 'active':
+                        alert_active = True
+
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                if alert_active:
+                    status_label = "Alerted"
+                elif escort_status == 'arrived':
+                    status_label = "Arrived"
+                elif escort_status == 'paused':
+                    status_label = "Paused"
+                elif escort_match['next_checkin_due']:
+                    try:
+                        chk_str = escort_match['next_checkin_due']
+                        chk_dt = datetime.datetime.fromisoformat(chk_str.replace('Z', '+00:00')) if 'T' in chk_str else datetime.datetime.strptime(chk_str, "%Y-%m-%d %H:%M:%S")
+                        if chk_dt.tzinfo is None:
+                            chk_dt = chk_dt.replace(tzinfo=datetime.timezone.utc)
+                        if now_utc > chk_dt:
+                            status_label = "Check-in due"
+                        elif escort_match['off_route_since']:
+                            status_label = "Off route"
+                        else:
+                            status_label = "On route"
+                    except Exception:
+                        status_label = "Off route" if escort_match['off_route_since'] else "On route"
+                elif escort_match['off_route_since']:
+                    status_label = "Off route"
+                else:
+                    status_label = "On route"
+
+                route_dist = float(escort_match['route_distance_m'] or 0)
+                curr_lat = escort_match['last_lat'] if escort_match['last_lat'] is not None else escort_match['dest_lat']
+                curr_lng = escort_match['last_lng'] if escort_match['last_lng'] is not None else escort_match['dest_lng']
+
+                if status_label == "Arrived":
+                    progress_percent = 100.0
+                elif route_dist > 0 and curr_lat is not None and curr_lng is not None:
+                    rem_dist = haversine_m(curr_lat, curr_lng, escort_match['dest_lat'], escort_match['dest_lng'])
+                    progress_percent = max(0.0, min(100.0, round((1.0 - rem_dist / route_dist) * 100, 1)))
+                else:
+                    progress_percent = 0.0
+
+                try:
+                    route_points = json.loads(escort_match['route_json']) if escort_match['route_json'] else []
+                except Exception:
+                    route_points = []
+
+                owner_name = escort_match['owner_name'] or 'User'
+                first_name = owner_name.split()[0] if owner_name else 'User'
+                contact_name = escort_match['contact_name'] or 'Contact'
+                contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
+
+                conn.close()
+
+                return jsonify({
+                    "ok": True,
+                    "data": {
+                        "type": "escort",
+                        "first_name": first_name,
+                        "destination_name": escort_match['dest_name'],
+                        "route": route_points,
+                        "current_position": {
+                            "lat": curr_lat,
+                            "lng": curr_lng
+                        },
+                        "latest_lat": curr_lat,
+                        "latest_lng": curr_lng,
+                        "progress_percent": progress_percent,
+                        "status": status_label,
+                        "last_checkin_time": escort_match['last_checkin_at'],
+                        "next_checkin_time": escort_match['next_checkin_due'],
+                        "eta": escort_match['expected_end'],
+                        "last_update_time": escort_match['last_update_at'] or escort_match['started_at'],
+                        "is_contact": True,
+                        "contact_first_name": contact_first_name,
+                        "contact_name": contact_name
+                    }
+                }), 200
+
             conn.close()
             return jsonify({"ok": False, "error": "Tracking link not found or expired"}), 404
         owner_name = alert['owner_name'] or 'User'

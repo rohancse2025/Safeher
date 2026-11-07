@@ -20,9 +20,14 @@ def get_db():
     Open and return a new SQLite connection.
     Enables dictionary-like column access (sqlite3.Row) and foreign key constraints.
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys = ON;')
+    try:
+        conn.execute('PRAGMA journal_mode = WAL;')
+        conn.execute('PRAGMA busy_timeout = 30000;')
+    except Exception:
+        pass
     return conn
 
 
@@ -449,6 +454,54 @@ def init_db():
         );
     ''')
 
+    # 12. Escorts table (Escort Mode tracking, deviation, stationary, checkins, alerts)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS escorts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            dest_name TEXT NOT NULL,
+            dest_lat REAL NOT NULL,
+            dest_lng REAL NOT NULL,
+            route_json TEXT NOT NULL,
+            route_distance_m REAL NOT NULL DEFAULT 0,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expected_end TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'arrived', 'ended', 'alerted')),
+            checkin_interval_min INTEGER,
+            deviation_m REAL NOT NULL DEFAULT 200,
+            last_lat REAL,
+            last_lng REAL,
+            last_update_at TIMESTAMP,
+            last_checkin_at TIMESTAMP,
+            next_checkin_due TIMESTAMP,
+            off_route_since TIMESTAMP,
+            stationary_since TIMESTAMP,
+            stationary_anchor_lat REAL,
+            stationary_anchor_lng REAL,
+            stationary_anchor_at TIMESTAMP,
+            pauses_used INTEGER NOT NULL DEFAULT 0,
+            pause_until TIMESTAMP,
+            alert_id INTEGER,
+            ended_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE SET NULL
+        );
+    ''')
+
+    # 13. Escort contacts tokens table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS escort_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            escort_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (escort_id) REFERENCES escorts(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
@@ -475,6 +528,10 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_user ON incident_events(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_ts ON incident_events(ts);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_query_log_vol_time ON volunteer_query_log(volunteer_id, query_time);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_escorts_user ON escorts(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_escorts_status ON escorts(status);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_contacts_escort ON escort_contacts(escort_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_contacts_token ON escort_contacts(token);')
 
     conn.commit()
     conn.close()

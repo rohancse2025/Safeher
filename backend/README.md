@@ -230,6 +230,38 @@ The database (`safeher.db`) and all tables (`users`, `contacts`, `alerts`, `loca
   3. Promotes provisional volunteers to `"trusted"` if they have $\ge 3$ completed responses, clean feedback (all helpful & respectful, 0 reports), and $\ge 30$ days since approval.
   4. Marks volunteers whose `valid_until` has passed as `"expired"`.
 
+### 13. Escort Mode & Safe Journey Monitoring (Auth Required, Owner Only)
+*Real-time safe journey tracking with route deviation calculation, automated check-in deadlines, stationary detection, and emergency escalation.*
+- **`POST /api/escorts`** *(Auth required, owner only)* – Initiates an Escort Mode journey:
+  - Expects JSON: `destination` (or `dest_name`), `dest_lat`, `dest_lng`, `route` (list of `[lat, lng]` points), `expected_minutes`, `checkin_interval` (`5, 10, 15, 30` or `None`), `deviation_distance` (`100` to `500` m), `contact_ids` (list of integer contact IDs).
+  - Generates 1 unique token per selected contact (`escort_contacts`).
+  - Dispatches email notifications asynchronously to each contact: `"X started a journey to [destination], expected by [time]"` with direct link `FRONTEND_URL/track.html?t=[token]`.
+  - Logs `escort_started` in `incident_events`.
+- **`POST /api/escorts/<id>/position`** *(Auth required, owner only)* – Reports user's live coordinates `{lat, lng}`:
+  - Calculates perpendicular distance in meters to the planned polyline using local equirectangular projection:
+    $$x = \Delta\lambda \cdot \cos\left(\frac{\phi_1 + \phi_2}{2}\right) \cdot R, \quad y = \Delta\phi \cdot R$$
+    $$t = \text{clamp}\left(\frac{\vec{w} \cdot \vec{v}}{|\vec{v}|^2}, 0, 1\right), \quad d = |\vec{w} - t\vec{v}|$$
+  - Sets `off_route_since` if perpendicular distance exceeds `deviation_m`; resets when back on route.
+  - Stationary detection: detects if user moved $< 30$ m over 5 minutes while not paused.
+  - Arrival detection: detects arrival when within $100$ m of destination (automatically updates status to `"arrived"`, emails `"arrived safely"`, and logs `escort_arrived`).
+- **`POST /api/escorts/<id>/checkin`** *(Auth required, owner only)* – Records user safe check-in, advances `next_checkin_due`, and logs `escort_checkin_ok`.
+- **`POST /api/escorts/<id>/pause`** *(Auth required, owner only)* – Pauses the journey for up to 15 minutes (at most 2 pauses per escort), suspending deviation alerts, and logs `escort_paused`.
+- **`POST /api/escorts/<id>/reroute`** *(Auth required, owner only)* – Replaces the planned route points, clears off-route state, and logs `escort_rerouted`.
+- **`POST /api/escorts/<id>/escalate`** *(Auth required, owner only)* – Manually escalates journey to an emergency SOS alert, attaches `alert_id` to the escort, and logs `escort_alerted`.
+- **`POST /api/escorts/<id>/end`** *(Auth required, owner only)* – Concludes the journey (`arrived: true|false`). If `arrived` is true, sends `"arrived safely"` emails to contacts and logs `escort_arrived`.
+- **`GET /api/escorts/active`** *(Auth required, owner only)* – Retrieves active or paused journey for the authenticated user.
+- **`GET /api/escorts/<id>`** *(Auth required, owner only)* – Retrieves detailed journey metadata.
+- **Background Escort Monitor (Runs every 10 seconds)**:
+  - (a) Creates alert with `reason="route_deviation"` if off-route for $> 2$ minutes and not paused.
+  - (b) Creates alert with `reason="missed_checkin"` if check-in is $> 60$ seconds overdue.
+  - (c) Sends uneasy alert to close contacts with `reason="no_signal"` if no update for 5 minutes, escalating to normal alert after 10 minutes.
+  - (d) Creates alert with `reason="late_arrival"` if destination not reached 10 minutes past ETA (`expected_end + 10 min`).
+  - Bypasses hourly rate limits for system alerts, enforces max 1 active system alert per escort, and attaches `alert_id` to the escort.
+- **Public Tracking Extension (`GET /api/track/<token>`)**:
+  - Resolves escort contact tokens without requiring login.
+  - Returns `type: "escort"`, `first_name` (owner), `destination_name`, `route`, `current_position`, `progress_percent`, `status` (`On route`, `Off route`, `Paused`, `Check-in due`, `Alerted`, `Arrived`), `last_checkin_time`, `next_checkin_time`, and `eta`.
+  - Enforces link expiration 1 hour after arrival or journey completion.
+
 ---
 
 ## Response Convention
@@ -272,3 +304,5 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`evidence_keys`**: Public and wrapped private keys with salt per user (`user_id`, `public_key`, `wrapped_private_key`, `salt`).
 - **`evidence_sessions`**: Evidence recording sessions (`id`, `user_id`, `alert_id`, `kind`, `started_at`, `ended_at`).
 - **`evidence_chunks`**: Cryptographically chained encrypted media chunks (`id`, `session_id`, `idx`, `mime`, `size`, `sha256`, `prev_hash`, `chain_hash`, `file_path`, `created_at`).
+- **`escorts`**: Safe journey tracking sessions (`id`, `user_id`, `dest_name`, `dest_lat`, `dest_lng`, `route_json`, `route_distance_m`, `started_at`, `expected_end`, `status` in active/paused/arrived/ended/alerted, `checkin_interval_min`, `deviation_m`, `last_lat`, `last_lng`, `last_update_at`, `last_checkin_at`, `next_checkin_due`, `off_route_since`, `stationary_since`, `pauses_used`, `alert_id`, `ended_at`).
+- **`escort_contacts`**: Unique personalized tracking tokens generated per emergency contact per escort journey (`id`, `escort_id`, `contact_id`, `token`).

@@ -1320,6 +1320,135 @@ SafeHer.api = (function() {
       return lang;
     },
 
+    // ─── Escort Mode Endpoints ──────────────────────────────
+    createEscort: function(data, callback) {
+      if (!useBackend()) {
+        if (callback) callback('Escort mode requires an active connection', null);
+        return;
+      }
+      apiFetch('/api/escorts', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Failed to create escort', null);
+      });
+    },
+
+    sendEscortPosition: function(id, coords, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/position', {
+        method: 'POST',
+        body: JSON.stringify(coords),
+        _silent: true
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Position update error', null);
+      });
+    },
+
+    checkinEscort: function(id, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/checkin', {
+        method: 'POST'
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Checkin error', null);
+      });
+    },
+
+    pauseEscort: function(id, minutes, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/pause', {
+        method: 'POST',
+        body: JSON.stringify({ minutes: minutes || 10 })
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Pause error', null);
+      });
+    },
+
+    rerouteEscort: function(id, routePoints, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/reroute', {
+        method: 'POST',
+        body: JSON.stringify({ route: routePoints })
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Reroute error', null);
+      });
+    },
+
+    escalateEscort: function(id, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/escalate', {
+        method: 'POST'
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Escalate error', null);
+      });
+    },
+
+    endEscort: function(id, arrived, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/escorts/' + id + '/end', {
+        method: 'POST',
+        body: JSON.stringify({ arrived: !!arrived })
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'End escort error', null);
+      });
+    },
+
+    getActiveEscort: function(callback) {
+      if (!useBackend()) {
+        if (callback) callback(null, null);
+        return;
+      }
+      apiFetch('/api/escorts/active', { method: 'GET', _silent: true })
+      .then(function(res) {
+        if (callback) callback(null, res.data || null);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
+    },
+
+    getEscort: function(id, callback) {
+      if (!useBackend()) {
+        if (callback) callback('No backend', null);
+        return;
+      }
+      apiFetch('/api/escorts/' + id, { method: 'GET', _silent: true })
+      .then(function(res) {
+        if (callback) callback(null, res.data || null);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
+    },
+
     isOfflineMode: function() {
       return !useBackend() || !!offlineNotified;
     },

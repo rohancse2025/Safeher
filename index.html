@@ -323,8 +323,12 @@
         </div>
       </div>
 
-      <!-- Tile grid: 6 Core Safety Tools (2x3) -->
+      <!-- Tile grid: Core Safety Tools -->
       <div class="tile-grid">
+        <button class="tile" onclick="SafeHer.escort ? SafeHer.escort.open() : SafeHer.router.go('escort')">
+          <span class="material-symbols-rounded">route</span>
+          <span class="tile-label">Escort Mode</span>
+        </button>
         <button class="tile" onclick="SafeHer.router.go('ride')">
           <span class="material-symbols-rounded">local_taxi</span>
           <span class="tile-label">Ride Safety</span>
@@ -1439,6 +1443,154 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Escort Mode Screen ──────────────────────────────────── -->
+  <div id="screen-escort" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.escort.goBack()" aria-label="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Escort Mode</span>
+    </div>
+
+    <div class="page-wrap" style="padding: 16px; padding-bottom: 40px;">
+      
+      <!-- 1. SETUP VIEW (when no escort active) -->
+      <div id="escort-setup-view">
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <p class="settings-section-title" style="margin-bottom: 8px;">Destination</p>
+          
+          <!-- Search input + Search button (Nominatim called ONLY on button click) -->
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <input type="text" id="escort-dest-input" class="form-input" placeholder="Search destination (e.g. Indiranagar)" style="flex: 1;" />
+            <button type="button" class="btn btn-primary btn-crimson" id="escort-search-btn" onclick="SafeHer.escort.searchDestination()" style="padding: 0 16px; min-width: 80px; height: 42px;">
+              <span class="material-symbols-rounded" style="font-size: 18px;">search</span> Search
+            </button>
+          </div>
+
+          <!-- Pick on map toggle button -->
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+            <button type="button" class="btn btn-secondary" id="escort-pick-map-btn" onclick="SafeHer.escort.togglePickOnMap()" style="font-size: 12px; padding: 4px 10px; height: 30px;">
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">pin_drop</span> Pick on map
+            </button>
+          </div>
+
+          <!-- Nominatim search results list -->
+          <div id="escort-search-results" style="display: none; margin-bottom: 10px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-btn); background: #ffffff;"></div>
+
+          <!-- Leaflet Map for route display & picking on map -->
+          <div id="escort-setup-map" style="width: 100%; height: 220px; border-radius: var(--radius-btn); border: 1px solid var(--border); margin-bottom: 10px; background: #eee;"></div>
+          <p id="escort-pick-hint" style="display: none; font-size: 11px; color: var(--crimson); font-weight: 600; margin-bottom: 6px;">
+            👉 Tap anywhere on the map to set your destination pin.
+          </p>
+
+          <!-- Route fallback warning / info banner -->
+          <div id="escort-route-warning" style="display: none; background: #FFF3CD; border: 1px solid #FFEEBA; color: #856404; padding: 8px 12px; border-radius: var(--radius-btn); font-size: 12px; margin-bottom: 8px;"></div>
+
+          <!-- Route stats: Distance & Expected duration -->
+          <div id="escort-route-info" style="display: none; background: #FFF5F7; border: 1px solid #F3C2CE; border-radius: var(--radius-btn); padding: 12px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 12px; color: var(--text-gray);">Route Type:</span>
+              <span id="escort-route-profile-label" style="font-size: 12px; font-weight: 600; color: var(--crimson);">Walking Route</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 13px; font-weight: 500;">Distance:</span>
+              <span id="escort-route-distance" style="font-size: 14px; font-weight: 700; color: var(--crimson);">--</span>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="escort-expected-mins" style="font-size: 12px;">Expected Duration (minutes, editable) *</label>
+              <input type="number" id="escort-expected-mins" class="form-input" value="30" min="5" max="300" style="font-weight: 600;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Card: Check-in, Deviation, Contacts -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <p class="settings-section-title" style="margin-bottom: 8px;">Escort Settings</p>
+          
+          <!-- Check-in Interval -->
+          <p style="font-size: 12px; font-weight: 600; color: var(--text-dark); margin-bottom: 6px;">Check-in Interval</p>
+          <div class="escort-chips-grid" id="escort-checkin-chips">
+            <button type="button" class="escort-chip" data-value="5" onclick="SafeHer.escort.selectCheckin(this)">5 min</button>
+            <button type="button" class="escort-chip active" data-value="10" onclick="SafeHer.escort.selectCheckin(this)">10 min</button>
+            <button type="button" class="escort-chip" data-value="15" onclick="SafeHer.escort.selectCheckin(this)">15 min</button>
+            <button type="button" class="escort-chip" data-value="30" onclick="SafeHer.escort.selectCheckin(this)">30 min</button>
+            <button type="button" class="escort-chip" data-value="off" onclick="SafeHer.escort.selectCheckin(this)">Off</button>
+          </div>
+
+          <!-- Deviation Distance -->
+          <p style="font-size: 12px; font-weight: 600; color: var(--text-dark); margin-bottom: 6px;">Deviation Alert Distance</p>
+          <div class="escort-chips-grid" id="escort-deviation-chips">
+            <button type="button" class="escort-chip" data-value="100" onclick="SafeHer.escort.selectDeviation(this)">100 m</button>
+            <button type="button" class="escort-chip active" data-value="200" onclick="SafeHer.escort.selectDeviation(this)">200 m</button>
+            <button type="button" class="escort-chip" data-value="300" onclick="SafeHer.escort.selectDeviation(this)">300 m</button>
+            <button type="button" class="escort-chip" data-value="500" onclick="SafeHer.escort.selectDeviation(this)">500 m</button>
+          </div>
+
+          <!-- Contacts to Share With -->
+          <p style="font-size: 12px; font-weight: 600; color: var(--text-dark); margin-top: 8px; margin-bottom: 4px;">Contacts to Share With</p>
+          <p style="font-size: 11px; color: var(--text-gray); margin-bottom: 8px;">Close contacts are pre-selected. Selected contacts receive live tracking links.</p>
+          <div id="escort-contacts-list" style="border: 1px solid var(--border); border-radius: var(--radius-btn); max-height: 180px; overflow-y: auto; padding: 4px 8px; background: #fff;">
+            <p style="font-size: 12px; color: var(--text-gray); padding: 8px;">Loading contacts...</p>
+          </div>
+        </div>
+
+        <!-- Start Escort Button -->
+        <button type="button" class="btn btn-primary btn-crimson" id="escort-start-btn" onclick="SafeHer.escort.startEscort()" style="width: 100%; min-height: 48px; font-size: 15px; font-weight: 700;">
+          <span class="material-symbols-rounded" style="margin-right: 6px;">route</span>Start Escort
+        </button>
+      </div>
+
+      <!-- 2. ACTIVE ESCORT VIEW (when escort is active) -->
+      <div id="escort-active-view" style="display: none;">
+        <!-- Status Banner -->
+        <div class="settings-card" style="margin-bottom: 12px; background: #FFF5F7; border-color: #F3C2CE;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--crimson); letter-spacing: 0.5px;">Active Escort</span>
+            <span id="escort-active-status-badge" class="badge" style="background: #9E1B32; color: #ffffff; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">On route</span>
+          </div>
+          <h3 id="escort-active-dest-name" style="margin: 0 0 4px 0; font-size: 16px; color: var(--text-dark);">Destination</h3>
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0;">Expected Arrival: <strong id="escort-active-eta" style="color: var(--text-dark);">--:--</strong></p>
+        </div>
+
+        <!-- Active Map -->
+        <div id="escort-active-map" style="width: 100%; height: 220px; border-radius: var(--radius-btn); border: 1px solid var(--border); margin-bottom: 12px; background: #eee;"></div>
+
+        <!-- Journey Controls -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <p class="settings-section-title" style="margin-bottom: 10px;">Journey Controls</p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <button type="button" class="btn btn-primary" onclick="SafeHer.escort.checkin()" style="font-size: 12px; height: 38px;">
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">check_circle</span> I'm Safe (Check-in)
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.pause()" style="font-size: 12px; height: 38px;">
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">pause</span> Pause (10m)
+            </button>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.escalate()" style="font-size: 12px; height: 38px; color: #D32F2F; border-color: #D32F2F;">
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">warning</span> Emergency Alert
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.endJourney(true)" style="font-size: 12px; height: 38px; color: #2E7D32; border-color: #2E7D32; background: #E8F5E9;">
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">task_alt</span> Arrived Safely
+            </button>
+          </div>
+        </div>
+
+        <!-- Share Live Tracking with Contacts Card -->
+        <div class="settings-card" style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <p class="settings-section-title" style="margin-bottom: 0;">Share Live Tracking</p>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.shareNative()" style="font-size: 11px; padding: 2px 8px; height: 26px;">
+              <span class="material-symbols-rounded" style="font-size: 14px; margin-right: 2px;">share</span> Share
+            </button>
+          </div>
+          <div id="escort-active-share-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /#screen-escort -->
 
   <!-- ── Volunteers ───────────────────────────────────────── -->
   <div id="screen-volunteers" class="screen">
@@ -2766,5 +2918,6 @@
 <script src="./js/fakecall.js?v=33"></script>
 <script src="./js/evidence.js?v=33"></script>
 <script src="./js/vault.js?v=33"></script>
+<script src="./js/escort.js?v=1"></script>
 </body>
 </html>

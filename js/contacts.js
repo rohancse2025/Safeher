@@ -42,6 +42,8 @@ SafeHer.contacts = (function() {
       var c = contacts[i];
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var relation = c.relation || 'Contact';
+      var isClose = !!(c.is_close || c.close || (c.relation && /emergency|family|parent|spouse|close/i.test(c.relation)));
+      var closeBadge = isClose ? ' <span class="contact-badge" style="background:#FFE4E6;color:#9E1B32;">Close</span>' : '';
 
       html += '<div class="contact-card">' +
         '<div class="contact-left">' +
