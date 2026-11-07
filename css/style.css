@@ -681,7 +681,7 @@ body {
 
 /* ─── Home Body ────────────────────────────────────────────────── */
 .home-body {
-  padding: 0 16px 90px;
+  padding: 0 16px var(--nav-h, 60px);
 }
 
 /* ─── Uneasy Check-in Banner (Home) ───────────────────────────── */
@@ -858,7 +858,56 @@ body {
   line-height: 1.35;
 }
 
-/* ─── Home Stats ───────────────────────────────────────────────── */
+/* ─── Home Footer Row ──────────────────────────────────────────── */
+.home-footer-row {
+  margin: 10px 0 14px;
+}
+
+.home-no-contacts-card {
+  background: var(--pink-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile, 8px);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-no-contacts-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crimson);
+  margin: 0 0 2px 0;
+}
+
+.home-no-contacts-sub {
+  font-size: 11px;
+  color: var(--text-dark);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.home-add-contact-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  height: 34px;
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.home-contacts-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0 2px;
+  flex-wrap: wrap;
+}
+
 .home-stats {
   display: flex;
   align-items: center;

@@ -352,6 +352,9 @@ SafeHer.volunteer = (function() {
         SafeHer.api.getAvailableVolunteersCount(function(err, count) {
           if (!err && count !== undefined && countEl) {
             countEl.textContent = String(count);
+            if (SafeHer.home && SafeHer.home.updateVolunteerVisibility) {
+              SafeHer.home.updateVolunteerVisibility(count);
+            }
           }
         }, coords);
       }

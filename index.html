@@ -237,11 +237,11 @@
     <!-- Sticky header -->
     <div class="home-header">
       <div class="home-greeting">
-        <p class="home-hello">Hello, <span id="home-name">there</span></p>
+        <p class="home-hello" id="home-hello">Hello</p>
         <div class="home-location-row">
           <span class="material-symbols-rounded home-loc-icon">location_on</span>
-          <span id="home-location">Locating...</span>
-          <a href="#" id="home-loc-enable" class="home-loc-enable" onclick="SafeHer.home.retryLocation(); return false;" style="display: none;">Enable</a>
+          <span id="home-location">Location off</span>
+          <a href="#" id="home-loc-enable" class="home-loc-enable" onclick="SafeHer.home.retryLocation(); return false;">Enable</a>
         </div>
       </div>
       <button class="home-avatar" onclick="SafeHer.router.go('profile')"
@@ -323,7 +323,7 @@
         </div>
       </div>
 
-      <!-- Tile grid: Core Safety Tools -->
+      <!-- Tile grid: Core Safety Tools (3 columns by 3 rows) -->
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.escort ? SafeHer.escort.open() : SafeHer.router.go('escort')">
           <span class="material-symbols-rounded">route</span>
@@ -353,17 +353,39 @@
           <span class="material-symbols-rounded">local_police</span>
           <span class="tile-label" data-i18n="homeHelpRights">Help &amp; Rights</span>
         </button>
+        <button class="tile" onclick="SafeHer.router.go('emergency-info')">
+          <span class="material-symbols-rounded">medical_information</span>
+          <span class="tile-label">Emergency Info</span>
+        </button>
+        <button class="tile" onclick="SafeHer.router.go('history')">
+          <span class="material-symbols-rounded">history</span>
+          <span class="tile-label">History</span>
+        </button>
       </div>
 
-      <!-- Footer stats -->
-      <div class="home-stats">
-        <button class="stat-link" onclick="SafeHer.router.go('contacts')">
-          Trusted contacts: <span id="home-contacts-count">0</span>
-        </button>
-        <span class="stat-sep">·</span>
-        <span class="stat-text">Volunteers nearby:
-          <span id="home-volunteers-count">0</span>
-        </span>
+      <!-- Footer row: Contacts & Volunteers -->
+      <div id="home-footer-row" class="home-footer-row">
+        <!-- 1. Pale pink card shown when no contacts -->
+        <div id="home-no-contacts-card" class="home-no-contacts-card" style="display: none;">
+          <div style="flex: 1; min-width: 0;">
+            <p class="home-no-contacts-title">No trusted contacts yet</p>
+            <p class="home-no-contacts-sub">Add one so SOS can reach someone.</p>
+          </div>
+          <button type="button" class="btn btn-crimson home-add-contact-btn" onclick="SafeHer.router.go('contacts')">
+            Add Contact
+          </button>
+        </div>
+
+        <!-- 2. Contacts link & optional volunteers nearby (when contacts > 0) -->
+        <div id="home-contacts-info-row" class="home-contacts-info-row" style="display: none;">
+          <button type="button" class="stat-link" onclick="SafeHer.router.go('contacts')">
+            Trusted contacts: <span id="home-contacts-count">0</span>
+          </button>
+          <span id="home-volunteers-wrap" style="display: none;">
+            <span class="stat-sep" style="margin: 0 6px; color: var(--border);">·</span>
+            <span class="stat-text">Volunteers nearby: <span id="home-volunteers-count">0</span></span>
+          </span>
+        </div>
       </div>
 
     </div><!-- /.home-body -->
@@ -799,6 +821,84 @@
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── Emergency Info Screen ──────────────────────────────── -->
+  <div id="screen-emergency-info" class="screen">
+    <div class="topbar">
+      <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="topbar-title">Emergency Info</span>
+    </div>
+    <div class="page-wrap" style="padding: 16px; padding-bottom: 80px;">
+      <!-- 24/7 National Emergency Helplines -->
+      <div class="settings-card" style="margin-bottom: 14px;">
+        <p class="settings-section-title" style="margin-bottom: 8px;">Emergency Helplines (India)</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <a href="tel:112" class="btn btn-crimson" style="padding: 10px 8px; font-size: 13px; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 20px;">call</span> 112 National
+          </a>
+          <a href="tel:1091" class="btn btn-secondary" style="padding: 10px 8px; font-size: 13px; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; border-color: var(--crimson); color: var(--crimson);">
+            <span class="material-symbols-rounded" style="font-size: 20px;">support_agent</span> 1091 Women
+          </a>
+          <a href="tel:102" class="btn btn-secondary" style="padding: 10px 8px; font-size: 13px; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 20px;">ambulance</span> 102 Medical
+          </a>
+          <a href="tel:181" class="btn btn-secondary" style="padding: 10px 8px; font-size: 13px; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 20px;">shield</span> 181 Distress
+          </a>
+        </div>
+      </div>
+
+      <!-- Medical & Safety Profile -->
+      <div class="settings-card" style="margin-bottom: 14px;">
+        <p class="settings-section-title" style="margin-bottom: 8px;">My Emergency Medical Card</p>
+        <p style="font-size: 11px; color: var(--text-gray); margin-bottom: 12px; line-height: 1.4;">
+          This info is accessible during emergencies and can help first responders and doctors.
+        </p>
+
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="form-label" for="em-info-blood" style="font-size: 12px;">Blood Group</label>
+          <select id="em-info-blood" class="form-input form-select" style="font-size: 13px;">
+            <option value="">Select blood group</option>
+            <option value="A+">A+</option>
+            <option value="A-">A-</option>
+            <option value="B+">B+</option>
+            <option value="B-">B-</option>
+            <option value="AB+">AB+</option>
+            <option value="AB-">AB-</option>
+            <option value="O+">O+</option>
+            <option value="O-">O-</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="form-label" for="em-info-allergies" style="font-size: 12px;">Allergies / Medical Conditions</label>
+          <input type="text" id="em-info-allergies" class="form-input" placeholder="e.g. Penicillin allergy, Asthma" style="font-size: 13px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="em-info-notes" style="font-size: 12px;">Emergency Notes / Medications</label>
+          <textarea id="em-info-notes" class="form-input" rows="2" placeholder="e.g. Carries inhaler in purse" style="font-size: 13px; resize: none;"></textarea>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.home.saveEmergencyInfo()" style="width: 100%; height: 40px; font-size: 13px; font-weight: 600;">
+          Save Emergency Info
+        </button>
+      </div>
+
+      <!-- Emergency Contacts Quick View -->
+      <div class="settings-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <p class="settings-section-title" style="margin-bottom: 0;">Primary Emergency Contacts</p>
+          <button type="button" class="stat-link" onclick="SafeHer.router.go('contacts')" style="font-size: 12px; font-weight: 600;">Manage</button>
+        </div>
+        <div id="em-info-contacts-list" style="font-size: 12px; color: var(--text-gray);">
+          Loading contacts...
+        </div>
+      </div>
     </div>
   </div>
 
