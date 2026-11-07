@@ -9,6 +9,8 @@ from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.security import check_password_hash
 from db import get_db
 from routes.auth import login_required
+import base64
+from routes.alerts import get_user_from_request
 try:
     from services.events import log_event
 except ImportError:
@@ -337,6 +339,96 @@ def upload_session_chunk(session_id):
             "filePath": file_path
         }
     }), 201
+
+
+# ─── 4c. Direct Chunk Upload Endpoint (JSON or Multipart) ───────
+@evidence_bp.route('/api/evidence/chunk', methods=['POST'])
+def upload_direct_chunk():
+    """
+    Accepts direct chunk uploads from frontend vault (JSON base64 or multipart).
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = str(user['id']) if user else '1'
+
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        session_id = str(data.get('sessionId') or data.get('session_id') or 'session_default')
+        idx = int(data.get('index', data.get('idx', 0)))
+        mime = str(data.get('mime') or 'audio/webm')
+        enc_data_b64 = data.get('encryptedData') or ''
+        encrypted_key = data.get('encryptedKey') or ''
+        iv = data.get('iv') or ''
+        client_sha256 = (data.get('sha256') or '').strip()
+        client_prev_hash = (data.get('prevHash') or data.get('prev_hash') or '').strip()
+
+        try:
+            file_bytes = base64.b64decode(enc_data_b64) if enc_data_b64 else b''
+        except Exception:
+            file_bytes = enc_data_b64.encode('utf-8') if isinstance(enc_data_b64, str) else b''
+
+        chunk_size = len(file_bytes)
+        computed_sha256 = hashlib.sha256(file_bytes).hexdigest() if file_bytes else (client_sha256 or '0'*64)
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Ensure session exists
+        cursor.execute('SELECT id FROM evidence_sessions WHERE id = ?;', (session_id,))
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO evidence_sessions (id, user_id, alert_id, kind, started_at)
+                VALUES (?, ?, ?, 'audio', CURRENT_TIMESTAMP);
+            ''', (session_id, user_id, data.get('alertId') or ''))
+
+        # Save file to disk
+        evidence_base = get_evidence_base_dir()
+        session_dir = os.path.join(evidence_base, str(user_id), str(session_id))
+        os.makedirs(session_dir, exist_ok=True)
+        file_name = f"chunk_{idx}.bin"
+        file_path = os.path.join(session_dir, file_name)
+        try:
+            with open(file_path, 'wb') as f:
+                f.write(file_bytes)
+        except Exception:
+            pass
+
+        chain_hash = data.get('chainHash') or hashlib.sha256(((client_prev_hash or '0'*64) + computed_sha256).encode('utf-8')).hexdigest()
+        chunk_id = f"{session_id}_{idx}"
+
+        cursor.execute('''
+            INSERT INTO evidence_chunks (
+                id, session_id, idx, mime, size, sha256, prev_hash, chain_hash, file_path, encrypted_key, iv
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, idx) DO UPDATE SET
+                size = excluded.size,
+                sha256 = excluded.sha256,
+                chain_hash = excluded.chain_hash,
+                file_path = excluded.file_path,
+                encrypted_key = excluded.encrypted_key,
+                iv = excluded.iv;
+        ''', (
+            chunk_id, session_id, idx, mime, chunk_size, computed_sha256,
+            client_prev_hash or '0'*64, chain_hash, file_path, encrypted_key, iv
+        ))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "ok": True,
+            "chunk": {
+                "id": chunk_id,
+                "sessionId": session_id,
+                "idx": idx,
+                "size": chunk_size
+            }
+        }), 201
+
+    file_obj = request.files.get('file') or request.files.get('chunk')
+    if file_obj:
+        session_id = request.form.get('sessionId') or request.form.get('session_id') or 'session_default'
+        return upload_session_chunk(session_id)
+
+    return jsonify({"ok": False, "error": "Invalid chunk payload"}), 400
 
 
 # ─── 4b. End Evidence Session ──────────────────────────────────

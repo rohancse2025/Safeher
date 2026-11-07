@@ -137,6 +137,8 @@ SafeHer.api = (function() {
     var url = getApiBase().replace(/\/+$/, '') + endpoint;
 
     var isBackground = !!(options._silent ||
+                       endpoint.indexOf('/evidence') !== -1 ||
+                       endpoint.indexOf('/chunk') !== -1 ||
                        endpoint.indexOf('/contacts') !== -1 ||
                        endpoint.indexOf('/escorts/active') !== -1 ||
                        endpoint.indexOf('/nearby-alerts') !== -1 ||
@@ -183,7 +185,7 @@ SafeHer.api = (function() {
         }
 
         // Friendly error message with Retry button for failed explicit user requests
-        if (!isBackground && err.status !== 401 && err.status !== 404 && err.status !== 429) {
+        if (!isBackground && err.status !== 401 && err.status !== 404 && err.status !== 405 && err.status !== 429) {
           var friendlyMsg = err.message;
           if (isTimeout) {
             friendlyMsg = 'Request timed out at ' + getApiBase() + '. Start backend.';
@@ -1247,6 +1249,7 @@ SafeHer.api = (function() {
       if (useBackend()) {
         return apiFetch('/api/evidence/chunk', {
           method: 'POST',
+          _silent: true,
           body: JSON.stringify(chunkData)
         });
       }
