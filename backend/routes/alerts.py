@@ -1389,6 +1389,110 @@ def respond_contact_track(token):
         }
     }), 200
 
+# ─── Route: POST /api/track/<token>/ping-checkin ─────────────
+@alerts_bp.route('/api/track/<token>/ping-checkin', methods=['POST'])
+def ping_checkin_contact_track(token):
+    """
+    Allow a contact to ask the escort owner to check in from the tracking page without logging in.
+    Valid ONLY with an escort contact token and an active or paused journey.
+    Rate limited to 3 check-in requests per hour per contact link.
+    Marks check-in request on the escort and notifies the user via Web Push if subscribed.
+    Logs incident event without personal data.
+    """
+    clean_token = token.strip()
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT ec.id AS ec_id, ec.escort_id, ec.contact_id, ec.token,
+               e.id AS escort_id, e.user_id, e.dest_name, e.status AS escort_status,
+               e.alert_id,
+               c.name AS contact_name,
+               u.name AS owner_name
+        FROM escort_contacts ec
+        JOIN escorts e ON ec.escort_id = e.id
+        JOIN contacts c ON ec.contact_id = c.id
+        JOIN users u ON e.user_id = u.id
+        WHERE ec.token = ?;
+    ''', (clean_token,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Only personalized contact links can request a check-in."
+        }), 403
+
+    if row['escort_status'] in ('arrived', 'ended'):
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "This journey has already ended"
+        }), 400
+
+    escort_id = row['escort_id']
+    contact_id = row['contact_id']
+    owner_user_id = row['user_id']
+    contact_full_name = (row['contact_name'] or 'Contact').strip()
+    contact_first_name = contact_full_name.split()[0] if contact_full_name else 'Contact'
+
+    # Rate limiting: max 3 per hour per contact
+    cursor.execute('''
+        SELECT COUNT(*) AS count FROM escort_checkin_pings
+        WHERE escort_id = ? AND contact_id = ? AND created_at >= datetime('now', '-1 hour');
+    ''', (escort_id, contact_id))
+    ping_count_row = cursor.fetchone()
+    if ping_count_row and ping_count_row['count'] >= 3:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "Rate limit exceeded: maximum 3 check-in requests per hour per contact link"
+        }), 429
+
+    cursor.execute('''
+        INSERT INTO escort_checkin_pings (escort_id, contact_id)
+        VALUES (?, ?);
+    ''', (escort_id, contact_id))
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        UPDATE escorts
+        SET checkin_requested_at = ?,
+            checkin_requested_by = ?
+        WHERE id = ?;
+    ''', (now_str, contact_first_name, escort_id))
+
+    # Log incident event: log nothing personal (no phone, email, full name)
+    log_event(
+        user_id=owner_user_id,
+        type='checkin_requested',
+        actor='contact',
+        detail={'actor_label': 'Contact'},
+        escort_id=escort_id,
+        cursor=cursor
+    )
+
+    conn.commit()
+    conn.close()
+
+    try:
+        from routes.push import notify_escort_checkin_requested
+        notify_escort_checkin_requested(owner_user_id, escort_id, contact_first_name)
+    except Exception as push_err:
+        app_logger.error(f"[Escort Ping Push Error] {push_err}")
+
+    return jsonify({
+        "ok": True,
+        "message": "Check-in requested",
+        "data": {
+            "contact_first_name": contact_first_name,
+            "requested_at": now_str
+        }
+    }), 200
+
+
 
 # ─── Route: POST /api/test-email ─────────────────────────────
 @alerts_bp.route('/api/test-email', methods=['POST'])

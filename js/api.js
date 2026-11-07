@@ -1449,6 +1449,34 @@ SafeHer.api = (function() {
       });
     },
 
+    getEscortSummary: function(id, callback) {
+      if (!useBackend()) {
+        if (callback) callback('No backend', null);
+        return;
+      }
+      apiFetch('/api/escorts/' + id + '/summary', { method: 'GET', _silent: true })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
+    },
+
+    notifyEscortArrived: function(id, callback) {
+      if (!useBackend()) {
+        if (callback) callback('No backend', null);
+        return;
+      }
+      apiFetch('/api/escorts/' + id + '/notify-arrived', { method: 'POST' })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
+    },
+
     isOfflineMode: function() {
       return !useBackend() || !!offlineNotified;
     },

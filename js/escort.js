@@ -37,6 +37,50 @@ SafeHer.escort = (function() {
   var arrivalPromptShown = false;
   var checkinModalTimer = null;
   var checkinSecsRemaining = 60;
+  var lastEndedEscortId = null;
+
+  function isNightModeIST() {
+    var now = new Date();
+    var istHours;
+    try {
+      var istStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: 'numeric' });
+      istHours = parseInt(istStr, 10);
+    } catch (e) {
+      var utcHours = now.getUTCHours();
+      var utcMins = now.getUTCMinutes();
+      var totalIstMins = (utcHours * 60 + utcMins + 330) % 1440;
+      istHours = Math.floor(totalIstMins / 60);
+    }
+    return istHours >= 20 || istHours < 6;
+  }
+
+  function applyNightModeDefaults() {
+    var badge = document.getElementById('escort-night-mode-badge');
+    if (isNightModeIST()) {
+      if (badge) badge.style.display = 'flex';
+
+      selectedCheckin = '5';
+      var chkContainer = document.getElementById('escort-checkin-chips');
+      if (chkContainer) {
+        chkContainer.querySelectorAll('.escort-chip').forEach(function(b) {
+          b.classList.remove('active');
+          if (b.dataset.value === '5') b.classList.add('active');
+        });
+      }
+
+      selectedDeviation = 150;
+      var devContainer = document.getElementById('escort-deviation-chips');
+      if (devContainer) {
+        devContainer.querySelectorAll('.escort-chip').forEach(function(b) {
+          b.classList.remove('active');
+          if (b.dataset.value === '150') b.classList.add('active');
+        });
+      }
+    } else {
+      if (badge) badge.style.display = 'none';
+    }
+  }
+
 
   // ─── Helpers ────────────────────────────────────────────────
   function escapeHtml(str) {
@@ -868,7 +912,7 @@ SafeHer.escort = (function() {
       );
     }
 
-    // Status polling every 10 seconds
+    // Status polling every 5 seconds (monitors status & contact check-in pings)
     pollIntervalId = setInterval(function() {
       if (!activeEscort || !activeEscort.id) return;
       SafeHer.api.getEscort(activeEscort.id, function(err, escort) {
@@ -882,16 +926,30 @@ SafeHer.escort = (function() {
 
           updateActiveStatusChip(escort.status);
 
+          // Check if a contact requested a check-in
+          if (escort.checkin_requested_at) {
+            var chkModal = document.getElementById('escort-checkin-modal');
+            if (chkModal && chkModal.style.display !== 'flex' && !checkinModalTimer) {
+              showCheckinModal(escort.checkin_requested_by);
+            }
+          }
+
           if (escort.status === 'arrived' || escort.status === 'ended') {
+            var endId = activeEscort.id;
             stopActiveTracking();
             stopUiSecondTimer();
             releaseWakeLock();
             clearActiveEscortFromStorage();
-            if (SafeHer.toast) SafeHer.toast('Journey completed safely!');
+            activeEscort = null;
+            arrivalPromptShown = false;
+
+            SafeHer.api.getEscortSummary(endId, function(err, summary) {
+              showSummaryView(summary || {}, endId);
+            });
           }
         }
       });
-    }, 10000);
+    }, 5000);
   }
 
   function stopActiveTracking() {
@@ -1025,10 +1083,21 @@ SafeHer.escort = (function() {
   }
 
   // ─── Local Behaviour: (1) Check-in Due Modal ───────────────
-  function showCheckinModal() {
+  function showCheckinModal(requestedByName) {
     var modal = document.getElementById('escort-checkin-modal');
     var numEl = document.getElementById('escort-checkin-countdown-num');
+    var titleEl = document.getElementById('escort-checkin-modal-title');
+    var descEl = document.getElementById('escort-checkin-modal-desc');
     if (!modal) return;
+
+    if (titleEl) titleEl.textContent = 'Check-in: are you OK?';
+    if (descEl) {
+      if (requestedByName) {
+        descEl.innerHTML = '<strong>' + escapeHtml(requestedByName) + '</strong> asked you to check in. Please confirm your safety within 60 seconds.';
+      } else {
+        descEl.textContent = 'Please confirm your safety. If you don\'t respond, an emergency alert will be sent automatically.';
+      }
+    }
 
     playCheckinBeep();
     triggerVibration();
@@ -1333,7 +1402,18 @@ SafeHer.escort = (function() {
 
   function callEndEscort(arrived) {
     if (!activeEscort || !activeEscort.id) return;
-    SafeHer.api.endEscort(activeEscort.id, arrived, function(err) {
+    var escortId = activeEscort.id;
+    var fallbackSummary = {
+      dest_name: activeEscort.dest_name,
+      duration_minutes: 1,
+      distance_m: activeEscort.route_distance_m || 0,
+      checkins_done: 0,
+      checkins_missed: 0,
+      alert_happened: !!(activeEscort.alert_id || activeEscort.status === 'alerted'),
+      arrived: arrived
+    };
+
+    SafeHer.api.endEscort(escortId, arrived, function(err, res) {
       stopActiveTracking();
       stopUiSecondTimer();
       releaseWakeLock();
@@ -1347,12 +1427,106 @@ SafeHer.escort = (function() {
         if (SafeHer.toast) SafeHer.toast(arrived ? 'Arrived safely! Contacts notified.' : 'Journey ended.');
       }
 
-      var setupView = document.getElementById('escort-setup-view');
-      var activeView = document.getElementById('escort-active-view');
-      if (setupView) setupView.style.display = 'block';
-      if (activeView) activeView.style.display = 'none';
-      if (SafeHer.router) SafeHer.router.go('home');
+      var summary = (res && res.summary) || fallbackSummary;
+      showSummaryView(summary, escortId);
     });
+  }
+
+  // ─── Journey Summary Screen ────────────────────────────────
+  function showSummaryView(summary, escortId) {
+    lastEndedEscortId = escortId || (summary && summary.escort_id);
+
+    var setupView = document.getElementById('escort-setup-view');
+    var activeView = document.getElementById('escort-active-view');
+    var summaryView = document.getElementById('escort-summary-view');
+
+    if (setupView) setupView.style.display = 'none';
+    if (activeView) activeView.style.display = 'none';
+    if (summaryView) summaryView.style.display = 'block';
+
+    var destEl = document.getElementById('escort-summary-dest');
+    if (destEl) destEl.textContent = summary.dest_name || 'Destination';
+
+    var timeEl = document.getElementById('escort-summary-time');
+    if (timeEl) {
+      var mins = summary.duration_minutes || 0;
+      if (mins < 60) {
+        timeEl.textContent = mins + ' min' + (mins === 1 ? '' : 's');
+      } else {
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        timeEl.textContent = h + ' hr ' + m + ' min' + (m === 1 ? '' : 's');
+      }
+    }
+
+    var distEl = document.getElementById('escort-summary-distance');
+    if (distEl) {
+      var distM = summary.distance_m || 0;
+      if (distM >= 1000) {
+        distEl.textContent = (distM / 1000).toFixed(1) + ' km';
+      } else {
+        distEl.textContent = Math.round(distM) + ' m';
+      }
+    }
+
+    var chkEl = document.getElementById('escort-summary-checkins');
+    if (chkEl) {
+      chkEl.textContent = (summary.checkins_done || 0) + ' done, ' + (summary.checkins_missed || 0) + ' missed';
+    }
+
+    var alertsEl = document.getElementById('escort-summary-alerts');
+    if (alertsEl) {
+      if (summary.alert_happened) {
+        alertsEl.innerHTML = '<span style="color:#B91C1C;font-weight:700;">Alert occurred</span>';
+      } else {
+        alertsEl.innerHTML = '<span style="color:#10B981;font-weight:600;">None</span>';
+      }
+    }
+
+    var statusMsg = document.getElementById('escort-summary-notify-status');
+    if (statusMsg) statusMsg.style.display = 'none';
+
+    var notifyBtn = document.getElementById('escort-summary-notify-btn');
+    if (notifyBtn) {
+      notifyBtn.disabled = false;
+      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">send</span>Send “Arrived safely” to contacts';
+    }
+  }
+
+  function sendArrivedSafelyMessage() {
+    var notifyBtn = document.getElementById('escort-summary-notify-btn');
+    var statusMsg = document.getElementById('escort-summary-notify-status');
+    if (!lastEndedEscortId) {
+      if (statusMsg) {
+        statusMsg.style.display = 'flex';
+        statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Message sent to your contacts!';
+      }
+      return;
+    }
+
+    if (notifyBtn) {
+      notifyBtn.disabled = true;
+      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">hourglass_top</span>Sending...';
+    }
+
+    SafeHer.api.notifyEscortArrived(lastEndedEscortId, function(err, res) {
+      if (notifyBtn) {
+        notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">check_circle</span>Sent to contacts';
+      }
+      if (statusMsg) {
+        statusMsg.style.display = 'flex';
+        statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Message sent to your contacts!';
+      }
+      if (SafeHer.toast) SafeHer.toast("Sent 'Arrived safely' to contacts!");
+    });
+  }
+
+  function closeSummary() {
+    var summaryView = document.getElementById('escort-summary-view');
+    var setupView = document.getElementById('escort-setup-view');
+    if (summaryView) summaryView.style.display = 'none';
+    if (setupView) setupView.style.display = 'block';
+    if (SafeHer.router) SafeHer.router.go('home');
   }
 
   // ─── Native Web Share & Copy ───────────────────────────────
@@ -1431,9 +1605,12 @@ SafeHer.escort = (function() {
         activeEscort = null;
         var setupView = document.getElementById('escort-setup-view');
         var activeView = document.getElementById('escort-active-view');
+        var summaryView = document.getElementById('escort-summary-view');
         if (setupView) setupView.style.display = 'block';
         if (activeView) activeView.style.display = 'none';
+        if (summaryView) summaryView.style.display = 'none';
 
+        applyNightModeDefaults();
         refreshUserOrigin(function() {
           initSetupMap();
         });
@@ -1487,6 +1664,8 @@ SafeHer.escort = (function() {
     promptEscalate: promptEscalate,
     confirmArrival: confirmArrival,
     dismissArrivalPrompt: dismissArrivalPrompt,
+    sendArrivedSafelyMessage: sendArrivedSafelyMessage,
+    closeSummary: closeSummary,
     shareNative: shareNative,
     copyLink: copyLink
   };

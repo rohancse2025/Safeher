@@ -483,11 +483,20 @@ def init_db():
             pause_until TIMESTAMP,
             alert_id INTEGER,
             ended_at TIMESTAMP,
+            checkin_requested_at TIMESTAMP,
+            checkin_requested_by TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE SET NULL
         );
     ''')
+
+    cursor.execute("PRAGMA table_info(escorts);")
+    existing_escort_cols = {col['name'] for col in cursor.fetchall()}
+    if 'checkin_requested_at' not in existing_escort_cols:
+        cursor.execute("ALTER TABLE escorts ADD COLUMN checkin_requested_at TIMESTAMP;")
+    if 'checkin_requested_by' not in existing_escort_cols:
+        cursor.execute("ALTER TABLE escorts ADD COLUMN checkin_requested_by TEXT;")
 
     # 13. Escort contacts tokens table
     cursor.execute('''
@@ -501,6 +510,19 @@ def init_db():
             FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
         );
     ''')
+
+    # 14. Escort check-in ping requests table (rate limiting: max 3 per hour per contact)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS escort_checkin_pings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            escort_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (escort_id) REFERENCES escorts(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_pings_escort_contact ON escort_checkin_pings(escort_id, contact_id, created_at);')
 
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')

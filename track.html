@@ -286,6 +286,34 @@
       color: #A80F3C;
       border: 1px solid #A80F3C;
     }
+    .btn-ask-checkin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 13px 16px;
+      background: #FFF5F7;
+      color: #9E1B32;
+      border: 2px solid #9E1B32;
+      border-radius: var(--radius-btn);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(158, 27, 50, 0.08);
+      margin-bottom: 12px;
+    }
+    .btn-ask-checkin:hover:not(:disabled) {
+      background: #9E1B32;
+      color: #ffffff;
+    }
+    .btn-ask-checkin:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .btn-contact-action {
       display: flex;
       align-items: center;
@@ -464,6 +492,16 @@
 
       <!-- Contact Response Controls (Shown when link is a contact link) -->
       <div id="track-contact-actions-section" style="display: none; margin-bottom: 14px;">
+        <!-- Ask her to check in button (limit 3 per hour per contact) -->
+        <div id="track-ask-checkin-container" style="display: none; margin-bottom: 12px;">
+          <button type="button" class="btn-ask-checkin" id="btn-ask-checkin" onclick="askHerToCheckin()">
+            <span class="material-symbols-rounded">notifications_active</span>Ask her to check in
+          </button>
+          <div id="track-ask-checkin-msg" class="contact-confirm-banner" style="display: none; margin-top: -4px; margin-bottom: 8px;">
+            <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
+            <span id="track-ask-checkin-msg-text">Check-in request sent. She has 60 seconds to respond.</span>
+          </div>
+        </div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button type="button" class="btn-contact-action" id="btn-resp-on-my-way" onclick="respondContact('on_my_way')">
             <span class="material-symbols-rounded">directions_run</span>I’m on my way
@@ -757,6 +795,16 @@
           }
         }
 
+        // Show "Ask her to check in" for escort tracking while active
+        var askBox = document.getElementById('track-ask-checkin-container');
+        if (askBox) {
+          if (data.is_contact && data.type === 'escort' && data.status !== 'Arrived' && data.status !== 'Journey ended') {
+            askBox.style.display = 'block';
+          } else {
+            askBox.style.display = 'none';
+          }
+        }
+
         // Show four large contact response buttons and navigate button when link is a contact link
         if (data.is_contact) {
           var contactSection = document.getElementById('track-contact-actions-section');
@@ -827,6 +875,65 @@
           mapInstance.setView([lat, lng], 15);
         }
       }
+
+      window.askHerToCheckin = function() {
+        var token = getToken();
+        if (!token) return;
+
+        var btn = document.getElementById('btn-ask-checkin');
+        var banner = document.getElementById('track-ask-checkin-msg');
+        var textEl = document.getElementById('track-ask-checkin-msg-text');
+        if (!btn) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-rounded">hourglass_top</span>Sending check-in request...';
+
+        fetch(getApiBase() + '/api/track/' + encodeURIComponent(token) + '/ping-checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        .then(function(res) {
+          return res.json().then(function(data) {
+            return { ok: res.ok, status: res.status, data: data };
+          });
+        })
+        .then(function(result) {
+          btn.innerHTML = '<span class="material-symbols-rounded">notifications_active</span>Ask her to check in';
+          if (banner && textEl) {
+            banner.style.display = 'flex';
+            if (result.ok) {
+              banner.style.background = '#E8F5E9';
+              banner.style.color = '#2E7D32';
+              banner.style.borderColor = '#C8E6C9';
+              textEl.textContent = 'Check-in request sent. She has 60 seconds to respond.';
+            } else if (result.status === 429) {
+              banner.style.background = '#FFF3CD';
+              banner.style.color = '#856404';
+              banner.style.borderColor = '#FFEEBA';
+              textEl.textContent = 'Limit reached: Maximum 3 check-in requests per hour.';
+            } else {
+              banner.style.background = '#FFEBEE';
+              banner.style.color = '#C62828';
+              banner.style.borderColor = '#FFCDD2';
+              textEl.textContent = (result.data && result.data.error) || 'Failed to send check-in request.';
+            }
+          }
+          setTimeout(function() {
+            btn.disabled = false;
+          }, 4000);
+        })
+        .catch(function(err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-symbols-rounded">notifications_active</span>Ask her to check in';
+          if (banner && textEl) {
+            banner.style.display = 'flex';
+            banner.style.background = '#FFEBEE';
+            banner.style.color = '#C62828';
+            banner.style.borderColor = '#FFCDD2';
+            textEl.textContent = 'Network error sending check-in request.';
+          }
+        });
+      };
 
       window.respondContact = function(statusKey) {
         var token = getToken();

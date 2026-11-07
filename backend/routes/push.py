@@ -359,3 +359,20 @@ def notify_alert_owner_contact_response(owner_user_id, alert_id, contact_name, s
     }
     dispatch_push_to_users([owner_user_id], payload)
 
+def notify_escort_checkin_requested(owner_user_id, escort_id, contact_name):
+    """
+    Send Web Push notification to escort owner when a contact asks her to check in.
+    """
+    payload = {
+        "title": "Check-in requested",
+        "body": f"{contact_name} asked you to check in. Please confirm you are safe.",
+        "data": {
+            "screen": "escort-active",
+            "escort_id": escort_id,
+            "checkin_requested": True,
+            "contact_name": contact_name
+        },
+        "silent": False
+    }
+    dispatch_push_to_users([owner_user_id], payload)
+

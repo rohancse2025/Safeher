@@ -189,8 +189,17 @@ def create_escort():
     except (ValueError, TypeError):
         expected_minutes = 30
 
-    # Checkin interval: 5, 10, 15, 30 or None
-    raw_checkin = data.get('checkin_interval') or data.get('checkin_interval_min')
+    # Night default check: between 8 PM and 6 AM IST (UTC + 5:30)
+    now_utc_init = datetime.datetime.now(datetime.timezone.utc)
+    ist_total_mins = now_utc_init.hour * 60 + now_utc_init.minute + 330
+    ist_hour = (ist_total_mins // 60) % 24
+    is_night_ist = (ist_hour >= 20 or ist_hour < 6)
+
+    # Checkin interval: 5, 10, 15, 30 or None (default 5 at night if not specified)
+    raw_checkin = data.get('checkin_interval')
+    if raw_checkin is None and 'checkin_interval_min' in data:
+        raw_checkin = data.get('checkin_interval_min')
+
     checkin_interval_min = None
     if raw_checkin not in (None, '', 'none', 'off', 0, '0'):
         try:
@@ -199,13 +208,21 @@ def create_escort():
                 checkin_interval_min = val
         except (ValueError, TypeError):
             checkin_interval_min = None
+    elif is_night_ist and raw_checkin is None:
+        checkin_interval_min = 5
 
-    # Deviation distance: 100 to 500 m, default 200
-    try:
-        dev_dist = float(data.get('deviation_distance') or data.get('deviation_m') or 200)
-        deviation_m = max(100.0, min(500.0, dev_dist))
-    except (ValueError, TypeError):
-        deviation_m = 200.0
+    # Deviation distance: 100 to 500 m (default 150 at night if not specified, else 200)
+    raw_dev = data.get('deviation_distance')
+    if raw_dev is None and 'deviation_m' in data:
+        raw_dev = data.get('deviation_m')
+    if raw_dev is not None:
+        try:
+            dev_dist = float(raw_dev)
+            deviation_m = max(100.0, min(500.0, dev_dist))
+        except (ValueError, TypeError):
+            deviation_m = 150.0 if is_night_ist else 200.0
+    else:
+        deviation_m = 150.0 if is_night_ist else 200.0
 
     # Contact IDs
     contact_ids = data.get('contact_ids') or data.get('contacts') or []
@@ -574,7 +591,9 @@ def checkin_escort(escort_id):
     cursor.execute('''
         UPDATE escorts
         SET last_checkin_at = ?,
-            next_checkin_due = ?
+            next_checkin_due = ?,
+            checkin_requested_at = NULL,
+            checkin_requested_by = NULL
         WHERE id = ?;
     ''', (now_str, next_checkin_due, escort_id))
 
@@ -852,7 +871,7 @@ def end_escort(escort_id):
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT id, user_id, dest_name, status
+        SELECT id, user_id, dest_name, status, started_at, route_distance_m, alert_id
         FROM escorts
         WHERE id = ? AND user_id = ?;
     ''', (escort_id, user_id))
@@ -915,8 +934,38 @@ def end_escort(escort_id):
             cursor=cursor
         )
 
+    # Calculate journey summary statistics before closing DB connection
+    started_dt = parse_datetime_utc(escort['started_at'])
+    route_dist_val = float(escort['route_distance_m'] or 0)
+    escort_alert_id = escort['alert_id']
+
+    duration_seconds = int((now_utc - started_dt).total_seconds()) if started_dt else 0
+    duration_mins = max(1, round(duration_seconds / 60))
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_ok';", (escort_id,))
+    checkins_done = cursor.fetchone()['count']
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_missed';", (escort_id,))
+    checkins_missed = cursor.fetchone()['count']
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_alerted';", (escort_id,))
+    alert_count = cursor.fetchone()['count']
+    has_alert = bool(escort_alert_id) or alert_count > 0
+
     conn.commit()
     conn.close()
+
+    summary_data = {
+        "escort_id": escort_id,
+        "dest_name": escort['dest_name'],
+        "duration_seconds": duration_seconds,
+        "duration_minutes": duration_mins,
+        "distance_m": round(route_dist_val, 1),
+        "checkins_done": checkins_done,
+        "checkins_missed": checkins_missed,
+        "alert_happened": has_alert,
+        "arrived": arrived
+    }
 
     return jsonify({
         "ok": True,
@@ -924,10 +973,131 @@ def end_escort(escort_id):
             "escort_id": escort_id,
             "status": final_status,
             "ended_at": now_str,
-            "message": f"Escort journey marked as {final_status}"
+            "message": f"Escort journey marked as {final_status}",
+            "summary": summary_data
         }
     }), 200
 
+
+
+
+# ─── Route: GET /api/escorts/<id>/summary ─────────────────────
+@escorts_bp.route('/api/escorts/<int:escort_id>/summary', methods=['GET'])
+@login_required
+def get_escort_summary(escort_id):
+    """
+    Get journey summary for ended or arrived escort.
+    """
+    user_id = g.current_user['id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, user_id, dest_name, route_distance_m, started_at, ended_at, last_update_at, alert_id, status
+        FROM escorts WHERE id = ? AND user_id = ?;
+    ''', (escort_id, user_id))
+    escort = cursor.fetchone()
+
+    if not escort:
+        conn.close()
+        return jsonify({"ok": False, "error": "Escort journey not found"}), 404
+
+    started_dt = parse_datetime_utc(escort['started_at'])
+    ended_str = escort['ended_at'] or escort['last_update_at']
+    ended_dt = parse_datetime_utc(ended_str) or datetime.datetime.now(datetime.timezone.utc)
+    duration_seconds = int((ended_dt - started_dt).total_seconds()) if started_dt else 0
+    duration_mins = max(1, round(duration_seconds / 60))
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_ok';", (escort_id,))
+    checkins_done = cursor.fetchone()['count']
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_missed';", (escort_id,))
+    checkins_missed = cursor.fetchone()['count']
+
+    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_alerted';", (escort_id,))
+    alert_count = cursor.fetchone()['count']
+    has_alert = bool(escort['alert_id']) or alert_count > 0
+
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "escort_id": escort_id,
+            "dest_name": escort['dest_name'],
+            "duration_seconds": duration_seconds,
+            "duration_minutes": duration_mins,
+            "distance_m": round(float(escort['route_distance_m'] or 0), 1),
+            "checkins_done": checkins_done,
+            "checkins_missed": checkins_missed,
+            "alert_happened": has_alert,
+            "status": escort['status'],
+            "arrived": (escort['status'] == 'arrived')
+        }
+    }), 200
+
+
+# ─── Route: POST /api/escorts/<id>/notify-arrived ─────────────
+@escorts_bp.route('/api/escorts/<int:escort_id>/notify-arrived', methods=['POST'])
+@login_required
+def notify_contacts_arrived_safely(escort_id):
+    """
+    One-tap send "Arrived safely" email notification to contacts.
+    """
+    user_id = g.current_user['id']
+    user_name = g.current_user['name']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, user_id, dest_name FROM escorts WHERE id = ? AND user_id = ?;', (escort_id, user_id))
+    escort = cursor.fetchone()
+    if not escort:
+        conn.close()
+        return jsonify({"ok": False, "error": "Escort journey not found"}), 404
+
+    cursor.execute('''
+        SELECT c.name, c.email FROM escort_contacts ec
+        JOIN contacts c ON ec.contact_id = c.id
+        WHERE ec.escort_id = ?;
+    ''', (escort_id,))
+    contacts_to_notify = cursor.fetchall()
+    dest_title = escort['dest_name']
+
+    sent_count = 0
+    for c in contacts_to_notify:
+        if c['email'] and c['email'].strip():
+            subj = f"SafeHer – {user_name} arrived safely at {dest_title}"
+            body_txt = (
+                f"Hello {c['name']},\n\n"
+                f"{user_name} has arrived safely at {dest_title}.\n"
+                f"Thank you for looking out for them!\n\n"
+                f"SafeHer Women Safety"
+            )
+            try:
+                send_email(c['email'].strip(), subj, body_txt)
+                sent_count += 1
+            except Exception as mail_err:
+                app_logger.error(f"[Escort Notify Arrived] Email error to {c['email']}: {mail_err}")
+
+    log_event(
+        user_id=user_id,
+        type='escort_arrived',
+        actor='user',
+        detail={'dest_name': dest_title, 'manual_notify': True, 'sent_count': sent_count},
+        escort_id=escort_id,
+        cursor=cursor
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "message": "Sent 'Arrived safely' to contacts",
+        "data": {
+            "sent_count": sent_count,
+            "dest_name": dest_title
+        }
+    }), 200
 
 # ─── 9. Route: GET /api/escorts/active & GET /api/escorts/<id> ─
 @escorts_bp.route('/api/escorts/active', methods=['GET'])
@@ -944,7 +1114,8 @@ def get_active_escort():
         SELECT id, dest_name, dest_lat, dest_lng, route_distance_m, started_at,
                expected_end, status, checkin_interval_min, deviation_m, last_lat,
                last_lng, last_update_at, last_checkin_at, next_checkin_due,
-               off_route_since, stationary_since, pauses_used, pause_until, alert_id
+               off_route_since, stationary_since, pauses_used, pause_until, alert_id,
+               checkin_requested_at, checkin_requested_by
         FROM escorts
         WHERE user_id = ? AND status IN ('active', 'paused', 'alerted')
         ORDER BY id DESC LIMIT 1;
@@ -1013,7 +1184,7 @@ def check_active_escorts():
                    e.checkin_interval_min, e.deviation_m, e.last_lat, e.last_lng,
                    e.started_at, e.expected_end, e.last_update_at, e.last_checkin_at,
                    e.next_checkin_due, e.off_route_since, e.stationary_since,
-                   e.pause_until, e.alert_id,
+                   e.pause_until, e.alert_id, e.checkin_requested_at, e.checkin_requested_by,
                    u.name AS user_name
             FROM escorts e
             JOIN users u ON e.user_id = u.id
@@ -1104,6 +1275,44 @@ def check_active_escorts():
                     if ok:
                         new_aid = res['id']
                         cursor.execute("UPDATE escorts SET alert_id = ?, status = 'alerted' WHERE id = ?;", (new_aid, escort_id))
+                        log_event(
+                            user_id=user_id,
+                            type='escort_alerted',
+                            actor='system',
+                            detail={'reason': 'missed_checkin', 'alert_id': new_aid},
+                            escort_id=escort_id,
+                            cursor=cursor
+                        )
+                        conn.commit()
+                    continue
+
+            # ─── Condition (b2): Contact Ping Check-in Timeout (> 60s overdue) ───────
+            if not active_alert_row and status == 'active' and escort['checkin_requested_at']:
+                req_dt = parse_datetime_utc(escort['checkin_requested_at'])
+                if req_dt and (now_utc - req_dt).total_seconds() > 60:
+                    log_event(
+                        user_id=user_id,
+                        type='escort_checkin_missed',
+                        actor='system',
+                        detail={'reason': 'contact_ping_timeout'},
+                        escort_id=escort_id,
+                        cursor=cursor
+                    )
+                    ok, res, _ = create_alert_internal(
+                        user_id=user_id,
+                        user_name=user_name,
+                        mode='emergency',
+                        lat=lat,
+                        lng=lng,
+                        reason='missed_checkin',
+                        note="Automated Escort Alert: Check-in requested by contact not answered within 60 seconds",
+                        bypass_rate_limit=True,
+                        cursor=cursor,
+                        conn=conn
+                    )
+                    if ok:
+                        new_aid = res['id']
+                        cursor.execute("UPDATE escorts SET alert_id = ?, status = 'alerted', checkin_requested_at = NULL, checkin_requested_by = NULL WHERE id = ?;", (new_aid, escort_id))
                         log_event(
                             user_id=user_id,
                             type='escort_alerted',

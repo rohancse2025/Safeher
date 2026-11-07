@@ -1504,6 +1504,12 @@
           </div>
         </div>
 
+        <!-- Night Mode Alert Banner -->
+        <div id="escort-night-mode-badge" style="display: none; background: #2D1527; color: #FCEFF3; padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 12px; align-items: center; gap: 8px; border: 1px solid #4A2341;">
+          <span class="material-symbols-rounded" style="color: #F3C2CE; font-size: 20px;">bedtime</span>
+          <span>Night mode: closer monitoring</span>
+        </div>
+
         <!-- Settings Card: Check-in, Deviation, Contacts -->
         <div class="settings-card" style="margin-bottom: 14px;">
           <p class="settings-section-title" style="margin-bottom: 8px;">Escort Settings</p>
@@ -1522,6 +1528,7 @@
           <p style="font-size: 12px; font-weight: 600; color: var(--text-dark); margin-bottom: 6px;">Deviation Alert Distance</p>
           <div class="escort-chips-grid" id="escort-deviation-chips">
             <button type="button" class="escort-chip" data-value="100" onclick="SafeHer.escort.selectDeviation(this)">100 m</button>
+            <button type="button" class="escort-chip" data-value="150" onclick="SafeHer.escort.selectDeviation(this)">150 m</button>
             <button type="button" class="escort-chip active" data-value="200" onclick="SafeHer.escort.selectDeviation(this)">200 m</button>
             <button type="button" class="escort-chip" data-value="300" onclick="SafeHer.escort.selectDeviation(this)">300 m</button>
             <button type="button" class="escort-chip" data-value="500" onclick="SafeHer.escort.selectDeviation(this)">500 m</button>
@@ -1619,14 +1626,66 @@
         </div>
       </div>
 
+      <!-- 3. JOURNEY SUMMARY VIEW (shown when journey ends) -->
+      <div id="escort-summary-view" style="display: none;">
+        <div class="settings-card" style="margin-bottom: 14px; text-align: center; padding: 22px 16px; background: #ffffff; border: 1px solid #F3C2CE;">
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: #E8F5E9; color: #2E7D32; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;">
+            <span class="material-symbols-rounded" style="font-size: 30px;">task_alt</span>
+          </div>
+          <h2 style="font-size: 19px; font-weight: 700; color: #333333; margin: 0 0 4px 0;">Journey Summary</h2>
+          <p style="font-size: 12px; color: #666666; margin: 0 0 16px 0;">Escort Mode journey details</p>
+
+          <div style="background: #FFF5F7; border-radius: 12px; padding: 14px; text-align: left; margin-bottom: 16px; border: 1px solid #FCEFF3;">
+            <div style="margin-bottom: 10px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #777777; font-weight: 600; letter-spacing: 0.5px;">Destination</span>
+              <div id="escort-summary-dest" style="font-size: 15px; font-weight: 700; color: #333333; margin-top: 2px;">--</div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: #777777; font-weight: 600; letter-spacing: 0.5px;">Total Time</span>
+                <div id="escort-summary-time" style="font-size: 14px; font-weight: 600; color: #333333; margin-top: 2px;">--</div>
+              </div>
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: #777777; font-weight: 600; letter-spacing: 0.5px;">Distance</span>
+                <div id="escort-summary-distance" style="font-size: 14px; font-weight: 600; color: #333333; margin-top: 2px;">--</div>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: #777777; font-weight: 600; letter-spacing: 0.5px;">Check-ins</span>
+                <div id="escort-summary-checkins" style="font-size: 13px; font-weight: 600; color: #333333; margin-top: 2px;">--</div>
+              </div>
+              <div>
+                <span style="font-size: 11px; text-transform: uppercase; color: #777777; font-weight: 600; letter-spacing: 0.5px;">Alerts</span>
+                <div id="escort-summary-alerts" style="font-size: 13px; font-weight: 600; color: #333333; margin-top: 2px;">None</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- One-tap "Send 'Arrived safely' to contacts" message -->
+          <button type="button" id="escort-summary-notify-btn" class="btn btn-primary btn-crimson" onclick="SafeHer.escort.sendArrivedSafelyMessage()" style="width: 100%; min-height: 48px; font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+            <span class="material-symbols-rounded" style="margin-right: 6px;">send</span>Send “Arrived safely” to contacts
+          </button>
+          <div id="escort-summary-notify-status" style="display: none; font-size: 12px; color: #2E7D32; font-weight: 600; margin-bottom: 10px; align-items: center; justify-content: center; gap: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">check_circle</span> Message sent to your contacts!
+          </div>
+
+          <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.closeSummary()" style="width: 100%; height: 40px; font-size: 13px;">
+            Back to Home
+          </button>
+        </div>
+      </div>
+
       <!-- Full-screen Check-in Modal -->
       <div id="escort-checkin-modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
         <div style="background: #ffffff; border-radius: 16px; width: 100%; max-width: 360px; padding: 28px 20px; text-align: center; border: 2px solid #9E1B32; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
           <div style="width: 64px; height: 64px; border-radius: 50%; background: #FCEFF3; color: #9E1B32; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
             <span class="material-symbols-rounded" style="font-size: 36px;">notifications_active</span>
           </div>
-          <h2 style="font-size: 20px; font-weight: 700; color: #333333; margin: 0 0 8px 0;">Check-in: are you OK?</h2>
-          <p style="font-size: 13px; color: #666666; margin: 0 0 20px 0; line-height: 1.4;">
+          <h2 id="escort-checkin-modal-title" style="font-size: 20px; font-weight: 700; color: #333333; margin: 0 0 8px 0;">Check-in: are you OK?</h2>
+          <p id="escort-checkin-modal-desc" style="font-size: 13px; color: #666666; margin: 0 0 20px 0; line-height: 1.4;">
             Please confirm your safety. If you don't respond, an emergency alert will be sent automatically.
           </p>
           <div style="margin-bottom: 20px;">
