@@ -9,6 +9,10 @@ from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.security import check_password_hash
 from db import get_db
 from routes.auth import login_required
+try:
+    from services.events import log_event
+except ImportError:
+    from backend.services.events import log_event
 
 evidence_bp = Blueprint('evidence', __name__)
 
@@ -127,6 +131,17 @@ def create_session():
             alert_id = excluded.alert_id,
             kind = excluded.kind;
     ''', (session_id, user_id, alert_id, kind, started_at))
+
+    alert_id_val = int(alert_id) if (alert_id and str(alert_id).strip().isdigit()) else None
+    log_event(
+        user_id=int(user_id),
+        type='evidence_session_started',
+        actor='user',
+        detail={'session_id': session_id, 'kind': kind},
+        alert_id=alert_id_val,
+        cursor=cursor
+    )
+
     conn.commit()
     conn.close()
 
@@ -285,6 +300,26 @@ def upload_session_chunk(session_id):
         chunk_id, session_id, idx, mime, chunk_size, computed_sha256,
         expected_prev_hash, chain_hash, file_path, encrypted_key, iv
     ))
+
+    cursor.execute('SELECT COUNT(*) AS cnt FROM evidence_chunks WHERE session_id = ?;', (session_id,))
+    c_row = cursor.fetchone()
+    chunk_count = c_row['cnt'] if c_row else (idx + 1)
+
+    cursor.execute('SELECT alert_id FROM evidence_sessions WHERE id = ?;', (session_id,))
+    s_row = cursor.fetchone()
+    alert_id_val = None
+    if s_row and s_row['alert_id'] and str(s_row['alert_id']).strip().isdigit():
+        alert_id_val = int(s_row['alert_id'])
+
+    log_event(
+        user_id=int(user_id),
+        type='evidence_chunks_uploaded',
+        actor='user',
+        detail={'session_id': session_id, 'count': chunk_count},
+        alert_id=alert_id_val,
+        cursor=cursor
+    )
+
     conn.commit()
     conn.close()
 
@@ -302,6 +337,55 @@ def upload_session_chunk(session_id):
             "filePath": file_path
         }
     }), 201
+
+
+# ─── 4b. End Evidence Session ──────────────────────────────────
+@evidence_bp.route('/api/evidence/sessions/<session_id>/end', methods=['POST'])
+@login_required
+def end_session(session_id):
+    """
+    End an active evidence session.
+    Login required, owner only.
+    """
+    user_id = str(g.current_user['id'])
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, user_id, alert_id FROM evidence_sessions WHERE id = ?;', (session_id,))
+    sess = cursor.fetchone()
+    if not sess:
+        conn.close()
+        return jsonify({"ok": False, "error": "Evidence session not found"}), 404
+
+    if str(sess['user_id']) != user_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Forbidden"}), 403
+
+    cursor.execute("UPDATE evidence_sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (session_id,))
+    cursor.execute("SELECT COUNT(*) AS cnt FROM evidence_chunks WHERE session_id = ?;", (session_id,))
+    c_row = cursor.fetchone()
+    chunk_count = c_row['cnt'] if c_row else 0
+
+    alert_id_val = None
+    if sess['alert_id'] and str(sess['alert_id']).strip().isdigit():
+        alert_id_val = int(sess['alert_id'])
+
+    log_event(
+        user_id=int(user_id),
+        type='evidence_session_ended',
+        actor='user',
+        detail={'session_id': session_id, 'count': chunk_count},
+        alert_id=alert_id_val,
+        cursor=cursor
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "message": "Evidence session ended successfully",
+        "sessionId": session_id,
+        "chunkCount": chunk_count
+    }), 200
 
 
 # ─── 5. List Evidence Sessions for Authenticated Owner ─────────

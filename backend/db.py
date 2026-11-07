@@ -66,6 +66,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             mode TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT 'manual',
             status TEXT NOT NULL,
             lat REAL NOT NULL,
             lng REAL NOT NULL,
@@ -173,6 +174,8 @@ def init_db():
     alert_cols = [col['name'] for col in cursor.fetchall()]
     if 'note' not in alert_cols:
         cursor.execute("ALTER TABLE alerts ADD COLUMN note TEXT;")
+    if 'reason' not in alert_cols:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN reason TEXT DEFAULT 'manual';")
 
     cursor.execute("PRAGMA table_info(volunteers);")
     existing_vol_cols = {col['name'] for col in cursor.fetchall()}
@@ -289,18 +292,81 @@ def init_db():
         );
     ''')
 
-    # 6e. Incident events table (logged with anonymous labels like 'Volunteer 1')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS incident_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            alert_id INTEGER NOT NULL,
-            event_type TEXT NOT NULL,
-            actor_label TEXT,
-            details TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
-        );
-    ''')
+    # 6e. Central incident events table (seq per alert, UTC ISO ts, actor in user|system|contact|volunteer|safepoint)
+    cursor.execute("PRAGMA table_info(incident_events);")
+    existing_ie_cols = {col['name'] for col in cursor.fetchall()}
+    if existing_ie_cols and 'user_id' not in existing_ie_cols:
+        cursor.execute("ALTER TABLE incident_events RENAME TO incident_events_legacy;")
+        cursor.execute('''
+            CREATE TABLE incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                alert_id INTEGER,
+                escort_id INTEGER,
+                seq INTEGER NOT NULL DEFAULT 1,
+                ts TEXT NOT NULL,
+                type TEXT NOT NULL,
+                actor TEXT NOT NULL CHECK(actor IN ('user', 'system', 'contact', 'volunteer', 'safepoint')),
+                detail_json TEXT NOT NULL DEFAULT '{}',
+                actor_label TEXT,
+                event_type TEXT,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
+            );
+        ''')
+        try:
+            cursor.execute('''
+                INSERT INTO incident_events (id, user_id, alert_id, seq, ts, type, actor, detail_json, actor_label, event_type)
+                SELECT o.id, COALESCE(a.user_id, 1), o.alert_id, o.id, COALESCE(o.created_at, datetime('now')),
+                       COALESCE(o.event_type, 'event'),
+                       CASE WHEN o.event_type LIKE '%volunteer%' THEN 'volunteer' ELSE 'system' END,
+                       json_object('details', COALESCE(o.details, '')),
+                       o.actor_label,
+                       o.event_type
+                FROM incident_events_legacy o
+                LEFT JOIN alerts a ON o.alert_id = a.id;
+            ''')
+        except Exception:
+            pass
+        cursor.execute("DROP TABLE incident_events_legacy;")
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                alert_id INTEGER,
+                escort_id INTEGER,
+                seq INTEGER NOT NULL DEFAULT 1,
+                ts TEXT NOT NULL,
+                type TEXT NOT NULL,
+                actor TEXT NOT NULL CHECK(actor IN ('user', 'system', 'contact', 'volunteer', 'safepoint')),
+                detail_json TEXT NOT NULL DEFAULT '{}',
+                actor_label TEXT,
+                event_type TEXT,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
+            );
+        ''')
+        # If columns missing in existing table
+        if existing_ie_cols:
+            if 'escort_id' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN escort_id INTEGER;")
+            if 'seq' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN seq INTEGER DEFAULT 1;")
+            if 'ts' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN ts TEXT;")
+            if 'type' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN type TEXT;")
+            if 'actor' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN actor TEXT DEFAULT 'system';")
+            if 'detail_json' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN detail_json TEXT DEFAULT '{}';")
+            if 'details' not in existing_ie_cols:
+                cursor.execute("ALTER TABLE incident_events ADD COLUMN details TEXT;")
 
     # 6f. Volunteer nearby alert query rate limit tracking (max 20 per hour)
     cursor.execute('''
@@ -406,6 +472,8 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_view_log_vol ON volunteer_view_log(volunteer_id, alert_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_feedback_vol ON volunteer_feedback(volunteer_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_alert ON incident_events(alert_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_user ON incident_events(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_incident_events_ts ON incident_events(ts);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_volunteer_query_log_vol_time ON volunteer_query_log(volunteer_id, query_time);')
 
     conn.commit()

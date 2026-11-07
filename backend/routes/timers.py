@@ -10,6 +10,10 @@ from logger import app_logger
 from routes.auth import login_required
 from routes.alerts import get_user_from_request
 from email_service import send_alert_notifications_background
+try:
+    from services.events import log_event
+except ImportError:
+    from backend.services.events import log_event
 from whatsapp_service import send_whatsapp_notifications_background
 
 timers_bp = Blueprint('timers', __name__)
@@ -103,6 +107,13 @@ def mark_timer_safe(timer_id):
         return jsonify({"ok": False, "error": "Timer not found"}), 404
 
     cursor.execute("UPDATE timers SET status = 'safe' WHERE id = ? AND user_id = ?;", (timer_id, user_id))
+    log_event(
+        user_id=user_id,
+        type='user_checkin_ok',
+        actor='user',
+        detail={'timer_id': timer_id},
+        cursor=cursor
+    )
     conn.commit()
     conn.close()
 
@@ -232,14 +243,32 @@ def check_expired_timers():
                 last_lat = 12.9716
                 last_lng = 77.5946
 
-        # 3. Create alert with mode 'timer'
+        # 3. Create alert with mode 'timer' and reason 'timer'
         share_token = secrets.token_urlsafe(16)
         cursor.execute('''
-            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress)
-            VALUES (?, 'timer', 'active', ?, ?, ?, 0, 0);
+            INSERT INTO alerts (user_id, mode, reason, status, lat, lng, share_token, notified_count, duress)
+            VALUES (?, 'timer', 'timer', 'active', ?, ?, ?, 0, 0);
         ''', (user_id, last_lat, last_lng, share_token))
         alert_id = cursor.lastrowid
-        app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode=timer, lat={last_lat}, lng={last_lng}")
+        app_logger.info(f"[ALERT CREATED] alert_id={alert_id}, user_id={user_id}, mode=timer, reason=timer, lat={last_lat}, lng={last_lng}")
+
+        # Log alert_created and timer_expired incident events
+        log_event(
+            user_id=user_id,
+            type='alert_created',
+            actor='system',
+            detail={'mode': 'timer', 'reason': 'timer'},
+            alert_id=alert_id,
+            cursor=cursor
+        )
+        log_event(
+            user_id=user_id,
+            type='timer_expired',
+            actor='system',
+            detail={'timer_id': timer_id},
+            alert_id=alert_id,
+            cursor=cursor
+        )
 
         # Record location entry
         cursor.execute('''

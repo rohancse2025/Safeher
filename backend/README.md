@@ -255,7 +255,15 @@ The database uses SQLite (built-in module, no ORM) with foreign key constraints 
 - **`volunteer_view_log`**: Audit log of every exact location view by volunteers when responding to alerts (`id`, `volunteer_id`, `alert_id`, `time`).
 - **`volunteer_feedback`**: Alert owner feedback on volunteers (`id`, `alert_id`, `volunteer_id`, `helpful`, `respectful`, `report_type`, `comment`, `created_at`).
 - **`volunteer_query_log`**: Rate-limiting log for nearby alert requests per volunteer (`id`, `volunteer_id`, `created_at`).
-- **`incident_events`**: Anonymized incident and response timeline (`id`, `alert_id`, `event_type`, `actor_label`, `note`, `created_at`).
+- **`alerts`**: Emergency alerts triggered by users (`id`, `user_id`, `mode`, `reason`, `status`, `lat`, `lng`, `share_token`, `duress`, `notified_count`, `created_at`, `ended_at`). `reason` tracks trigger origin: `manual` (default), `route_deviation`, `missed_checkin`, `no_signal`, `late_arrival`, `timer`, `safe_point`.
+- **`incident_events`**: Central incident event log (`id`, `user_id`, `alert_id`, `escort_id`, `seq`, `ts`, `type`, `actor`, `detail_json`, `created_at`).
+  - **`seq`**: Strictly sequential integer assigned per alert/escort (1, 2, 3...).
+  - **`ts`**: UTC ISO 8601 timestamp string (`YYYY-MM-DDTHH:MM:SSZ`).
+  - **`actor`**: One of `user`, `system`, `contact`, `volunteer`, `safepoint`.
+  - **Privacy Sanitization**: Details strictly exclude phone numbers, emails, tokens, PINs, and full addresses. Contacts are referred to by first name only, and volunteers are labeled anonymously as `Volunteer 1`, `Volunteer 2`.
+  - **Duress Confidentiality**: Duress PIN use is NEVER logged, and `alert_ended` is NEVER recorded if the duress PIN is entered.
+  - **30-Day Retention**: Scheduled background worker automatically deletes all incident events older than 30 days.
+  - **Logged Event Types**: `alert_created`, `alert_mode_changed`, `alert_ended` (by normal PIN), `email_sent` (count), `email_failed` (count), `push_sent` (count), `volunteer_notified` (count), `volunteer_responded`, `contact_responded`, `user_checkin_ok`, `timer_expired`, `evidence_session_started`, `evidence_session_ended`, `evidence_chunks_uploaded` (count).
 - **`responses`**: Volunteer dispatch responses to active alerts with verification code (`id`, `alert_id`, `volunteer_id`, `status`, `verification_code`, `responded_at`).
 - **`alert_contacts`**: Unique personalized tracking tokens generated for each emergency contact when an alert is created (`id`, `alert_id`, `contact_id`, `token`).
 - **`contact_responses`**: Status responses submitted by contacts via their personalized tracking page (`id`, `alert_id`, `contact_id`, `status`, `created_at`).

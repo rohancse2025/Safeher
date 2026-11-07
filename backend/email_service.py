@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 
 from db import get_db
 from logger import app_logger, mask_email
+try:
+    from services.events import log_event
+except ImportError:
+    from backend.services.events import log_event
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
@@ -157,11 +161,37 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
             else:
                 app_logger.error(f"[EMAIL FAILED] alert_id={alert_id}, to={masked_to}, error={err_msg}")
 
-        # Update notified_count in database in this thread's own connection
+        # Update notified_count in database and log incident events
         try:
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute('UPDATE alerts SET notified_count = ? WHERE id = ?;', (sent_count, alert_id))
+
+            # Fetch alert owner user_id to log event
+            cursor.execute('SELECT user_id FROM alerts WHERE id = ?;', (alert_id,))
+            a_row = cursor.fetchone()
+            owner_id = a_row['user_id'] if a_row else 1
+
+            failed_count = max(0, len(recipient_emails) - sent_count)
+            if sent_count > 0:
+                log_event(
+                    user_id=owner_id,
+                    type='email_sent',
+                    actor='system',
+                    detail={'count': sent_count},
+                    alert_id=alert_id,
+                    cursor=cursor
+                )
+            if failed_count > 0:
+                log_event(
+                    user_id=owner_id,
+                    type='email_failed',
+                    actor='system',
+                    detail={'count': failed_count},
+                    alert_id=alert_id,
+                    cursor=cursor
+                )
+
             conn.commit()
             conn.close()
         except Exception as db_err:

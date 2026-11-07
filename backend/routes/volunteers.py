@@ -112,6 +112,10 @@ from flask import Blueprint, request, jsonify, g
 from db import get_db
 from routes.auth import login_required
 from routes.alerts import is_valid_coord, get_user_from_request
+try:
+    from services.events import log_event
+except ImportError:
+    from backend.services.events import log_event
 
 volunteers_bp = Blueprint('volunteers', __name__)
 
@@ -337,10 +341,21 @@ def log_incident_event(cursor, alert_id, event_type, actor_label, details):
     """
     Inserts a row into incident_events with anonymous actor labels.
     """
-    cursor.execute('''
-        INSERT INTO incident_events (alert_id, event_type, actor_label, details)
-        VALUES (?, ?, ?, ?);
-    ''', (alert_id, event_type, actor_label, details))
+    try:
+        cursor.execute('SELECT user_id FROM alerts WHERE id = ?;', (alert_id,))
+        a_row = cursor.fetchone()
+        owner_id = a_row['user_id'] if a_row else 1
+        actor = 'volunteer' if ('volunteer' in str(actor_label).lower() or 'volunteer' in str(event_type).lower()) else 'system'
+        log_event(
+            user_id=owner_id,
+            type=event_type,
+            actor=actor,
+            detail={'volunteer': actor_label, 'message': details},
+            alert_id=alert_id,
+            cursor=cursor
+        )
+    except Exception as e:
+        print(f"[IncidentLog Error] {e}")
 
 
 def check_and_record_volunteer_query(cursor, volunteer_id):
@@ -633,6 +648,14 @@ def respond_to_alert(alert_id):
                 UPDATE responses SET status = 'cannot' WHERE id = ?;
             ''', (existing_resp['id'],))
             actor_label = get_volunteer_alert_label(cursor, alert_id, volunteer_id)
+            log_event(
+                user_id=alert['user_id'],
+                type='volunteer_responded',
+                actor='volunteer',
+                detail={'volunteer': actor_label, 'status': 'cannot'},
+                alert_id=alert_id,
+                cursor=cursor
+            )
             log_incident_event(cursor, alert_id, 'volunteer_cannot', actor_label, f"{actor_label} cannot continue")
             conn.commit()
             conn.close()
@@ -670,9 +693,25 @@ def respond_to_alert(alert_id):
             VALUES (?, ?);
         ''', (volunteer_id, alert_id))
 
-        # Log incident event anonymously
+        # Log volunteer_responded event
+        log_event(
+            user_id=alert['user_id'],
+            type='volunteer_responded',
+            actor='volunteer',
+            detail={'volunteer': actor_label, 'status': 'coming'},
+            alert_id=alert_id,
+            cursor=cursor
+        )
         log_incident_event(cursor, alert_id, 'volunteer_coming', actor_label, f"{actor_label} is responding to the alert")
     else:
+        log_event(
+            user_id=alert['user_id'],
+            type='volunteer_responded',
+            actor='volunteer',
+            detail={'volunteer': actor_label, 'status': 'cannot'},
+            alert_id=alert_id,
+            cursor=cursor
+        )
         log_incident_event(cursor, alert_id, 'volunteer_cannot', actor_label, f"{actor_label} marked cannot assist")
 
     conn.commit()

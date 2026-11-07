@@ -8,6 +8,7 @@ from db import get_db
 from logger import app_logger
 from routes.auth import login_required, SECRET_KEY
 from email_service import send_email, send_alert_notifications_background
+from services.events import log_event, VALID_ALERT_REASONS
 from whatsapp_service import send_whatsapp_notifications_background
 import jwt
 
@@ -146,12 +147,24 @@ def create_alert():
             return jsonify({"ok": False, "error": "Rate limit exceeded: maximum 5 SOS alerts per hour"}), 429
 
     try:
-        # 1. Insert alert record
+        # 1. Insert alert record with reason
+        raw_reason = (data.get('reason') or 'manual').strip().lower()
+        reason = raw_reason if raw_reason in VALID_ALERT_REASONS else 'manual'
         cursor.execute('''
-            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress, note)
-            VALUES (?, ?, 'active', ?, ?, ?, 0, 0, ?);
-        ''', (user_id, mode, lat, lng, share_token, note or None))
+            INSERT INTO alerts (user_id, mode, reason, status, lat, lng, share_token, notified_count, duress, note)
+            VALUES (?, ?, ?, 'active', ?, ?, ?, 0, 0, ?);
+        ''', (user_id, mode, reason, lat, lng, share_token, note or None))
         alert_id = cursor.lastrowid
+
+        # Log alert_created incident event
+        log_event(
+            user_id=user_id,
+            type='alert_created',
+            actor='user',
+            detail={'mode': mode, 'reason': reason},
+            alert_id=alert_id,
+            cursor=cursor
+        )
 
         # 2. Insert first location row
         cursor.execute('''
@@ -305,11 +318,22 @@ def quick_trigger_alert():
     share_token = secrets.token_urlsafe(16)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    raw_reason = (request.args.get('reason') or (request.get_json(silent=True) or {}).get('reason') or 'manual').strip().lower()
+    reason = raw_reason if raw_reason in VALID_ALERT_REASONS else 'manual'
     cursor.execute('''
-        INSERT INTO alerts (user_id, mode, status, lat, lng, share_token, notified_count, duress)
-        VALUES (?, 'emergency', 'active', ?, ?, ?, 0, 0);
-    ''', (user_id, lat, lng, share_token))
+        INSERT INTO alerts (user_id, mode, reason, status, lat, lng, share_token, notified_count, duress)
+        VALUES (?, 'emergency', ?, 'active', ?, ?, ?, 0, 0);
+    ''', (user_id, reason, lat, lng, share_token))
     alert_id = cursor.lastrowid
+
+    log_event(
+        user_id=user_id,
+        type='alert_created',
+        actor='user',
+        detail={'mode': 'emergency', 'reason': reason},
+        alert_id=alert_id,
+        cursor=cursor
+    )
 
     cursor.execute('INSERT INTO locations (alert_id, lat, lng) VALUES (?, ?, ?);', (alert_id, lat, lng))
 
@@ -510,6 +534,33 @@ def end_alert(alert_id):
             SET status = 'resolved', ended_at = CURRENT_TIMESTAMP
             WHERE id = ?;
         ''', (target_alert_id,))
+
+        # Log alert_ended by pin (duress PIN is NOT logged)
+        log_event(
+            user_id=user_id,
+            type='alert_ended',
+            actor='user',
+            detail={'by': 'pin'},
+            alert_id=target_alert_id,
+            cursor=cursor
+        )
+
+        # End any open evidence sessions linked to this alert
+        cursor.execute("SELECT id FROM evidence_sessions WHERE alert_id = ? AND ended_at IS NULL;", (str(target_alert_id),))
+        for sess in cursor.fetchall():
+            cursor.execute("UPDATE evidence_sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (sess['id'],))
+            cursor.execute("SELECT COUNT(*) AS cnt FROM evidence_chunks WHERE session_id = ?;", (sess['id'],))
+            cnt_row = cursor.fetchone()
+            c_cnt = cnt_row['cnt'] if cnt_row else 0
+            log_event(
+                user_id=user_id,
+                type='evidence_session_ended',
+                actor='user',
+                detail={'session_id': sess['id'], 'count': c_cnt},
+                alert_id=target_alert_id,
+                cursor=cursor
+            )
+
         conn.commit()
         conn.close()
         app_logger.info(f"[ALERT ENDED] alert_id={target_alert_id}, status=resolved")
@@ -580,6 +631,16 @@ def escalate_alert(alert_id):
 
     # Update alert mode in database
     cursor.execute('UPDATE alerts SET mode = ? WHERE id = ?;', (to_mode, target_id))
+
+    # Log alert_mode_changed incident event
+    log_event(
+        user_id=user_id,
+        type='alert_mode_changed',
+        actor='user',
+        detail={'old_mode': old_mode, 'new_mode': to_mode},
+        alert_id=target_id,
+        cursor=cursor
+    )
 
     # Retrieve ALL contacts (both close and standard)
     cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
@@ -677,6 +738,16 @@ def resolve_uneasy_alert_ok(alert_id):
 
     target_id = alert['id']
     cursor.execute("UPDATE alerts SET status = 'resolved', ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (target_id,))
+
+    log_event(
+        user_id=alert['user_id'],
+        type='user_checkin_ok',
+        actor='user',
+        detail={'mode': alert['mode']},
+        alert_id=target_id,
+        cursor=cursor
+    )
+
     conn.commit()
     conn.close()
     app_logger.info(f"[ALERT OK] alert_id={target_id}, mode={alert['mode']}, status=resolved")
@@ -795,21 +866,44 @@ def get_alert_details(alert_id):
 
     # Fetch incident timeline events
     cursor.execute('''
-        SELECT id, event_type, actor_label, details, created_at
+        SELECT id, user_id, alert_id, seq, ts, type, actor, detail_json, actor_label, event_type
         FROM incident_events
         WHERE alert_id = ?
-        ORDER BY id ASC;
+        ORDER BY seq ASC, id ASC;
     ''', (alert_id,))
-    incident_timeline = [
-        {
+    incident_timeline = []
+    for row in cursor.fetchall():
+        d = {}
+        if row['detail_json']:
+            try:
+                d = json.loads(row['detail_json'])
+            except Exception:
+                d = {}
+        msg = d.get('message') or d.get('details')
+        if not msg:
+            if row['actor'] == 'volunteer':
+                msg = f"{row['actor_label'] or 'Volunteer'} {d.get('status', 'responded')}"
+            elif row['actor'] == 'contact':
+                msg = f"{d.get('contact') or 'Contact'} {d.get('status', 'responded')}"
+            elif row['type'] == 'alert_created':
+                msg = f"Alert created ({d.get('mode', 'normal')})"
+            elif row['type'] == 'alert_ended':
+                msg = "Alert ended"
+            else:
+                msg = row['type'].replace('_', ' ').capitalize()
+
+        incident_timeline.append({
             "id": row['id'],
-            "event_type": row['event_type'],
-            "actor_label": row['actor_label'],
-            "details": row['details'],
-            "time": row['created_at']
-        }
-        for row in cursor.fetchall()
-    ]
+            "seq": row['seq'],
+            "ts": row['ts'],
+            "type": row['type'],
+            "event_type": row['type'],
+            "actor": row['actor'],
+            "actor_label": row['actor_label'] or row['actor'],
+            "detail": d,
+            "details": msg,
+            "time": row['ts']
+        })
 
     conn.close()
 
@@ -1025,6 +1119,17 @@ def respond_contact_track(token):
         INSERT INTO contact_responses (alert_id, contact_id, status)
         VALUES (?, ?, ?);
     ''', (alert_id, contact_id, status))
+
+    contact_name_val = (row['contact_name'] or 'Contact').strip()
+    first_name = contact_name_val.split()[0] if contact_name_val else 'Contact'
+    log_event(
+        user_id=row['user_id'],
+        type='contact_responded',
+        actor='contact',
+        detail={'contact': first_name, 'status': status},
+        alert_id=alert_id,
+        cursor=cursor
+    )
     conn.commit()
     conn.close()
 
@@ -1205,10 +1310,14 @@ def submit_volunteer_feedback(alert_id):
     # Add volunteer feedback summary to incident timeline as "Volunteer 1 responded" without names
     from routes.volunteers import get_volunteer_alert_label
     actor_label = get_volunteer_alert_label(cursor, alert_id, volunteer_id)
-    cursor.execute('''
-        INSERT INTO incident_events (alert_id, event_type, actor_label, details)
-        VALUES (?, 'volunteer_feedback', ?, ?);
-    ''', (alert_id, actor_label, f"{actor_label} responded"))
+    log_event(
+        user_id=user['id'],
+        type='volunteer_feedback',
+        actor='user',
+        detail={'volunteer': actor_label, 'status': 'responded'},
+        alert_id=alert_id,
+        cursor=cursor
+    )
 
     # 5. Check if unsafe or inappropriate report -> immediately suspend volunteer
     suspended = False
@@ -1228,10 +1337,14 @@ def submit_volunteer_feedback(alert_id):
         ''', (volunteer_id, f"Volunteer suspended immediately due to {report_type} feedback on alert #{alert_id}. Comment: {comment}"))
 
         # Log in incident_events (anonymously)
-        cursor.execute('''
-            INSERT INTO incident_events (alert_id, event_type, actor_label, details)
-            VALUES (?, 'volunteer_reported', 'Alert Owner', ?);
-        ''', (alert_id, f"Alert owner reported responder for {report_type} conduct. Volunteer suspended."))
+        log_event(
+            user_id=user['id'],
+            type='volunteer_reported',
+            actor='user',
+            detail={'volunteer': actor_label, 'report_type': report_type},
+            alert_id=alert_id,
+            cursor=cursor
+        )
 
     conn.commit()
     conn.close()

@@ -249,6 +249,29 @@ def expire_outdated_volunteer_validity():
         return 0
 
 
+def cleanup_old_incident_events():
+    """
+    Delete incident_events older than 30 days in the scheduler.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM incident_events
+            WHERE ts < datetime('now', '-30 days')
+               OR (created_at IS NOT NULL AND created_at < datetime('now', '-30 days'));
+        ''')
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted_count > 0:
+            print(f"[Scheduler] Purged {deleted_count} incident events older than 30 days")
+        return deleted_count
+    except Exception as e:
+        print(f"[Scheduler Error] cleanup_old_incident_events: {e}")
+        return 0
+
+
 def start_scheduler():
     """
     Starts background maintenance thread running hourly.
@@ -259,6 +282,7 @@ def start_scheduler():
         cleanup_old_volunteer_id_images()
         promote_eligible_volunteers_to_trusted()
         expire_outdated_volunteer_validity()
+        cleanup_old_incident_events()
 
         while True:
             # Check every hour (3600 seconds)
@@ -268,6 +292,7 @@ def start_scheduler():
                 cleanup_old_volunteer_id_images()
                 promote_eligible_volunteers_to_trusted()
                 expire_outdated_volunteer_validity()
+                cleanup_old_incident_events()
             except Exception as e:
                 print(f"[Scheduler Loop Error] {e}")
 

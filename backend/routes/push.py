@@ -9,6 +9,10 @@ from pywebpush import webpush, WebPushException
 from db import get_db
 from logger import app_logger
 from routes.auth import login_required
+try:
+    from services.events import log_event
+except ImportError:
+    from backend.services.events import log_event
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'))
 load_dotenv()
@@ -177,6 +181,22 @@ def dispatch_push_to_users(user_ids, payload):
 
             for s in subs:
                 send_single_push(s, payload)
+
+            alert_id = payload.get('data', {}).get('alert_id') if isinstance(payload, dict) and isinstance(payload.get('data'), dict) else None
+            if alert_id and subs:
+                for uid in user_ids:
+                    try:
+                        log_event(
+                            user_id=uid,
+                            type='push_sent',
+                            actor='system',
+                            detail={'count': len(subs)},
+                            alert_id=alert_id,
+                            cursor=cursor
+                        )
+                    except Exception as le_err:
+                        logger.error(f"[WebPush] Error logging push_sent: {le_err}")
+                conn.commit()
         except Exception as err:
             logger.error(f"[WebPush] Error fetching subscriptions for users {user_ids}: {err}")
 
@@ -208,6 +228,9 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
             ''', (exclude_user_id,))
             volunteers = cursor.fetchall()
 
+            notified_volunteers_count = 0
+            push_sent_count = 0
+
             for vol in volunteers:
                 # Provisional volunteers never receive silent-mode alerts
                 if alert_mode == 'silent' and vol['level'] != 'trusted':
@@ -223,6 +246,7 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
                 dist_km = 6371.0 * c
 
                 if dist_km <= 2.0:
+                    notified_volunteers_count += 1
                     cursor.execute('''
                         SELECT id, user_id, endpoint, p256dh, auth
                         FROM push_subscriptions
@@ -243,7 +267,28 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
 
                     for s in subs:
                         send_single_push(s, payload)
+                        push_sent_count += 1
 
+            if notified_volunteers_count > 0:
+                log_event(
+                    user_id=exclude_user_id,
+                    type='volunteer_notified',
+                    actor='system',
+                    detail={'count': notified_volunteers_count},
+                    alert_id=alert_id,
+                    cursor=cursor
+                )
+            if push_sent_count > 0:
+                log_event(
+                    user_id=exclude_user_id,
+                    type='push_sent',
+                    actor='system',
+                    detail={'count': push_sent_count},
+                    alert_id=alert_id,
+                    cursor=cursor
+                )
+
+            conn.commit()
             conn.close()
         except Exception as err:
             logger.error(f"[WebPush] Error notifying nearby volunteers for alert {alert_id}: {err}")
