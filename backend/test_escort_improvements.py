@@ -156,6 +156,7 @@ class EscortImprovementsTestCase(unittest.TestCase):
 
             self.cursor.execute("SELECT checkin_requested_at FROM escorts WHERE id = ?;", (escort_id,))
             self.assertIsNotNone(self.cursor.fetchone()['checkin_requested_at'])
+            self.conn.commit()
 
             # Owner checks in
             chk_res = self.client.post(f'/api/escorts/{escort_id}/checkin', headers=self.auth_headers)
@@ -166,6 +167,7 @@ class EscortImprovementsTestCase(unittest.TestCase):
             row = self.cursor.fetchone()
             self.assertIsNone(row['checkin_requested_at'])
             self.assertIsNone(row['checkin_requested_by'])
+            self.conn.commit()
 
     def test_03_ping_checkin_timeout_raises_missed_checkin_alert(self):
         """

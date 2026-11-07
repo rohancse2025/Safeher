@@ -21,6 +21,25 @@ SafeHer.api = (function() {
       badge.id = 'offline-mode-badge';
       badge.className = 'offline-mode-badge';
       badge.textContent = 'Offline mode';
+      badge.title = 'Backend server unreachable. Tap to configure server URL.';
+      badge.style.cursor = 'pointer';
+      badge.onclick = function() {
+        if (SafeHer.profile && SafeHer.profile.changeServerUrl) {
+          SafeHer.profile.changeServerUrl();
+        } else {
+          var curr = getApiBase();
+          var input = prompt('Backend is unreachable at ' + curr + '\nEnter new URL (e.g. http://localhost:5000) or leave blank to reset to localhost:', curr);
+          if (input !== null) {
+            var trimmed = input.trim().replace(/\/+$/, '');
+            if (!trimmed || trimmed === 'http://localhost:5000' || trimmed.toLowerCase() === 'reset') {
+              try { localStorage.removeItem('safeher_api_base'); } catch (e) {}
+            } else {
+              try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
+            }
+            window.location.reload();
+          }
+        }
+      };
       document.body.appendChild(badge);
     }
     if (badge) {
@@ -28,7 +47,7 @@ SafeHer.api = (function() {
     }
     if (show && !offlineNotified) {
       offlineNotified = true;
-      if (SafeHer.toast) SafeHer.toast('Offline mode: Using local storage');
+      if (SafeHer.toast) SafeHer.toast('Offline mode: Backend unreachable. Tap badge to fix URL.');
     } else if (!show) {
       offlineNotified = false;
     }

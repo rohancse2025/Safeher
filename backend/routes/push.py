@@ -167,6 +167,7 @@ def dispatch_push_to_users(user_ids, payload):
         return
 
     def _worker():
+        conn = None
         try:
             conn = get_db()
             cursor = conn.cursor()
@@ -177,7 +178,6 @@ def dispatch_push_to_users(user_ids, payload):
                 WHERE user_id IN ({placeholders});
             ''', tuple(user_ids))
             subs = cursor.fetchall()
-            conn.close()
 
             for s in subs:
                 send_single_push(s, payload)
@@ -196,9 +196,18 @@ def dispatch_push_to_users(user_ids, payload):
                         )
                     except Exception as le_err:
                         logger.error(f"[WebPush] Error logging push_sent: {le_err}")
-                conn.commit()
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
         except Exception as err:
             logger.error(f"[WebPush] Error fetching subscriptions for users {user_ids}: {err}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
@@ -215,6 +224,7 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
 
     def _worker():
         import math
+        conn = None
         try:
             conn = get_db()
             cursor = conn.cursor()
@@ -270,28 +280,42 @@ def notify_nearby_volunteers_on_alert(alert_id, alert_mode, alert_lat, alert_lng
                         push_sent_count += 1
 
             if notified_volunteers_count > 0:
-                log_event(
-                    user_id=exclude_user_id,
-                    type='volunteer_notified',
-                    actor='system',
-                    detail={'count': notified_volunteers_count},
-                    alert_id=alert_id,
-                    cursor=cursor
-                )
+                try:
+                    log_event(
+                        user_id=exclude_user_id,
+                        type='volunteer_notified',
+                        actor='system',
+                        detail={'count': notified_volunteers_count},
+                        alert_id=alert_id,
+                        cursor=cursor
+                    )
+                except Exception:
+                    pass
             if push_sent_count > 0:
-                log_event(
-                    user_id=exclude_user_id,
-                    type='push_sent',
-                    actor='system',
-                    detail={'count': push_sent_count},
-                    alert_id=alert_id,
-                    cursor=cursor
-                )
+                try:
+                    log_event(
+                        user_id=exclude_user_id,
+                        type='push_sent',
+                        actor='system',
+                        detail={'count': push_sent_count},
+                        alert_id=alert_id,
+                        cursor=cursor
+                    )
+                except Exception:
+                    pass
 
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception:
+                pass
         except Exception as err:
             logger.error(f"[WebPush] Error notifying nearby volunteers for alert {alert_id}: {err}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()

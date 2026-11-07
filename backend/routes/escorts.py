@@ -1442,9 +1442,14 @@ def check_active_escorts():
                         conn.commit()
                     continue
 
-        conn.close()
     except Exception as e:
         print(f"[EscortMonitor Error] {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def start_escort_monitor():

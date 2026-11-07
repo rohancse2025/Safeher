@@ -171,17 +171,8 @@ def get_active_timer():
 
 
 # ─── Background Daemon: Check Expired Timers Every 10s ───────
-def check_expired_timers():
-    """
-    Checks for active timers that passed their deadline.
-    For each expired timer:
-      1. Marks timer as 'expired'
-      2. Creates an emergency alert with mode='timer'
-      3. Dispatches emails to emergency contacts
-    """
+def _check_expired_timers_inner(conn):
     now_utc_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    conn = get_db()
     cursor = conn.cursor()
 
     # Auto-expire active alerts running for more than 6 hours and mark as 'expired'
@@ -337,7 +328,20 @@ def check_expired_timers():
 
         print(f"[TimerMonitor] Expired timer {timer_id} escalated to SOS Alert {alert_id} for user {user_id}")
 
-    conn.close()
+
+def check_expired_timers():
+    conn = None
+    try:
+        conn = get_db()
+        _check_expired_timers_inner(conn)
+    except Exception as e:
+        print(f"[TimerMonitor Error] {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def start_timer_monitor():

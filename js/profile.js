@@ -544,19 +544,27 @@ SafeHer.profile = (function() {
   }
 
   function changeServerUrl() {
-    var current = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://10.44.69.36:5000';
+    var current = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
     var newUrl = window.prompt(
-      'Enter your Laptop Backend Server URL:\n(Your laptop IP is http://10.44.69.36:5000)',
+      'Enter Backend Server URL (e.g. http://localhost:5000 or your laptop IP http://192.168.x.x:5000).\nLeave blank or type "reset" to restore default localhost:',
       current
     );
-    if (newUrl && newUrl.trim()) {
+    if (newUrl !== null) {
       var trimmed = newUrl.trim().replace(/\/+$/, '');
-      try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
-      if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = trimmed;
-      if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = trimmed;
-      SafeHer.toast('Server URL updated! Checking...');
+      if (!trimmed || trimmed.toLowerCase() === 'reset' || trimmed === 'http://localhost:5000') {
+        try { localStorage.removeItem('safeher_api_base'); } catch (e) {}
+        if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = 'http://localhost:5000';
+        if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = 'http://localhost:5000';
+        SafeHer.toast('Server URL reset to http://localhost:5000');
+      } else {
+        try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
+        if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = trimmed;
+        if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = trimmed;
+        SafeHer.toast('Server URL updated! Checking...');
+      }
       updateBackendBadge();
       setTimeout(function() { window.location.reload(); }, 1200);
+      return;
     }
   }
 
