@@ -28,10 +28,12 @@ SafeHer.api = (function() {
           SafeHer.profile.changeServerUrl();
         } else {
           var curr = getApiBase();
-          var input = prompt('Backend is unreachable at ' + curr + '\nEnter new URL (e.g. http://localhost:5000) or leave blank to reset to localhost:', curr);
+          var suggested = (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? (window.location.protocol + '//' + window.location.hostname + ':5000') : 'http://10.44.69.36:5000';
+          var defaultVal = (curr && curr.indexOf('localhost') === -1) ? curr : suggested;
+          var input = prompt('Backend is unreachable at ' + curr + '\n\nTo connect your phone to your laptop on the same Wi-Fi, enter your laptop IP URL:\n(e.g. ' + suggested + ')\n\nOr tap OK to use suggested URL, or "reset" to reset:', defaultVal);
           if (input !== null) {
             var trimmed = input.trim().replace(/\/+$/, '');
-            if (!trimmed || trimmed === 'http://localhost:5000' || trimmed.toLowerCase() === 'reset') {
+            if (!trimmed || trimmed.toLowerCase() === 'reset') {
               try { localStorage.removeItem('safeher_api_base'); } catch (e) {}
             } else {
               try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}

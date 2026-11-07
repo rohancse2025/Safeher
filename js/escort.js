@@ -740,7 +740,7 @@ SafeHer.escort = (function() {
         var isClose = !!(c.is_close || c.close || (c.relation && /emergency|family|parent|spouse|close|mom|dad/i.test(c.relation)));
 
         html += '<label class="escort-contact-row" style="cursor:pointer;">' +
-          '<input type="checkbox" class="escort-contact-cb" value="' + c.id + '" ' + (isClose ? 'checked' : '') + ' style="accent-color:var(--crimson);width:16px;height:16px;" />' +
+          '<input type="checkbox" class="escort-contact-cb" value="' + c.id + '" checked style="accent-color:var(--crimson);width:16px;height:16px;" />' +
           '<div style="flex:1;min-width:0;">' +
             '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' +
               escapeHtml(c.name) +

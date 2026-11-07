@@ -285,9 +285,12 @@ def create_escort():
         ''', (user_id, *contact_ids))
         valid_contacts = cursor.fetchall()
     else:
-        # Default to close contacts if none specified
+        # Default to close contacts if specified, otherwise all user contacts
         cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ? AND close = 1;', (user_id,))
         valid_contacts = cursor.fetchall()
+        if not valid_contacts:
+            cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+            valid_contacts = cursor.fetchall()
 
     for c in valid_contacts:
         c_id = c['id']
