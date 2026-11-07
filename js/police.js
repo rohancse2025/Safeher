@@ -90,7 +90,8 @@ SafeHer.police = (function() {
         attributionControl: false
       });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
         maxZoom: 19
       }).addTo(mapInstance);
     }

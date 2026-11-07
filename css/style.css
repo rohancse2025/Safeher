@@ -5175,3 +5175,20 @@ button, a, input[type="button"], input[type="submit"] {
   color: #334155;
   border-color: #CBD5E1;
 }
+
+#escort-dest-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+#escort-search-btn {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  white-space: nowrap !important;
+}
+
+#escort-pick-map-btn {
+  flex: 0 0 auto !important;
+  width: auto !important;
+}
