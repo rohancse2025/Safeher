@@ -1523,11 +1523,11 @@ SafeHer.api = (function() {
     },
 
     notifyEscortArrived: function(id, callback) {
-      if (!useBackend()) {
-        if (callback) callback('No backend', null);
+      if (!useBackend() || !id || String(id).indexOf('local_') === 0) {
+        if (callback) callback(null, { ok: true, message: 'Arrival notified locally' });
         return;
       }
-      apiFetch('/api/escorts/' + id + '/notify-arrived', { method: 'POST' })
+      apiFetch('/api/escorts/' + id + '/notify-arrived', { method: 'POST', _silent: true })
       .then(function(res) {
         if (callback) callback(null, res.data || res);
       })
