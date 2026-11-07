@@ -1867,6 +1867,43 @@ SafeHer.escort = (function() {
     }
   }
 
+  function switchTravelTab(tab) {
+    var escortBtns = document.querySelectorAll('#travel-tab-escort');
+    var rideBtns = document.querySelectorAll('#travel-tab-ride');
+
+    if (tab === 'ride') {
+      escortBtns.forEach(function(b) { b.classList.remove('active'); });
+      rideBtns.forEach(function(b) { b.classList.add('active'); });
+      if (SafeHer.router && SafeHer.router.go) {
+        SafeHer.router.go('ride');
+      }
+    } else {
+      rideBtns.forEach(function(b) { b.classList.remove('active'); });
+      escortBtns.forEach(function(b) { b.classList.add('active'); });
+      if (SafeHer.router && SafeHer.router.go) {
+        SafeHer.router.go('escort');
+      }
+    }
+  }
+
+  function init() {
+    checkStoredEscortOnLoad();
+    if (SafeHer.router && SafeHer.router.onShow) {
+      SafeHer.router.onShow('escort', function() {
+        var escortBtns = document.querySelectorAll('#travel-tab-escort');
+        var rideBtns = document.querySelectorAll('#travel-tab-ride');
+        escortBtns.forEach(function(b) { b.classList.add('active'); });
+        rideBtns.forEach(function(b) { b.classList.remove('active'); });
+      });
+      SafeHer.router.onShow('ride', function() {
+        var escortBtns = document.querySelectorAll('#travel-tab-escort');
+        var rideBtns = document.querySelectorAll('#travel-tab-ride');
+        rideBtns.forEach(function(b) { b.classList.add('active'); });
+        escortBtns.forEach(function(b) { b.classList.remove('active'); });
+      });
+    }
+  }
+
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', checkStoredEscortOnLoad);
@@ -1877,7 +1914,9 @@ SafeHer.escort = (function() {
 
   // ─── Public API ────────────────────────────────────────────
   return {
+    init: init,
     open: open,
+    switchTravelTab: switchTravelTab,
     goBack: goBack,
     searchDestination: searchDestination,
     togglePickOnMap: togglePickOnMap,

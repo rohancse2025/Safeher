@@ -237,7 +237,7 @@
     <!-- Sticky header -->
     <div class="home-header">
       <div class="home-greeting">
-        <p class="home-hello" id="home-hello">Hello</p>
+        <p class="home-hello" id="home-hello">Hello, <span id="home-name">there</span></p>
         <div class="home-location-row">
           <span class="material-symbols-rounded home-loc-icon">location_on</span>
           <span id="home-location">Location off</span>
@@ -297,9 +297,6 @@
         </div>
       </div>
 
-      <!-- Active now section (between header and SOS section) -->
-      <div id="home-active-now" class="home-active-now" style="display: none;"></div>
-
       <!-- SOS section -->
       <div class="sos-section">
         <p class="sos-heading" data-i18n="homeEmergencyTitle">Are you in emergency?</p>
@@ -326,18 +323,48 @@
         </div>
       </div>
 
-      <!-- Tile grid: Core Safety Tools (3 columns by 3 rows) -->
-      <!-- Finish setup card (below SOS section, above tiles) -->
-      <div id="home-finish-setup" class="home-card finish-setup-card" style="display: none;"></div>
+      <!-- Home Safety Network Status Card (Contacts & Volunteers Nearby) -->
+      <div class="home-safety-card" id="home-safety-card" style="margin: 16px 0 12px 0; background: #FFFFFF; border: 1.5px solid #F3C2CE; border-radius: var(--radius-tile); padding: 12px 14px; box-shadow: 0 2px 6px rgba(158, 27, 50, 0.05);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 26px; height: 26px; border-radius: 50%; background: #FFF5F7; display: flex; align-items: center; justify-content: center;">
+              <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 17px;">shield</span>
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-dark);">Safety Network</span>
+          </div>
+          <span class="badge" id="home-safety-badge" style="background: #E8F5E9; color: #2E7D32; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">Active</span>
+        </div>
 
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 6px; border-top: 1px solid #FFF0F3;">
+          <!-- Trusted Contacts Item -->
+          <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;" onclick="SafeHer.router.go('contacts')">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 20px;">contacts</span>
+            <div style="min-width: 0;">
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-dark);">
+                <span id="home-contacts-count">0</span> Contacts
+              </div>
+              <div style="font-size: 10px; color: var(--text-gray);" id="home-contacts-sub">Tap to view</div>
+            </div>
+          </div>
+
+          <!-- Nearby Volunteers Item -->
+          <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;" onclick="SafeHer.router.go('volunteers')">
+            <span class="material-symbols-rounded" style="color: #10B981; font-size: 20px;">groups</span>
+            <div style="min-width: 0;">
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-dark);">
+                <span id="home-volunteers-count">0</span> Volunteers
+              </div>
+              <div style="font-size: 10px; color: var(--text-gray);" id="home-volunteers-sub">Nearby &amp; ready</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tile grid: Core Safety Tools (EXACTLY 2 rows by 3 columns = 6 tiles) -->
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.escort ? SafeHer.escort.open() : SafeHer.router.go('escort')">
-          <span class="material-symbols-rounded">route</span>
-          <span class="tile-label">Escort Mode</span>
-        </button>
-        <button class="tile" onclick="SafeHer.router.go('ride')">
-          <span class="material-symbols-rounded">local_taxi</span>
-          <span class="tile-label">Ride Safety</span>
+          <span class="material-symbols-rounded">commute</span>
+          <span class="tile-label">Ride &amp; Escort</span>
         </button>
         <button class="tile" onclick="SafeHer.router.go('share-location')">
           <span class="material-symbols-rounded">share_location</span>
@@ -359,61 +386,6 @@
           <span class="material-symbols-rounded">local_police</span>
           <span class="tile-label" data-i18n="homeHelpRights">Help &amp; Rights</span>
         </button>
-        <button class="tile" onclick="SafeHer.router.go('emergency-info')">
-          <span class="material-symbols-rounded">medical_information</span>
-          <span class="tile-label">Emergency Info</span>
-        </button>
-        <button class="tile" onclick="SafeHer.router.go('history')">
-          <span class="material-symbols-rounded">history</span>
-          <span class="tile-label">History</span>
-        </button>
-      </div>
-
-      <!-- Helplines strip (below tile grid) -->
-      <div id="home-helplines-strip" class="home-helplines-strip">
-        <a href="tel:112" class="helpline-btn">
-          <span class="helpline-num">112</span>
-          <span class="helpline-sub">Emergency</span>
-        </a>
-        <a href="tel:181" class="helpline-btn">
-          <span class="helpline-num">181</span>
-          <span class="helpline-sub">Women helpline</span>
-        </a>
-        <a href="tel:1091" class="helpline-btn">
-          <span class="helpline-num">1091</span>
-          <span class="helpline-sub">Women (police)</span>
-        </a>
-      </div>
-
-      <!-- Nearest police station card -->
-      <div id="home-police-card" class="home-card home-police-card"></div>
-
-      <!-- Tip of the day card -->
-      <div id="home-tip-card" class="home-card home-tip-card"></div>
-
-      <!-- Footer row: Contacts & Volunteers -->
-      <div id="home-footer-row" class="home-footer-row">
-        <!-- 1. Pale pink card shown when no contacts -->
-        <div id="home-no-contacts-card" class="home-no-contacts-card" style="display: none;">
-          <div style="flex: 1; min-width: 0;">
-            <p class="home-no-contacts-title">No trusted contacts yet</p>
-            <p class="home-no-contacts-sub">Add one so SOS can reach someone.</p>
-          </div>
-          <button type="button" class="btn btn-crimson home-add-contact-btn" onclick="SafeHer.router.go('contacts')">
-            Add Contact
-          </button>
-        </div>
-
-        <!-- 2. Contacts link & optional volunteers nearby (when contacts > 0) -->
-        <div id="home-contacts-info-row" class="home-contacts-info-row" style="display: none;">
-          <button type="button" class="stat-link" onclick="SafeHer.router.go('contacts')">
-            Trusted contacts: <span id="home-contacts-count">0</span>
-          </button>
-          <span id="home-volunteers-wrap" style="display: none;">
-            <span class="stat-sep" style="margin: 0 6px; color: var(--border);">·</span>
-            <span class="stat-text">Volunteers nearby: <span id="home-volunteers-count">0</span></span>
-          </span>
-        </div>
       </div>
 
     </div><!-- /.home-body -->
@@ -1385,12 +1357,21 @@
       <button class="topbar-back" onclick="SafeHer.router.go('home')" aria-label="Back to Home">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Ride Safety</span>
+      <span class="topbar-title">Ride &amp; Escort</span>
     </div>
 
     <div class="page-wrap" style="padding: 16px; padding-bottom: 32px;">
       <!-- 1. Setup View (when no ride active) -->
       <div id="ride-setup-view">
+        <!-- Travel Mode Segmented Switch: Route Escort vs Cab / Auto Safety -->
+        <div class="travel-tab-switch" style="display: flex; gap: 6px; margin-bottom: 14px; background: #FFF0F3; padding: 4px; border-radius: 12px; border: 1px solid #F3C2CE;">
+          <button type="button" class="travel-tab-btn" id="travel-tab-ride-escort" onclick="SafeHer.escort ? SafeHer.escort.open() : SafeHer.router.go('escort')">
+            <span class="material-symbols-rounded" style="font-size: 18px;">route</span> Route Escort
+          </button>
+          <button type="button" class="travel-tab-btn active" id="travel-tab-ride-ride" onclick="SafeHer.router.go('ride')">
+            <span class="material-symbols-rounded" style="font-size: 18px;">local_taxi</span> Cab / Auto Safety
+          </button>
+        </div>
         <div class="settings-card" style="margin-bottom: 14px;">
           <!-- Vehicle Type -->
           <p class="settings-section-title" style="margin-bottom: 6px;">Vehicle Type</p>
@@ -1578,13 +1559,22 @@
       <button class="topbar-back" onclick="SafeHer.escort.goBack()" aria-label="Back">
         <span class="material-symbols-rounded">arrow_back</span>
       </button>
-      <span class="topbar-title">Escort Mode</span>
+      <span class="topbar-title">Ride &amp; Escort</span>
     </div>
 
     <div class="page-wrap" style="padding: 16px; padding-bottom: 40px;">
       
       <!-- 1. SETUP VIEW (when no escort active) -->
       <div id="escort-setup-view">
+        <!-- Travel Mode Segmented Switch: Route Escort vs Cab / Auto Safety -->
+        <div class="travel-tab-switch" style="display: flex; gap: 6px; margin-bottom: 14px; background: #FFF0F3; padding: 4px; border-radius: 12px; border: 1px solid #F3C2CE;">
+          <button type="button" class="travel-tab-btn active" id="travel-tab-escort" onclick="SafeHer.escort.switchTravelTab('escort')">
+            <span class="material-symbols-rounded" style="font-size: 18px;">route</span> Route Escort
+          </button>
+          <button type="button" class="travel-tab-btn" id="travel-tab-ride" onclick="SafeHer.escort.switchTravelTab('ride')">
+            <span class="material-symbols-rounded" style="font-size: 18px;">local_taxi</span> Cab / Auto Safety
+          </button>
+        </div>
         <div class="settings-card" style="margin-bottom: 14px;">
           <p class="settings-section-title" style="margin-bottom: 8px;">Destination</p>
           
@@ -1963,6 +1953,25 @@
           <button type="button" id="volunteer-reverify-btn" class="btn btn-outline" onclick="SafeHer.volunteer.reverify()" style="display: none; padding: 3px 8px; font-size: 11px; color: var(--crimson); border-color: var(--crimson);">
             Re-verify
           </button>
+        </div>
+
+        <!-- Approval Explainer & Demo Button (Shown when status is pending or not yet approved) -->
+        <div id="volunteer-admin-approval-banner" style="display: none; margin-top: 10px; padding: 10px; background: #FFF9E6; border: 1px solid #FFE082; border-radius: 8px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <span class="material-symbols-rounded" style="color: #F57F17; font-size: 18px; margin-top: 1px;">verified_user</span>
+            <div style="font-size: 11px; line-height: 1.4; color: #5D4037; flex: 1;">
+              <strong>Who approves volunteers?</strong>
+              <p style="margin: 2px 0 6px;">Safety Admins review and approve volunteers via the Admin Portal to ensure verified community responders in real emergencies.</p>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary" onclick="SafeHer.volunteer.demoApproveSelf()" style="padding: 4px 10px; font-size: 11px; height: 28px; min-height: 28px;">
+                  ⚡ Instant Demo Approval
+                </button>
+                <a href="admin.html" target="_blank" class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; height: 28px; min-height: 28px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                  Open Admin Portal
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

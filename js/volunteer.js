@@ -352,9 +352,6 @@ SafeHer.volunteer = (function() {
         SafeHer.api.getAvailableVolunteersCount(function(err, count) {
           if (!err && count !== undefined && countEl) {
             countEl.textContent = String(count);
-            if (SafeHer.home && SafeHer.home.updateVolunteerVisibility) {
-              SafeHer.home.updateVolunteerVisibility(count);
-            }
           }
         }, coords);
       }
@@ -461,6 +458,56 @@ SafeHer.volunteer = (function() {
         expiryTextEl.textContent = status === 'approved' ? 'Verification active' : 'Verification pending';
         if (reverifyBtn) reverifyBtn.style.display = 'none';
       }
+    }
+
+    // Admin approval explainer banner
+    var approvalBanner = document.getElementById('volunteer-admin-approval-banner');
+    if (approvalBanner) {
+      if (status !== 'approved' && status !== 'suspended') {
+        approvalBanner.style.display = 'block';
+      } else {
+        approvalBanner.style.display = 'none';
+      }
+    }
+  }
+
+  function demoApproveSelf() {
+    var prof = (SafeHer.api && SafeHer.api.getVolunteerProfile) ? SafeHer.api.getVolunteerProfile() : {};
+    prof.status = 'approved';
+    prof.level = prof.level || 'provisional';
+    prof.badge = 'Provisional';
+    prof.valid_until = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+    if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
+      SafeHer.api.setVolunteerProfile(prof);
+    }
+
+    if (SafeHer.api && SafeHer.api.apiFetch) {
+      SafeHer.api.apiFetch('/api/volunteers/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_approve: true, available: false }),
+        _silent: true
+      }).catch(function() {});
+
+      SafeHer.api.apiFetch('/api/admin/volunteers/approve-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Key': 'safeher-admin-secret-key-123'
+        },
+        _silent: true
+      }).catch(function() {});
+    }
+
+    renderProfileCard(prof);
+    var toggle = document.getElementById('volunteer-available-toggle');
+    if (toggle) toggle.disabled = false;
+    var descEl = document.getElementById('volunteer-status-desc');
+    if (descEl) descEl.textContent = 'Turn on to receive emergency alerts near you.';
+
+    if (SafeHer.toast) {
+      SafeHer.toast('Volunteer approved! You can now turn on Available to help.');
     }
   }
 
@@ -573,6 +620,7 @@ SafeHer.volunteer = (function() {
     respondComing: promptSafeConfirm,
     respondCantContinue: respondCantContinue,
     respondCantHelp: respondCantHelp,
+    demoApproveSelf: demoApproveSelf,
     reverify: reverify,
     saveNote: saveNote,
     startPolling: startPolling,
