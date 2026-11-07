@@ -22,12 +22,12 @@ SafeHer.contacts = (function() {
     setErr('err-contact-email', '');
   }
 
-  function render() {
+  function render(explicitContacts) {
     var listEl = document.getElementById('contacts-list');
     var emptyEl = document.getElementById('contacts-empty');
     if (!listEl || !emptyEl) return;
 
-    var contacts = SafeHer.api.getContacts();
+    var contacts = (explicitContacts && Array.isArray(explicitContacts)) ? explicitContacts : SafeHer.api.getContacts();
 
     if (!contacts || contacts.length === 0) {
       listEl.innerHTML = '';
@@ -160,6 +160,11 @@ SafeHer.contacts = (function() {
         phone: phone,
         email: email,
         relation: relation
+      }, function(err, updated) {
+        if (!err) {
+          render();
+          if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
+        }
       });
       SafeHer.toast('Contact updated');
     } else {
@@ -169,6 +174,11 @@ SafeHer.contacts = (function() {
         phone: phone,
         email: email,
         relation: relation
+      }, function(err, created) {
+        if (!err) {
+          render();
+          if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
+        }
       });
       SafeHer.toast('Contact added');
     }
@@ -180,7 +190,10 @@ SafeHer.contacts = (function() {
   function deleteContact(id) {
     if (confirm('Delete this contact?')) {
       // DELETE /api/contacts/:id
-      SafeHer.api.removeContact(id);
+      SafeHer.api.removeContact(id, function(err, ok) {
+        render();
+        if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
+      });
       SafeHer.toast('Contact deleted');
       render();
     }
@@ -200,6 +213,7 @@ SafeHer.contacts = (function() {
   return {
     init: init,
     render: render,
+    renderList: render,
     openModal: openModal,
     closeModal: closeModal,
     submitForm: submitForm,

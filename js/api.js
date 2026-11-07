@@ -450,10 +450,13 @@ SafeHer.api = (function() {
       var userId = user ? user.id : 'guest';
       var all = SafeHer.storage.get('contacts') || [];
       var localList = all.filter(function(c) {
-        return (c.userId || 'guest') === userId;
+        if (!c) return false;
+        if (!userId || userId === 'guest') return true;
+        if (!c.userId || c.userId === 'guest') return true;
+        return String(c.userId) === String(userId);
       });
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
         var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
         apiFetch('/api/contacts' + query, { method: 'GET', _silent: true })
           .then(function(json) {
@@ -464,11 +467,21 @@ SafeHer.api = (function() {
                 name: c.name,
                 phone: c.phone,
                 email: c.email || '',
-                relation: c.relationship || 'Other'
+                relation: c.relationship || c.relation || 'Other',
+                close: !!(c.close || c.is_close)
               };
             });
-            SafeHer.storage.set('contacts', serverContacts);
-            if (callback) callback(null, serverContacts);
+            if (serverContacts && serverContacts.length > 0) {
+              SafeHer.storage.set('contacts', serverContacts);
+              localList = serverContacts;
+            }
+            if (callback) callback(null, localList);
+            if (SafeHer.home && SafeHer.home.updateContactsCount) {
+              SafeHer.home.updateContactsCount(localList.length);
+            }
+            if (SafeHer.contacts && SafeHer.contacts.renderList) {
+              SafeHer.contacts.renderList(localList);
+            }
           })
           .catch(function(err) {
             if (callback) callback(null, localList);
@@ -483,10 +496,14 @@ SafeHer.api = (function() {
       var user = this.getUser();
       var userId = user ? user.id : 'guest';
       var all = SafeHer.storage.get('contacts') || [];
-      contact.id = Date.now();
+      contact.id = contact.id || Date.now();
       contact.userId = userId;
       all.push(contact);
       SafeHer.storage.set('contacts', all);
+
+      if (SafeHer.home && SafeHer.home.updateContactsCount) {
+        SafeHer.home.updateContactsCount(all.length);
+      }
 
       if (useBackend()) {
         var currentUser = this.getUser() || {};
@@ -506,11 +523,13 @@ SafeHer.api = (function() {
             SafeHer.storage.set('contacts', all);
           }
           if (callback) callback(null, contact);
+          if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
         }).catch(function(err) {
           if (callback) callback(err.message, contact);
         });
       } else {
         if (callback) callback(null, contact);
+        if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
       }
       return contact;
     },
@@ -522,7 +541,7 @@ SafeHer.api = (function() {
       var updated = null;
 
       for (var i = 0; i < all.length; i++) {
-        if (all[i].id === id && (all[i].userId || 'guest') === userId) {
+        if (String(all[i].id) === String(id)) {
           all[i].name = data.name;
           all[i].phone = data.phone;
           all[i].email = data.email || '';
@@ -533,7 +552,11 @@ SafeHer.api = (function() {
       }
       SafeHer.storage.set('contacts', all);
 
-      if (useBackend() && getToken()) {
+      if (SafeHer.home && SafeHer.home.updateContactsCount) {
+        SafeHer.home.updateContactsCount(all.length);
+      }
+
+      if (useBackend()) {
         apiFetch('/api/contacts/' + id, {
           method: 'PUT',
           body: JSON.stringify({
@@ -544,11 +567,13 @@ SafeHer.api = (function() {
           })
         }).then(function() {
           if (callback) callback(null, updated);
+          if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
         }).catch(function(err) {
           if (callback) callback(err.message, updated);
         });
       } else {
         if (callback) callback(null, updated);
+        if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
       }
       return updated;
     },
@@ -558,20 +583,26 @@ SafeHer.api = (function() {
       var userId = user ? user.id : 'guest';
       var all = SafeHer.storage.get('contacts') || [];
       var filtered = all.filter(function(c) {
-        return !(c.id === id && (c.userId || 'guest') === userId);
+        return String(c.id) !== String(id);
       });
       SafeHer.storage.set('contacts', filtered);
 
-      if (useBackend() && getToken()) {
+      if (SafeHer.home && SafeHer.home.updateContactsCount) {
+        SafeHer.home.updateContactsCount(filtered.length);
+      }
+
+      if (useBackend()) {
         apiFetch('/api/contacts/' + id, { method: 'DELETE' })
           .then(function() {
             if (callback) callback(null, true);
+            if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
           })
           .catch(function(err) {
             if (callback) callback(err.message, false);
           });
       } else {
         if (callback) callback(null, true);
+        if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();
       }
     },
 

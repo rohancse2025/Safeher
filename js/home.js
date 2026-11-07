@@ -114,15 +114,12 @@ SafeHer.home = (function() {
     }
 
     // 2. Trusted Contacts Count
-    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
-    var contactsCount = (contacts && Array.isArray(contacts)) ? contacts.length : 0;
-    var cEl = document.getElementById('home-contacts-count');
-    if (cEl) cEl.textContent = contactsCount;
-
-    var cSub = document.getElementById('home-contacts-sub');
-    if (cSub) {
-      cSub.textContent = contactsCount > 0 ? (contactsCount + ' saved') : 'Tap to add';
-    }
+    var cachedContacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts(function(err, list) {
+      if (!err && list) {
+        updateContactsCount(list.length);
+      }
+    }) : [];
+    updateContactsCount((cachedContacts && cachedContacts.length) ? cachedContacts.length : 0);
 
     // 3. Nearby Volunteers Count
     if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
@@ -150,6 +147,16 @@ SafeHer.home = (function() {
     }
   }
 
+  function updateContactsCount(count) {
+    var cEl = document.getElementById('home-contacts-count');
+    var cSub = document.getElementById('home-contacts-sub');
+    var n = (typeof count === 'number') ? count : 0;
+    if (cEl) cEl.textContent = n;
+    if (cSub) {
+      cSub.textContent = n > 0 ? (n + ' saved') : 'Tap to add';
+    }
+  }
+
   // ── Init (called once at DOMContentLoaded) ─────────────
   function init() {
     SafeHer.router.onShow('home', function() {
@@ -160,6 +167,8 @@ SafeHer.home = (function() {
 
   return {
     init: init,
+    refresh: refresh,
+    updateContactsCount: updateContactsCount,
     triggerSOS: triggerSOS,
     setSOSActive: setSOSActive,
     retryLocation: retryLocation
