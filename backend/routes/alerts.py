@@ -1243,6 +1243,76 @@ def respond_contact_track(token):
     row = cursor.fetchone()
 
     if not row:
+        cursor.execute('''
+            SELECT ec.id AS ec_id, ec.escort_id, ec.contact_id, ec.token,
+                   e.id AS escort_id, e.user_id, e.status AS escort_status, e.alert_id,
+                   c.name AS contact_name
+            FROM escort_contacts ec
+            JOIN escorts e ON ec.escort_id = e.id
+            JOIN contacts c ON ec.contact_id = c.id
+            WHERE ec.token = ?;
+        ''', (clean_token,))
+        escort_row = cursor.fetchone()
+        if escort_row:
+            if escort_row['escort_status'] in ('arrived', 'ended'):
+                conn.close()
+                return jsonify({
+                    "ok": False,
+                    "error": "This journey has ended"
+                }), 400
+
+            escort_aid = escort_row['alert_id']
+            escort_id = escort_row['escort_id']
+            contact_id = escort_row['contact_id']
+            owner_user_id = escort_row['user_id']
+            contact_name_val = (escort_row['contact_name'] or 'Contact').strip()
+            first_name = contact_name_val.split()[0] if contact_name_val else 'Contact'
+
+            if escort_aid:
+                cursor.execute('''
+                    SELECT COUNT(*) AS count FROM contact_responses
+                    WHERE alert_id = ? AND contact_id = ? AND created_at >= datetime('now', '-1 hour');
+                ''', (escort_aid, contact_id))
+                cnt_row = cursor.fetchone()
+                if cnt_row and cnt_row['count'] >= 10:
+                    conn.close()
+                    return jsonify({
+                        "ok": False,
+                        "error": "Rate limit exceeded: maximum 10 responses per hour per contact link"
+                    }), 429
+
+                cursor.execute('''
+                    INSERT INTO contact_responses (alert_id, contact_id, status)
+                    VALUES (?, ?, ?);
+                ''', (escort_aid, contact_id, status))
+
+            log_event(
+                user_id=owner_user_id,
+                type='contact_responded',
+                actor='contact',
+                detail={'contact': first_name, 'status': status},
+                alert_id=escort_aid,
+                escort_id=escort_id,
+                cursor=cursor
+            )
+            conn.commit()
+            conn.close()
+
+            try:
+                from routes.push import notify_alert_owner_contact_response
+                notify_alert_owner_contact_response(owner_user_id, first_name, status)
+            except Exception:
+                pass
+
+            return jsonify({
+                "ok": True,
+                "message": f"Response recorded: {status}",
+                "data": {
+                    "contact_first_name": first_name,
+                    "status": status
+                }
+            }), 200
+
         conn.close()
         return jsonify({
             "ok": False,

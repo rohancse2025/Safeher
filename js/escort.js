@@ -1,5 +1,5 @@
 // js/escort.js – Escort Mode: safe journey tracking with route deviation, stationary detection, and automated check-ins
-// Part 1: Destination Search (Nominatim), OSRM routing, settings, and journey launch
+// Part 1 & Part 2: Destination Search (Nominatim), OSRM routing, settings, active journey screen with Web Audio beep, Wake Lock & auto-escalation
 
 SafeHer.escort = (function() {
   'use strict';
@@ -26,7 +26,17 @@ SafeHer.escort = (function() {
 
   var gpsWatchId = null;
   var pollIntervalId = null;
+  var uiSecondTimer = null;
   var lastSentPositionTime = 0;
+
+  // Local behaviour tracking
+  var wakeLock = null;
+  var offRouteStartedAt = null;
+  var stationaryAnchor = null; // { lat, lng, time }
+  var promptModalOpen = false;
+  var arrivalPromptShown = false;
+  var checkinModalTimer = null;
+  var checkinSecsRemaining = 60;
 
   // ─── Helpers ────────────────────────────────────────────────
   function escapeHtml(str) {
@@ -48,6 +58,143 @@ SafeHer.escort = (function() {
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
     var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
+  }
+
+  // Equirectangular projection for point-to-segment perpendicular distance in meters
+  function pointToSegmentDistM(pLat, pLng, aLat, aLng, bLat, bLng) {
+    var midLatRad = ((aLat + bLat) / 2.0) * Math.PI / 180.0;
+    var cosLat = Math.cos(midLatRad);
+    var R = 6371000.0;
+
+    var ax = 0.0;
+    var ay = 0.0;
+    var bx = (bLng - aLng) * (Math.PI / 180.0) * cosLat * R;
+    var by = (bLat - aLat) * (Math.PI / 180.0) * R;
+
+    var px = (pLng - aLng) * (Math.PI / 180.0) * cosLat * R;
+    var py = (pLat - aLat) * (Math.PI / 180.0) * R;
+
+    var dx = bx - ax;
+    var dy = by - ay;
+    var segLenSq = dx * dx + dy * dy;
+
+    if (segLenSq < 1e-6) {
+      return Math.hypot(px - ax, py - ay);
+    }
+
+    var t = ((px - ax) * dx + (py - ay) * dy) / segLenSq;
+    var tClamped = Math.max(0.0, Math.min(1.0, t));
+
+    var closestX = ax + tClamped * dx;
+    var closestY = ay + tClamped * dy;
+
+    return Math.hypot(px - closestX, py - closestY);
+  }
+
+  function pointToRouteDistM(pLat, pLng, points) {
+    if (!points || points.length === 0) return 0;
+    if (points.length === 1) return haversineDistM(pLat, pLng, points[0][0], points[0][1]);
+
+    var minD = Infinity;
+    for (var i = 0; i < points.length - 1; i++) {
+      var d = pointToSegmentDistM(pLat, pLng, points[i][0], points[i][1], points[i + 1][0], points[i + 1][1]);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
+
+  function parseDateUtc(str) {
+    if (!str) return null;
+    try {
+      var clean = String(str).trim().replace(' ', 'T');
+      if (clean.indexOf('Z') === -1 && clean.indexOf('+') === -1) {
+        clean += 'Z';
+      }
+      var d = new Date(clean);
+      return isNaN(d.getTime()) ? null : d;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ─── Web Audio API Beep & Vibration ────────────────────────
+  function playCheckinBeep() {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 pitch
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {}
+  }
+
+  function triggerVibration() {
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200, 100, 300]);
+      }
+    } catch (e) {}
+  }
+
+  // ─── Screen Wake Lock API ──────────────────────────────────
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', function() {
+          wakeLock = null;
+        });
+      }
+    } catch (err) {}
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      wakeLock.release().catch(function() {});
+      wakeLock = null;
+    }
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && activeEscort && !wakeLock) {
+      requestWakeLock();
+    }
+  });
+
+  // ─── LocalStorage Persistence ──────────────────────────────
+  function saveActiveEscortToStorage() {
+    if (!activeEscort) return;
+    try {
+      localStorage.setItem('safeher_active_escort', JSON.stringify({
+        escort: activeEscort,
+        dest: currentDest,
+        route: currentRoutePoints
+      }));
+    } catch (e) {}
+  }
+
+  function clearActiveEscortFromStorage() {
+    try {
+      localStorage.removeItem('safeher_active_escort');
+    } catch (e) {}
+  }
+
+  function loadActiveEscortFromStorage() {
+    try {
+      var raw = localStorage.getItem('safeher_active_escort');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
   }
 
   function getStoredOrigin() {
@@ -94,14 +241,12 @@ SafeHer.escort = (function() {
         maxZoom: 19
       }).addTo(setupMap);
 
-      // Map click listener for "Pick on map"
       setupMap.on('click', function(e) {
         if (!isPickingOnMap && !destMarker) {
-          // If destination hasn't been set yet, allow tapping map directly
           setDestinationFromLatLng(e.latlng.lat, e.latlng.lng);
         } else if (isPickingOnMap) {
           setDestinationFromLatLng(e.latlng.lat, e.latlng.lng);
-          togglePickOnMap(false); // disable pick mode after pin placed
+          togglePickOnMap(false);
         }
       });
     }
@@ -155,7 +300,6 @@ SafeHer.escort = (function() {
 
     currentDest = { lat: parseFloat(lat), lng: parseFloat(lng), name: defaultName };
 
-    // Reverse geocode via Nominatim
     var revUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng;
     fetch(revUrl, { headers: { 'Accept': 'application/json' } })
       .then(function(res) { return res.json(); })
@@ -177,7 +321,6 @@ SafeHer.escort = (function() {
   }
 
   // ─── Destination Search (Nominatim) ────────────────────────
-  // Called ONLY when the Search button is pressed, never on keystroke
   function searchDestination() {
     var input = document.getElementById('escort-dest-input');
     var resultsBox = document.getElementById('escort-search-results');
@@ -224,7 +367,6 @@ SafeHer.escort = (function() {
         });
         resultsBox.innerHTML = html;
 
-        // Attach click listeners to result rows
         var rowEls = resultsBox.querySelectorAll('.escort-search-item');
         rowEls.forEach(function(rowEl) {
           rowEl.addEventListener('click', function() {
@@ -244,7 +386,7 @@ SafeHer.escort = (function() {
           });
         });
       })
-      .catch(function(err) {
+      .catch(function() {
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">search</span> Search';
@@ -277,7 +419,6 @@ SafeHer.escort = (function() {
         startLng + ',' + startLat + ';' + destLng + ',' + destLat +
         '?overview=full&geometries=geojson';
 
-      // 1. Try Walking Route
       fetchWithTimeout(walkingUrl, 7000)
         .then(function(res) {
           if (!res.ok) throw new Error('Walking route HTTP ' + res.status);
@@ -291,7 +432,6 @@ SafeHer.escort = (function() {
           }
         })
         .catch(function() {
-          // 2. Try Driving Route (Fallback labeled "approximate route")
           var drivingUrl = 'https://router.project-osrm.org/route/v1/driving/' +
             startLng + ',' + startLat + ';' + destLng + ',' + destLat +
             '?overview=full&geometries=geojson';
@@ -309,16 +449,15 @@ SafeHer.escort = (function() {
               }
             })
             .catch(function() {
-              // 3. Fallback to Straight Line with Warning
               var directPoints = [[startLat, startLng], [destLat, destLng]];
               var directDistM = haversineDistM(startLat, startLng, destLat, destLng);
-              var estMins = Math.max(5, Math.round((directDistM / 1000) / 4.5 * 60)); // ~4.5 km/h
+              var estMins = Math.max(5, Math.round((directDistM / 1000) / 4.5 * 60));
 
               applyStraightLineRoute(
                 directPoints,
                 directDistM,
                 estMins,
-                'Could not calculate road route from OSRM. Falling back to a direct straight line route.'
+                'Could not calculate road route from OSRM. Falling back to direct straight line.'
               );
             });
         });
@@ -326,7 +465,6 @@ SafeHer.escort = (function() {
 
     function applyRouteData(routeObj, label, warningMsg) {
       var coords = routeObj.geometry.coordinates || [];
-      // OSRM coordinates are [lng, lat], convert to [lat, lng]
       currentRoutePoints = coords.map(function(pt) {
         return [pt[1], pt[0]];
       });
@@ -398,7 +536,6 @@ SafeHer.escort = (function() {
     var startPt = routePoints[0];
     var endPt = routePoints[routePoints.length - 1];
 
-    // Start Marker (green circle pin)
     startMarker = L.circleMarker(startPt, {
       radius: 7,
       fillColor: '#10B981',
@@ -408,7 +545,6 @@ SafeHer.escort = (function() {
       fillOpacity: 1
     }).addTo(setupMap).bindPopup('Start: Your location');
 
-    // Dest Marker (crimson pin)
     destMarker = L.circleMarker(endPt, {
       radius: 8,
       fillColor: '#9E1B32',
@@ -418,7 +554,6 @@ SafeHer.escort = (function() {
       fillOpacity: 1
     }).addTo(setupMap).bindPopup('Destination: ' + escapeHtml((currentDest && currentDest.name) || 'Destination'));
 
-    // Route Polyline
     polylineLayer = L.polyline(routePoints, {
       color: '#9E1B32',
       weight: 5,
@@ -470,7 +605,6 @@ SafeHer.escort = (function() {
 
       var html = '';
       contacts.forEach(function(c) {
-        // Pre-select close contacts (flagged is_close, close, or relationship matching family/emergency/parent/spouse/close)
         var isClose = !!(c.is_close || c.close || (c.relation && /emergency|family|parent|spouse|close/i.test(c.relation)));
 
         html += '<label class="escort-contact-row" style="cursor:pointer;">' +
@@ -505,7 +639,6 @@ SafeHer.escort = (function() {
       startBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">hourglass_top</span> Starting Escort...';
     }
 
-    // Collect checked contact IDs
     var checkedIds = [];
     document.querySelectorAll('.escort-contact-cb:checked').forEach(function(cb) {
       var val = parseInt(cb.value, 10);
@@ -539,11 +672,11 @@ SafeHer.escort = (function() {
         return;
       }
 
-      // Save active journey state
       activeEscort = result;
-      if (SafeHer.toast) SafeHer.toast('Escort Mode started! Live tracking link sent.');
+      saveActiveEscortToStorage();
+      requestWakeLock();
 
-      // Open active journey view
+      if (SafeHer.toast) SafeHer.toast('Escort Mode started! Live tracking link sent.');
       showActiveView(result);
     });
   }
@@ -556,30 +689,33 @@ SafeHer.escort = (function() {
     if (activeView) activeView.style.display = 'block';
 
     var destNameEl = document.getElementById('escort-active-dest-name');
-    var etaEl = document.getElementById('escort-active-eta');
-    var badgeEl = document.getElementById('escort-active-status-badge');
-
     if (destNameEl) destNameEl.textContent = escortData.dest_name || 'Destination';
-    if (etaEl && escortData.expected_end) {
-      try {
-        var endDt = new Date(escortData.expected_end.replace(' ', 'T') + (escortData.expected_end.indexOf('Z') === -1 ? 'Z' : ''));
-        etaEl.textContent = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } catch (e) {
-        etaEl.textContent = escortData.expected_end;
-      }
-    }
-    if (badgeEl) {
-      badgeEl.textContent = (escortData.status === 'paused') ? 'Paused' : 'On route';
+
+    if (!currentDest) {
+      currentDest = {
+        lat: escortData.dest_lat,
+        lng: escortData.dest_lng,
+        name: escortData.dest_name
+      };
     }
 
-    // Render Share Links with WhatsApp & SMS buttons per contact
+    // Status chip
+    updateActiveStatusChip(escortData.status || 'On route');
+
+    // Share buttons
     renderActiveShareList(escortData);
 
-    // Initialize Active Map
+    // Active Map
     initActiveMap(escortData);
+
+    // Request Screen Wake Lock
+    requestWakeLock();
 
     // Start Realtime GPS tracking and periodic monitor
     startActiveTracking(escortData.id);
+
+    // Start 1-second countdown timer for UI ETA and next check-in
+    startUiSecondTimer();
   }
 
   function renderActiveShareList(escortData) {
@@ -594,15 +730,12 @@ SafeHer.escort = (function() {
 
     var etaStr = 'soon';
     if (escortData.expected_end) {
-      try {
-        var dt = new Date(escortData.expected_end.replace(' ', 'T') + (escortData.expected_end.indexOf('Z') === -1 ? 'Z' : ''));
-        etaStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } catch (e) {
-        etaStr = escortData.expected_end;
+      var endDt = parseDateUtc(escortData.expected_end);
+      if (endDt) {
+        etaStr = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
     }
 
-    // Retrieve contacts list to pair names and phone numbers with tokens
     SafeHer.api.getContacts(function(err, contacts) {
       contacts = contacts || [];
       var contactMap = {};
@@ -671,7 +804,6 @@ SafeHer.escort = (function() {
     if (activePolylineLayer) activeMap.removeLayer(activePolylineLayer);
     if (activeDestMarker) activeMap.removeLayer(activeDestMarker);
 
-    // Destination Pin
     activeDestMarker = L.circleMarker([escortData.dest_lat, escortData.dest_lng], {
       radius: 9,
       fillColor: '#9E1B32',
@@ -681,7 +813,6 @@ SafeHer.escort = (function() {
       fillOpacity: 1
     }).addTo(activeMap).bindPopup('Destination: ' + escapeHtml(escortData.dest_name || ''));
 
-    // Polyline
     if (currentRoutePoints && currentRoutePoints.length >= 2) {
       activePolylineLayer = L.polyline(currentRoutePoints, {
         color: '#9E1B32',
@@ -693,24 +824,39 @@ SafeHer.escort = (function() {
     }
   }
 
+  // ─── Realtime GPS & Background Position Reporting ───────────
   function startActiveTracking(escortId) {
     stopActiveTracking();
 
-    // 1. Geolocation Watcher
     if (navigator.geolocation) {
       gpsWatchId = navigator.geolocation.watchPosition(
         function(pos) {
           var lat = pos.coords.latitude;
           var lng = pos.coords.longitude;
           updateActiveUserMarker(lat, lng);
+          updateProgressDisplay(lat, lng);
 
+          // Local off-route check
+          handlePositionOffRouteCheck(lat, lng);
+
+          // Local stationary check
+          handleStationaryCheck(lat, lng);
+
+          // Local arrival check
+          handleArrivalCheck(lat, lng);
+
+          // Send position to backend every 10 seconds
           var now = Date.now();
-          // Rate-limit position dispatches to server to every 10 seconds
-          if (now - lastSentPositionTime > 10000) {
+          if (now - lastSentPositionTime >= 10000) {
             lastSentPositionTime = now;
             SafeHer.api.sendEscortPosition(escortId, { lat: lat, lng: lng }, function(err, res) {
               if (res && res.status) {
-                updateActiveStatusBadge(res.status);
+                if (activeEscort) {
+                  activeEscort.status = res.status;
+                  if (res.alert_id) activeEscort.alert_id = res.alert_id;
+                  saveActiveEscortToStorage();
+                }
+                updateActiveStatusChip(res.status);
               }
             });
           }
@@ -722,14 +868,25 @@ SafeHer.escort = (function() {
       );
     }
 
-    // 2. Status Polling Interval (every 10 seconds)
+    // Status polling every 10 seconds
     pollIntervalId = setInterval(function() {
       if (!activeEscort || !activeEscort.id) return;
       SafeHer.api.getEscort(activeEscort.id, function(err, escort) {
         if (escort) {
-          updateActiveStatusBadge(escort.status);
+          activeEscort.status = escort.status;
+          activeEscort.next_checkin_due = escort.next_checkin_due;
+          activeEscort.last_checkin_at = escort.last_checkin_at;
+          activeEscort.expected_end = escort.expected_end;
+          activeEscort.alert_id = escort.alert_id;
+          saveActiveEscortToStorage();
+
+          updateActiveStatusChip(escort.status);
+
           if (escort.status === 'arrived' || escort.status === 'ended') {
             stopActiveTracking();
+            stopUiSecondTimer();
+            releaseWakeLock();
+            clearActiveEscortFromStorage();
             if (SafeHer.toast) SafeHer.toast('Journey completed safely!');
           }
         }
@@ -765,85 +922,431 @@ SafeHer.escort = (function() {
     }
   }
 
-  function updateActiveStatusBadge(status) {
-    var badgeEl = document.getElementById('escort-active-status-badge');
-    if (!badgeEl) return;
+  function updateProgressDisplay(userLat, userLng) {
+    if (!activeEscort || !currentDest || currentDest.lat === undefined) return;
+    var remDist = haversineDistM(userLat, userLng, currentDest.lat, currentDest.lng);
+    var totalDist = activeEscort.route_distance_m || 1000;
+
+    var pct = 0;
+    if (activeEscort.status === 'arrived') {
+      pct = 100;
+    } else if (totalDist > 0) {
+      pct = Math.max(0, Math.min(100, Math.round((1.0 - remDist / totalDist) * 100)));
+    }
+
+    var textEl = document.getElementById('escort-active-progress-text');
+    var barEl = document.getElementById('escort-active-progress-bar');
+    if (textEl) textEl.textContent = pct + '%';
+    if (barEl) barEl.style.width = pct + '%';
+  }
+
+  function updateActiveStatusChip(status) {
+    var chipEl = document.getElementById('escort-active-status-chip');
+    if (!chipEl) return;
 
     var text = 'On route';
     var bg = '#9E1B32';
 
-    if (status === 'paused') {
+    if (status === 'Paused' || status === 'paused') {
       text = 'Paused';
       bg = '#F59E0B';
-    } else if (status === 'off_route') {
+    } else if (status === 'Off route' || status === 'off_route') {
       text = 'Off route';
       bg = '#DC2626';
-    } else if (status === 'alerted') {
+    } else if (status === 'Check-in due' || status === 'checkin_due') {
+      text = 'Check-in due';
+      bg = '#6A1B9A';
+    } else if (status === 'Alerted' || status === 'alerted') {
       text = 'Alerted';
       bg = '#B91C1C';
-    } else if (status === 'arrived') {
+    } else if (status === 'Arrived' || status === 'arrived') {
       text = 'Arrived';
       bg = '#10B981';
     }
 
-    badgeEl.textContent = text;
-    badgeEl.style.backgroundColor = bg;
+    chipEl.textContent = text;
+    chipEl.style.backgroundColor = bg;
   }
 
-  // ─── Journey Controls ──────────────────────────────────────
-  function checkin() {
+  // ─── UI 1-Second Timer for ETA & Check-in ───────────────────
+  function startUiSecondTimer() {
+    stopUiSecondTimer();
+    uiSecondTimer = setInterval(updateUiTimeAndCheckin, 1000);
+    updateUiTimeAndCheckin();
+  }
+
+  function stopUiSecondTimer() {
+    if (uiSecondTimer) {
+      clearInterval(uiSecondTimer);
+      uiSecondTimer = null;
+    }
+  }
+
+  function updateUiTimeAndCheckin() {
+    if (!activeEscort) return;
+
+    var checkinEl = document.getElementById('escort-active-checkin-countdown');
+    if (checkinEl) {
+      if (!activeEscort.checkin_interval_min || activeEscort.checkin_interval_min === 'off') {
+        checkinEl.textContent = 'Off';
+        checkinEl.style.color = '#777777';
+      } else if (activeEscort.status === 'paused') {
+        checkinEl.textContent = 'Paused';
+        checkinEl.style.color = '#F59E0B';
+      } else if (activeEscort.next_checkin_due) {
+        var dueDt = parseDateUtc(activeEscort.next_checkin_due);
+        if (dueDt) {
+          var diffSecs = Math.round((dueDt.getTime() - Date.now()) / 1000);
+          if (diffSecs <= 0) {
+            checkinEl.textContent = 'Due now!';
+            checkinEl.style.color = '#9E1B32';
+            updateActiveStatusChip('Check-in due');
+            var chkModal = document.getElementById('escort-checkin-modal');
+            if (chkModal && chkModal.style.display !== 'flex' && !checkinModalTimer) {
+              showCheckinModal();
+            }
+          } else {
+            var m = Math.floor(diffSecs / 60);
+            var s = diffSecs % 60;
+            checkinEl.textContent = m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+            checkinEl.style.color = '#9E1B32';
+          }
+        }
+      }
+    }
+
+    var etaEl = document.getElementById('escort-active-eta');
+    if (etaEl && activeEscort.expected_end) {
+      var endDt = parseDateUtc(activeEscort.expected_end);
+      if (endDt) {
+        etaEl.textContent = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+  }
+
+  // ─── Local Behaviour: (1) Check-in Due Modal ───────────────
+  function showCheckinModal() {
+    var modal = document.getElementById('escort-checkin-modal');
+    var numEl = document.getElementById('escort-checkin-countdown-num');
+    if (!modal) return;
+
+    playCheckinBeep();
+    triggerVibration();
+
+    modal.style.display = 'flex';
+    checkinSecsRemaining = 60;
+    if (numEl) numEl.textContent = '60s';
+
+    if (checkinModalTimer) clearInterval(checkinModalTimer);
+    checkinModalTimer = setInterval(function() {
+      checkinSecsRemaining--;
+      if (numEl) numEl.textContent = checkinSecsRemaining + 's';
+      if (checkinSecsRemaining <= 0) {
+        clearInterval(checkinModalTimer);
+        checkinModalTimer = null;
+        modal.style.display = 'none';
+
+        // Auto-escalate on timeout!
+        if (activeEscort && activeEscort.id) {
+          SafeHer.api.escalateEscort(activeEscort.id, function() {
+            if (SafeHer.toast) SafeHer.toast('Check-in timed out. Emergency SOS activated!');
+            updateActiveStatusChip('Alerted');
+            if (SafeHer.router) SafeHer.router.go('sos-active');
+          });
+        }
+      }
+    }, 1000);
+  }
+
+  function confirmCheckinOk() {
+    if (checkinModalTimer) {
+      clearInterval(checkinModalTimer);
+      checkinModalTimer = null;
+    }
+    var modal = document.getElementById('escort-checkin-modal');
+    if (modal) modal.style.display = 'none';
+
     if (!activeEscort || !activeEscort.id) return;
-    SafeHer.api.checkinEscort(activeEscort.id, function(err) {
+    SafeHer.api.checkinEscort(activeEscort.id, function(err, res) {
       if (err) {
-        if (SafeHer.toast) SafeHer.toast('Check-in failed: ' + err);
+        if (SafeHer.toast) SafeHer.toast('Check-in error: ' + err);
       } else {
-        if (SafeHer.toast) SafeHer.toast("You're checked in! Next check-in reset.");
+        if (SafeHer.toast) SafeHer.toast("You're safe! Next check-in scheduled.");
+        if (res && res.next_checkin_due) {
+          activeEscort.next_checkin_due = res.next_checkin_due;
+          saveActiveEscortToStorage();
+        }
+        updateActiveStatusChip('On route');
       }
     });
   }
 
-  function pause() {
+  // ─── Local Behaviour: (2) Off-Route & (3) Stationary ───────
+  function handlePositionOffRouteCheck(lat, lng) {
+    if (!currentRoutePoints || currentRoutePoints.length < 2 || !activeEscort) return;
+    if (activeEscort.status === 'paused') {
+      offRouteStartedAt = null;
+      return;
+    }
+
+    var dist = pointToRouteDistM(lat, lng, currentRoutePoints);
+    var threshold = activeEscort.deviation_m || selectedDeviation || 200;
+
+    if (dist > threshold) {
+      if (!offRouteStartedAt) {
+        offRouteStartedAt = Date.now();
+      } else if (Date.now() - offRouteStartedAt >= 60000 && !promptModalOpen) {
+        showPromptModal('off_route');
+      }
+      updateActiveStatusChip('Off route');
+    } else {
+      offRouteStartedAt = null;
+      if (activeEscort.status !== 'paused' && activeEscort.status !== 'alerted') {
+        updateActiveStatusChip('On route');
+      }
+    }
+  }
+
+  function handleStationaryCheck(lat, lng) {
+    if (!activeEscort) return;
+    if (activeEscort.status === 'paused') {
+      stationaryAnchor = { lat: lat, lng: lng, time: Date.now() };
+      return;
+    }
+
+    if (!stationaryAnchor) {
+      stationaryAnchor = { lat: lat, lng: lng, time: Date.now() };
+      return;
+    }
+
+    var movedDist = haversineDistM(lat, lng, stationaryAnchor.lat, stationaryAnchor.lng);
+    if (movedDist >= 30) {
+      stationaryAnchor = { lat: lat, lng: lng, time: Date.now() };
+    } else {
+      if (Date.now() - stationaryAnchor.time >= 300000 && !promptModalOpen) {
+        showPromptModal('stationary');
+      }
+    }
+  }
+
+  function showPromptModal(type) {
+    promptModalOpen = true;
+    var modal = document.getElementById('escort-prompt-modal');
+    var titleEl = document.getElementById('escort-prompt-title');
+    var descEl = document.getElementById('escort-prompt-desc');
+    if (!modal) return;
+
+    if (type === 'stationary') {
+      if (titleEl) titleEl.textContent = "You haven't moved for 5 minutes. Are you OK?";
+      if (descEl) descEl.textContent = "We noticed no movement for 5 minutes. Please select an option:";
+    } else {
+      if (titleEl) titleEl.textContent = "You’ve left the route. Are you OK?";
+      if (descEl) descEl.textContent = "We noticed you are away from your planned path. Please select an option:";
+    }
+
+    playCheckinBeep();
+    triggerVibration();
+    modal.style.display = 'flex';
+  }
+
+  function closePromptModal() {
+    promptModalOpen = false;
+    var modal = document.getElementById('escort-prompt-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function promptOkSameRoute() {
+    closePromptModal();
+    offRouteStartedAt = null;
+    if (stationaryAnchor) stationaryAnchor.time = Date.now();
+    if (SafeHer.toast) SafeHer.toast("Continuing on your journey.");
+  }
+
+  function promptReroute() {
+    closePromptModal();
+    offRouteStartedAt = null;
+    if (stationaryAnchor) stationaryAnchor.time = Date.now();
+
+    if (!currentDest || currentDest.lat === undefined) return;
+    refreshUserOrigin(function(origin) {
+      var walkingUrl = 'https://router.project-osrm.org/route/v1/walking/' +
+        origin.lng + ',' + origin.lat + ';' + currentDest.lng + ',' + currentDest.lat +
+        '?overview=full&geometries=geojson';
+
+      fetchWithTimeout(walkingUrl, 7000)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
+            var pts = data.routes[0].geometry.coordinates.map(function(c) { return [c[1], c[0]]; });
+            applyReroute(pts);
+          } else {
+            fallbackDrivingReroute(origin);
+          }
+        })
+        .catch(function() {
+          fallbackDrivingReroute(origin);
+        });
+    });
+  }
+
+  function fallbackDrivingReroute(origin) {
+    var drivingUrl = 'https://router.project-osrm.org/route/v1/driving/' +
+      origin.lng + ',' + origin.lat + ';' + currentDest.lng + ',' + currentDest.lat +
+      '?overview=full&geometries=geojson';
+
+    fetchWithTimeout(drivingUrl, 7000)
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data && data.code === 'Ok' && data.routes && data.routes[0]) {
+          var pts = data.routes[0].geometry.coordinates.map(function(c) { return [c[1], c[0]]; });
+          applyReroute(pts);
+        } else {
+          var direct = [[origin.lat, origin.lng], [currentDest.lat, currentDest.lng]];
+          applyReroute(direct);
+        }
+      })
+      .catch(function() {
+        var direct = [[origin.lat, origin.lng], [currentDest.lat, currentDest.lng]];
+        applyReroute(direct);
+      });
+  }
+
+  function applyReroute(newPoints) {
+    currentRoutePoints = newPoints;
+    if (activePolylineLayer && activeMap) {
+      activePolylineLayer.setLatLngs(newPoints);
+    }
+    if (activeEscort && activeEscort.id) {
+      SafeHer.api.rerouteEscort(activeEscort.id, newPoints, function(err) {
+        if (err) {
+          if (SafeHer.toast) SafeHer.toast("Reroute error: " + err);
+        } else {
+          if (SafeHer.toast) SafeHer.toast("Route updated to new path.");
+          updateActiveStatusChip('On route');
+          saveActiveEscortToStorage();
+        }
+      });
+    }
+  }
+
+  function promptPause() {
+    closePromptModal();
+    pause(15);
+  }
+
+  function promptEscalate() {
+    closePromptModal();
+    escalate();
+  }
+
+  // ─── Local Behaviour: (4) Arrival Prompt ───────────────────
+  function handleArrivalCheck(lat, lng) {
+    if (!currentDest || currentDest.lat === undefined || arrivalPromptShown) return;
+    var dist = haversineDistM(lat, lng, currentDest.lat, currentDest.lng);
+
+    if (dist <= 100) {
+      arrivalPromptShown = true;
+      showArrivalModal();
+    }
+  }
+
+  function showArrivalModal() {
+    var modal = document.getElementById('escort-arrival-modal');
+    if (modal) {
+      playCheckinBeep();
+      triggerVibration();
+      modal.style.display = 'flex';
+    }
+  }
+
+  function dismissArrivalPrompt() {
+    var modal = document.getElementById('escort-arrival-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function confirmArrival(arrived) {
+    dismissArrivalPrompt();
+    callEndEscort(arrived);
+  }
+
+  // ─── Journey Controls ──────────────────────────────────────
+  function checkin() {
+    confirmCheckinOk();
+  }
+
+  function pause(mins) {
     if (!activeEscort || !activeEscort.id) return;
-    SafeHer.api.pauseEscort(activeEscort.id, 10, function(err) {
+    var minutesToPause = mins || 15;
+    SafeHer.api.pauseEscort(activeEscort.id, minutesToPause, function(err) {
       if (err) {
         if (SafeHer.toast) SafeHer.toast('Pause failed: ' + err);
       } else {
-        if (SafeHer.toast) SafeHer.toast('Journey paused for 10 minutes. Alerts suspended.');
-        updateActiveStatusBadge('paused');
+        if (SafeHer.toast) SafeHer.toast('Journey paused for ' + minutesToPause + ' minutes. Alerts suspended.');
+        if (activeEscort) activeEscort.status = 'paused';
+        saveActiveEscortToStorage();
+        updateActiveStatusChip('Paused');
       }
     });
   }
 
   function escalate() {
     if (!activeEscort || !activeEscort.id) return;
-    if (confirm('Trigger an Emergency Alert now? This will immediately notify your contacts and emergency services.')) {
-      SafeHer.api.escalateEscort(activeEscort.id, function(err) {
-        if (err) {
-          if (SafeHer.toast) SafeHer.toast('Escalation failed: ' + err);
-        } else {
-          if (SafeHer.toast) SafeHer.toast('Emergency Alert triggered! Help is notified.');
-          updateActiveStatusBadge('alerted');
-          if (SafeHer.router) SafeHer.router.go('sos-active');
-        }
-      });
-    }
+    SafeHer.api.escalateEscort(activeEscort.id, function(err) {
+      if (err) {
+        if (SafeHer.toast) SafeHer.toast('Escalation failed: ' + err);
+      } else {
+        if (SafeHer.toast) SafeHer.toast('Emergency Alert triggered! Help is notified.');
+        if (activeEscort) activeEscort.status = 'alerted';
+        saveActiveEscortToStorage();
+        updateActiveStatusChip('Alerted');
+        if (SafeHer.router) SafeHer.router.go('sos-active');
+      }
+    });
   }
 
   function endJourney(arrived) {
-    if (!activeEscort || !activeEscort.id) return;
-    var msg = arrived ? 'Confirm you have arrived safely?' : 'End this journey?';
-    if (!confirm(msg)) return;
+    confirmArrival(arrived);
+  }
 
+  // ─── Stop Journey Button (PIN Protected if Alert is Active) ─
+  function stopJourney() {
+    if (!activeEscort || !activeEscort.id) return;
+
+    var isAlertActive = !!(activeEscort.alert_id || activeEscort.status === 'alerted');
+
+    if (isAlertActive && SafeHer.pin && SafeHer.pin.askPin) {
+      // PIN protection when emergency alert is active to prevent attacker canceling!
+      SafeHer.pin.askPin(
+        function(enteredPin) {
+          callEndEscort(false);
+        },
+        function(err) {
+          if (SafeHer.toast) SafeHer.toast('Incorrect Safety PIN');
+        }
+      );
+    } else {
+      if (confirm('Are you sure you want to stop this journey?')) {
+        callEndEscort(false);
+      }
+    }
+  }
+
+  function callEndEscort(arrived) {
+    if (!activeEscort || !activeEscort.id) return;
     SafeHer.api.endEscort(activeEscort.id, arrived, function(err) {
       stopActiveTracking();
+      stopUiSecondTimer();
+      releaseWakeLock();
+      clearActiveEscortFromStorage();
       activeEscort = null;
+      arrivalPromptShown = false;
+
       if (err) {
         if (SafeHer.toast) SafeHer.toast('Error ending escort: ' + err);
       } else {
         if (SafeHer.toast) SafeHer.toast(arrived ? 'Arrived safely! Contacts notified.' : 'Journey ended.');
       }
 
-      // Return to setup view
       var setupView = document.getElementById('escort-setup-view');
       var activeView = document.getElementById('escort-active-view');
       if (setupView) setupView.style.display = 'block';
@@ -888,7 +1391,7 @@ SafeHer.escort = (function() {
     }
   }
 
-  // ─── Open Screen Entrypoint ────────────────────────────────
+  // ─── Open Screen Entrypoint & Auto-Resume from Storage ──────
   function open() {
     var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
     if (!user) {
@@ -901,12 +1404,30 @@ SafeHer.escort = (function() {
       SafeHer.router.go('escort');
     }
 
-    // Check if an active escort already exists
+    // 1. First check localStorage persistence
+    var stored = loadActiveEscortFromStorage();
+    if (stored && stored.escort && stored.escort.status !== 'arrived' && stored.escort.status !== 'ended') {
+      activeEscort = stored.escort;
+      if (stored.dest) currentDest = stored.dest;
+      if (stored.route) currentRoutePoints = stored.route;
+      showActiveView(stored.escort);
+      return;
+    }
+
+    // 2. Otherwise query backend for active escort
     SafeHer.api.getActiveEscort(function(err, active) {
       if (active && (active.status === 'active' || active.status === 'paused' || active.status === 'alerted')) {
         activeEscort = active;
+        currentDest = { lat: active.dest_lat, lng: active.dest_lng, name: active.dest_name };
+        try {
+          currentRoutePoints = typeof active.route_json === 'string' ? JSON.parse(active.route_json) : (active.route_json || []);
+        } catch (e) {
+          currentRoutePoints = [];
+        }
+        saveActiveEscortToStorage();
         showActiveView(active);
       } else {
+        clearActiveEscortFromStorage();
         activeEscort = null;
         var setupView = document.getElementById('escort-setup-view');
         var activeView = document.getElementById('escort-active-view');
@@ -927,6 +1448,24 @@ SafeHer.escort = (function() {
     }
   }
 
+  // Auto-restore on app bootstrap if stored escort exists
+  function checkStoredEscortOnLoad() {
+    var stored = loadActiveEscortFromStorage();
+    if (stored && stored.escort && stored.escort.status !== 'arrived' && stored.escort.status !== 'ended') {
+      activeEscort = stored.escort;
+      if (stored.dest) currentDest = stored.dest;
+      if (stored.route) currentRoutePoints = stored.route;
+    }
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkStoredEscortOnLoad);
+    } else {
+      checkStoredEscortOnLoad();
+    }
+  }
+
   // ─── Public API ────────────────────────────────────────────
   return {
     open: open,
@@ -940,6 +1479,14 @@ SafeHer.escort = (function() {
     pause: pause,
     escalate: escalate,
     endJourney: endJourney,
+    stopJourney: stopJourney,
+    confirmCheckinOk: confirmCheckinOk,
+    promptOkSameRoute: promptOkSameRoute,
+    promptReroute: promptReroute,
+    promptPause: promptPause,
+    promptEscalate: promptEscalate,
+    confirmArrival: confirmArrival,
+    dismissArrivalPrompt: dismissArrivalPrompt,
     shareNative: shareNative,
     copyLink: copyLink
   };

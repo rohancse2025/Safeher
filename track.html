@@ -130,6 +130,92 @@
       color: #777777;
       border: 1px solid #CCCCCC;
     }
+    .status-off-route {
+      background: #FFF3CD;
+      color: #856404;
+      border: 1px solid #FFEEBA;
+    }
+    .status-checkin-due {
+      background: #F3E5F5;
+      color: #6A1B9A;
+      border: 1px solid #E1BEE7;
+    }
+    .status-paused {
+      background: #FFF8E1;
+      color: #F57F17;
+      border: 1px solid #FFECB3;
+    }
+    .status-alerted {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #FFCDD2;
+    }
+    .track-banner-off-route {
+      background: #FFF3CD;
+      border: 1px solid #FFEEBA;
+      color: #856404;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .track-banner-checkin-due {
+      background: #F3E5F5;
+      border: 1px solid #E1BEE7;
+      color: #6A1B9A;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .track-banner-alerted {
+      background: #FFEBEE;
+      border: 1px solid #FFCDD2;
+      color: #C62828;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .track-banner-ended {
+      background: #E8F5E9;
+      border: 1px solid #C8E6C9;
+      color: #1B5E20;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .track-progress-bar-bg {
+      background: #FCEFF3;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin-top: 6px;
+      border: 1px solid #EAD3DA;
+    }
+    .track-progress-bar-fill {
+      background: #A80F3C;
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
     .track-stats-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -307,6 +393,9 @@
 
     <!-- Active content view -->
     <div id="track-content-view">
+      <!-- Colored status banner for escort conditions or ended journey -->
+      <div id="track-status-banner" style="display: none;"></div>
+
       <div class="track-card">
         <div class="track-person-row">
           <div class="track-person-info">
@@ -319,7 +408,8 @@
           <span id="track-status" class="track-status-pill status-active">Active</span>
         </div>
 
-        <div class="track-stats-row">
+        <!-- SOS Alert Stats -->
+        <div class="track-stats-row" id="track-alert-stats">
           <div class="track-stat-box">
             <p class="track-stat-label">
               <span class="material-symbols-rounded" style="font-size:13px;">groups</span>
@@ -334,6 +424,38 @@
             </p>
             <p id="track-updated" class="track-stat-val">Just now</p>
           </div>
+        </div>
+
+        <!-- Escort Mode Journey Stats -->
+        <div id="track-escort-stats" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #EAD3DA;">
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #777777; margin-bottom: 2px;">
+              <span>Progress to Destination</span>
+              <strong id="track-escort-progress-text" style="color: #A80F3C;">0%</strong>
+            </div>
+            <div class="track-progress-bar-bg">
+              <div id="track-escort-progress-fill" class="track-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="track-stats-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #EAD3DA;">
+            <div class="track-stat-box">
+              <p class="track-stat-label">
+                <span class="material-symbols-rounded" style="font-size:13px;">flag</span>
+                ETA
+              </p>
+              <p id="track-escort-eta" class="track-stat-val">--:--</p>
+            </div>
+            <div class="track-stat-box">
+              <p class="track-stat-label">
+                <span class="material-symbols-rounded" style="font-size:13px;">schedule</span>
+                Next Check-in
+              </p>
+              <p id="track-escort-next-checkin" class="track-stat-val">--:--</p>
+            </div>
+          </div>
+          <p style="font-size: 11px; color: #777777; margin: 8px 0 0 0;">
+            Last check-in: <span id="track-escort-last-checkin" style="font-weight: 600; color: #333333;">--:--</span>
+          </p>
         </div>
       </div>
 
@@ -394,6 +516,8 @@
       var mapInstance = null;
       var markerInstance = null;
       var circleInstance = null;
+      var routeLayerInstance = null;
+      var destMarkerInstance = null;
       var pollTimer = null;
       var lastLat = null;
       var lastLng = null;
@@ -464,59 +588,172 @@
         }
       }
 
+      function formatTimeDisplay(dtStr) {
+        if (!dtStr) return 'N/A';
+        try {
+          var clean = dtStr.replace(' ', 'T');
+          if (clean.indexOf('Z') === -1 && clean.indexOf('+') === -1) clean += 'Z';
+          var dt = new Date(clean);
+          return isNaN(dt.getTime()) ? dtStr : dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+          return dtStr;
+        }
+      }
+
       function renderData(data) {
         var nameEl = document.getElementById('track-name');
         var avatarEl = document.getElementById('track-avatar');
         var statusEl = document.getElementById('track-status');
         var modeEl = document.getElementById('track-mode');
-        var volEl = document.getElementById('track-volunteers');
-        var updEl = document.getElementById('track-updated');
         var gmapsLink = document.getElementById('track-gmaps-link');
+        var bannerEl = document.getElementById('track-status-banner');
 
         var firstName = data.first_name || 'User';
-        var isEnded = (data.status !== 'active');
-        var statusLabel = isEnded ? 'Ended' : 'Active';
+        var isEscort = (data.type === 'escort');
 
-        if (nameEl) nameEl.textContent = firstName + "'s Alert";
         if (avatarEl) avatarEl.textContent = firstName.charAt(0).toUpperCase();
 
-        if (statusEl) {
-          statusEl.textContent = statusLabel;
-          statusEl.className = 'track-status-pill ' + (isEnded ? 'status-ended' : 'status-active');
-        }
+        if (isEscort) {
+          // ─── Escort Mode Rendering ───────────────────────────────
+          var escortStatus = data.status || 'On route';
+          var isEnded = (escortStatus === 'Arrived' || escortStatus === 'ended' || escortStatus === 'arrived');
 
-        if (modeEl) {
-          var modeMap = {
-            'normal': 'Normal SOS Mode',
-            'silent': 'Silent SOS Mode',
-            'emergency': 'Emergency Alarm Mode',
-            'timer': 'Safe Timer Expired'
-          };
-          modeEl.textContent = modeMap[data.mode] || 'Emergency SOS';
-        }
+          if (nameEl) nameEl.textContent = firstName + "'s Journey";
+          if (modeEl) modeEl.textContent = 'To: ' + (data.destination_name || 'Destination');
 
-        var vCount = data.volunteers_en_route || 0;
-        if (volEl) {
-          volEl.textContent = vCount + (vCount === 1 ? ' volunteer on the way' : ' volunteers on the way');
-        }
-
-        if (updEl) {
-          updEl.textContent = data.last_update_time ? data.last_update_time : 'Just now';
-        }
-
-        var lat = parseFloat(data.latest_lat);
-        var lng = parseFloat(data.latest_lng);
-
-        if (!isNaN(lat) && !isNaN(lng)) {
-          lastLat = lat;
-          lastLng = lng;
-          initMap(lat, lng);
-          if (gmapsLink) {
-            gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+          // Status chip
+          if (statusEl) {
+            statusEl.textContent = escortStatus;
+            var chipClass = 'status-active';
+            if (escortStatus === 'Off route') chipClass = 'status-off-route';
+            else if (escortStatus === 'Check-in due') chipClass = 'status-checkin-due';
+            else if (escortStatus === 'Paused') chipClass = 'status-paused';
+            else if (escortStatus === 'Alerted') chipClass = 'status-alerted';
+            else if (isEnded) chipClass = 'status-ended';
+            statusEl.className = 'track-status-pill ' + chipClass;
           }
-          var navHerBtn = document.getElementById('track-navigate-her');
-          if (navHerBtn) {
-            navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+
+          // Clear colored banners for Off route, Check-in due, Alerted, or Ended
+          if (bannerEl) {
+            if (isEnded) {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-ended';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span><strong>Journey ended</strong></span>';
+              if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+              }
+            } else if (escortStatus === 'Alerted') {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-alerted';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">emergency</span><span><strong>EMERGENCY:</strong> Alert triggered for this journey!</span>';
+            } else if (escortStatus === 'Off route') {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-off-route';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">warning</span><span><strong>Off route:</strong> She has deviated from her planned route.</span>';
+            } else if (escortStatus === 'Check-in due') {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-checkin-due';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">schedule</span><span><strong>Check-in due:</strong> She has not checked in at the scheduled time.</span>';
+            } else {
+              bannerEl.style.display = 'none';
+            }
+          }
+
+          // Escort stats card
+          var alertStats = document.getElementById('track-alert-stats');
+          var escortStats = document.getElementById('track-escort-stats');
+          if (alertStats) alertStats.style.display = 'none';
+          if (escortStats) escortStats.style.display = 'block';
+
+          var progText = document.getElementById('track-escort-progress-text');
+          var progFill = document.getElementById('track-escort-progress-fill');
+          var etaEl = document.getElementById('track-escort-eta');
+          var nextChkEl = document.getElementById('track-escort-next-checkin');
+          var lastChkEl = document.getElementById('track-escort-last-checkin');
+
+          var progVal = Math.max(0, Math.min(100, Math.round(data.progress_percent || 0)));
+          if (progText) progText.textContent = progVal + '%';
+          if (progFill) progFill.style.width = progVal + '%';
+
+          if (etaEl) etaEl.textContent = formatTimeDisplay(data.eta);
+          if (nextChkEl) nextChkEl.textContent = formatTimeDisplay(data.next_checkin_time);
+          if (lastChkEl) lastChkEl.textContent = formatTimeDisplay(data.last_checkin_time);
+
+          // Position & Map with Route
+          var lat = parseFloat(data.latest_lat);
+          var lng = parseFloat(data.latest_lng);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            lastLat = lat;
+            lastLng = lng;
+            initEscortMap(lat, lng, data.route, data.destination_name);
+            if (gmapsLink) {
+              gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+            }
+            var navHerBtn = document.getElementById('track-navigate-her');
+            if (navHerBtn) {
+              navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+            }
+          }
+        } else {
+          // ─── Standard Alert Rendering ────────────────────────────
+          var isEnded = (data.status !== 'active');
+          var statusLabel = isEnded ? 'Ended' : 'Active';
+
+          if (nameEl) nameEl.textContent = firstName + "'s Alert";
+          if (statusEl) {
+            statusEl.textContent = statusLabel;
+            statusEl.className = 'track-status-pill ' + (isEnded ? 'status-ended' : 'status-active');
+          }
+
+          if (modeEl) {
+            var modeMap = {
+              'normal': 'Normal SOS Mode',
+              'silent': 'Silent SOS Mode',
+              'emergency': 'Emergency Alarm Mode',
+              'timer': 'Safe Timer Expired'
+            };
+            modeEl.textContent = modeMap[data.mode] || 'Emergency SOS';
+          }
+
+          var alertStats = document.getElementById('track-alert-stats');
+          var escortStats = document.getElementById('track-escort-stats');
+          if (alertStats) alertStats.style.display = 'grid';
+          if (escortStats) escortStats.style.display = 'none';
+
+          var volEl = document.getElementById('track-volunteers');
+          var updEl = document.getElementById('track-updated');
+          var vCount = data.volunteers_en_route || 0;
+          if (volEl) {
+            volEl.textContent = vCount + (vCount === 1 ? ' volunteer on the way' : ' volunteers on the way');
+          }
+          if (updEl) {
+            updEl.textContent = data.last_update_time ? data.last_update_time : 'Just now';
+          }
+
+          if (bannerEl) {
+            if (isEnded) {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-ended';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span><strong>Alert ended</strong></span>';
+            } else {
+              bannerEl.style.display = 'none';
+            }
+          }
+
+          var lat = parseFloat(data.latest_lat);
+          var lng = parseFloat(data.latest_lng);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            lastLat = lat;
+            lastLng = lng;
+            initMap(lat, lng);
+            if (gmapsLink) {
+              gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+            }
+            var navHerBtn = document.getElementById('track-navigate-her');
+            if (navHerBtn) {
+              navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+            }
           }
         }
 
@@ -524,6 +761,70 @@
         if (data.is_contact) {
           var contactSection = document.getElementById('track-contact-actions-section');
           if (contactSection) contactSection.style.display = 'block';
+        }
+      }
+
+      function initEscortMap(lat, lng, routePoints, destName) {
+        var mapEl = document.getElementById('track-map');
+        if (!mapEl || typeof L === 'undefined') return;
+
+        if (!mapInstance) {
+          mapInstance = L.map('track-map', {
+            center: [lat, lng],
+            zoom: 15,
+            zoomControl: false,
+            attributionControl: false
+          });
+
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+          }).addTo(mapInstance);
+
+          setTimeout(function() {
+            if (mapInstance) mapInstance.invalidateSize();
+          }, 300);
+        }
+
+        // Draw Route Polyline
+        if (routePoints && routePoints.length >= 2) {
+          if (routeLayerInstance) mapInstance.removeLayer(routeLayerInstance);
+          routeLayerInstance = L.polyline(routePoints, {
+            color: '#A80F3C',
+            weight: 5,
+            opacity: 0.85
+          }).addTo(mapInstance);
+
+          // Destination marker at end of route
+          var destPt = routePoints[routePoints.length - 1];
+          if (destMarkerInstance) mapInstance.removeLayer(destMarkerInstance);
+          destMarkerInstance = L.circleMarker(destPt, {
+            radius: 8,
+            fillColor: '#9E1B32',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 1
+          }).addTo(mapInstance).bindPopup('Destination: ' + escapeHtml(destName || 'Destination'));
+        }
+
+        // Live User Position Marker
+        if (!markerInstance) {
+          markerInstance = L.circleMarker([lat, lng], {
+            radius: 8,
+            fillColor: '#3B82F6',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 1
+          }).addTo(mapInstance).bindPopup("Current location");
+        } else {
+          markerInstance.setLatLng([lat, lng]);
+        }
+
+        if (routeLayerInstance) {
+          mapInstance.fitBounds(routeLayerInstance.getBounds(), { padding: [30, 30] });
+        } else {
+          mapInstance.setView([lat, lng], 15);
         }
       }
 

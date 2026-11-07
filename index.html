@@ -1543,20 +1543,47 @@
 
       <!-- 2. ACTIVE ESCORT VIEW (when escort is active) -->
       <div id="escort-active-view" style="display: none;">
-        <!-- Status Banner -->
+        <!-- Status & Stats Card -->
         <div class="settings-card" style="margin-bottom: 12px; background: #FFF5F7; border-color: #F3C2CE;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--crimson); letter-spacing: 0.5px;">Active Escort</span>
-            <span id="escort-active-status-badge" class="badge" style="background: #9E1B32; color: #ffffff; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">On route</span>
+            <span id="escort-active-status-chip" class="badge" style="background: #9E1B32; color: #ffffff; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">On route</span>
           </div>
-          <h3 id="escort-active-dest-name" style="margin: 0 0 4px 0; font-size: 16px; color: var(--text-dark);">Destination</h3>
-          <p style="font-size: 12px; color: var(--text-gray); margin: 0;">Expected Arrival: <strong id="escort-active-eta" style="color: var(--text-dark);">--:--</strong></p>
+          <h3 id="escort-active-dest-name" style="margin: 0 0 6px 0; font-size: 16px; color: var(--text-dark);">Destination</h3>
+          
+          <!-- Progress bar & percent -->
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-gray); margin-bottom: 3px;">
+              <span>Journey Progress</span>
+              <strong id="escort-active-progress-text" style="color: var(--crimson);">0%</strong>
+            </div>
+            <div style="background: #FFFFFF; border: 1px solid #F3C2CE; border-radius: 4px; height: 8px; overflow: hidden;">
+              <div id="escort-active-progress-bar" style="background: var(--crimson); width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+            </div>
+          </div>
+
+          <!-- ETA & Next Check-in time -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-top: 1px dashed #F3C2CE; padding-top: 8px;">
+            <div>
+              <p style="font-size: 11px; color: var(--text-gray); margin: 0 0 2px 0;">ETA</p>
+              <strong id="escort-active-eta" style="font-size: 13px; color: var(--text-dark);">--:--</strong>
+            </div>
+            <div>
+              <p style="font-size: 11px; color: var(--text-gray); margin: 0 0 2px 0;">Next Check-in</p>
+              <strong id="escort-active-checkin-countdown" style="font-size: 13px; color: var(--crimson);">--:--</strong>
+            </div>
+          </div>
         </div>
 
         <!-- Active Map -->
-        <div id="escort-active-map" style="width: 100%; height: 220px; border-radius: var(--radius-btn); border: 1px solid var(--border); margin-bottom: 12px; background: #eee;"></div>
+        <div id="escort-active-map" style="width: 100%; height: 230px; border-radius: var(--radius-btn); border: 1px solid var(--border); margin-bottom: 4px; background: #eee;"></div>
+        
+        <!-- Helper text under the map -->
+        <p class="escort-monitor-note" style="font-size: 11px; color: var(--text-gray); text-align: center; margin: 4px 0 12px 0; line-height: 1.4;">
+          <span class="material-symbols-rounded" style="font-size: 13px; vertical-align: -2px; margin-right: 2px;">info</span>Monitoring works while this screen is open. The server also watches for silence.
+        </p>
 
-        <!-- Journey Controls -->
+        <!-- Journey Controls & Stop journey -->
         <div class="settings-card" style="margin-bottom: 14px;">
           <p class="settings-section-title" style="margin-bottom: 10px;">Journey Controls</p>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
@@ -1564,10 +1591,10 @@
               <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">check_circle</span> I'm Safe (Check-in)
             </button>
             <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.pause()" style="font-size: 12px; height: 38px;">
-              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">pause</span> Pause (10m)
+              <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">pause</span> Pause (15m)
             </button>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
             <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.escalate()" style="font-size: 12px; height: 38px; color: #D32F2F; border-color: #D32F2F;">
               <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">warning</span> Emergency Alert
             </button>
@@ -1575,6 +1602,9 @@
               <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">task_alt</span> Arrived Safely
             </button>
           </div>
+          <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.stopJourney()" style="width: 100%; height: 38px; font-size: 13px; font-weight: 600; color: #777; border-color: #ccc;">
+            <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">cancel</span> Stop journey
+          </button>
         </div>
 
         <!-- Share Live Tracking with Contacts Card -->
@@ -1586,6 +1616,74 @@
             </button>
           </div>
           <div id="escort-active-share-list"></div>
+        </div>
+      </div>
+
+      <!-- Full-screen Check-in Modal -->
+      <div id="escort-checkin-modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="background: #ffffff; border-radius: 16px; width: 100%; max-width: 360px; padding: 28px 20px; text-align: center; border: 2px solid #9E1B32; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: #FCEFF3; color: #9E1B32; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+            <span class="material-symbols-rounded" style="font-size: 36px;">notifications_active</span>
+          </div>
+          <h2 style="font-size: 20px; font-weight: 700; color: #333333; margin: 0 0 8px 0;">Check-in: are you OK?</h2>
+          <p style="font-size: 13px; color: #666666; margin: 0 0 20px 0; line-height: 1.4;">
+            Please confirm your safety. If you don't respond, an emergency alert will be sent automatically.
+          </p>
+          <div style="margin-bottom: 20px;">
+            <span style="font-size: 12px; color: #9E1B32; font-weight: 600;">Auto-escalating in:</span>
+            <div id="escort-checkin-countdown-num" style="font-size: 32px; font-weight: 800; color: #9E1B32;">60s</div>
+          </div>
+          <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.escort.confirmCheckinOk()" style="width: 100%; height: 56px; font-size: 18px; font-weight: 700; border-radius: 12px;">
+            <span class="material-symbols-rounded" style="font-size: 24px; margin-right: 6px;">check_circle</span> I’m OK
+          </button>
+        </div>
+      </div>
+
+      <!-- Off Route & Stationary Prompt Modal -->
+      <div id="escort-prompt-modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="background: #ffffff; border-radius: 16px; width: 100%; max-width: 360px; padding: 24px 20px; text-align: center; border: 1px solid #EAD3DA; box-shadow: 0 8px 24px rgba(0,0,0,0.25);">
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: #FFF3CD; color: #856404; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;">
+            <span class="material-symbols-rounded" style="font-size: 30px;">alt_route</span>
+          </div>
+          <h3 id="escort-prompt-title" style="font-size: 18px; font-weight: 700; color: #333333; margin: 0 0 6px 0;">You’ve left the route. Are you OK?</h3>
+          <p id="escort-prompt-desc" style="font-size: 12px; color: #666666; margin: 0 0 18px 0; line-height: 1.4;">
+            We noticed you are away from your planned path. Please select an option:
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" class="btn btn-primary" onclick="SafeHer.escort.promptOkSameRoute()" style="width: 100%; height: 44px; font-size: 14px; font-weight: 600;">
+              I’m OK, same route
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.promptReroute()" style="width: 100%; height: 44px; font-size: 14px; font-weight: 600;">
+              I took a different route
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.promptPause()" style="width: 100%; height: 44px; font-size: 14px; font-weight: 600;">
+              I’m stopping for a moment
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.promptEscalate()" style="width: 100%; height: 44px; font-size: 14px; font-weight: 700; color: #D32F2F; border-color: #D32F2F; background: #FFEBEE;">
+              <span class="material-symbols-rounded" style="font-size: 18px; margin-right: 4px;">warning</span> I need help
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrival Prompt Modal -->
+      <div id="escort-arrival-modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="background: #ffffff; border-radius: 16px; width: 100%; max-width: 360px; padding: 24px 20px; text-align: center; border: 1px solid #C8E6C9; box-shadow: 0 8px 24px rgba(0,0,0,0.25);">
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: #E8F5E9; color: #1B5E20; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;">
+            <span class="material-symbols-rounded" style="font-size: 32px;">place</span>
+          </div>
+          <h3 style="font-size: 18px; font-weight: 700; color: #333333; margin: 0 0 6px 0;">Have you arrived?</h3>
+          <p style="font-size: 12px; color: #666666; margin: 0 0 18px 0; line-height: 1.4;">
+            You are within 100 meters of your destination.
+          </p>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.escort.dismissArrivalPrompt()" style="flex: 1; height: 44px; font-size: 14px; font-weight: 600;">
+              Not yet
+            </button>
+            <button type="button" class="btn btn-primary" onclick="SafeHer.escort.confirmArrival(true)" style="flex: 1.2; height: 44px; font-size: 14px; font-weight: 700; background: #1B5E20; border-color: #1B5E20;">
+              Yes, arrived
+            </button>
+          </div>
         </div>
       </div>
 
