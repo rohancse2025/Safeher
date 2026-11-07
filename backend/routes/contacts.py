@@ -98,13 +98,15 @@ def create_contact():
 
 # ─── Route: PUT /api/contacts/<id> ───────────────────────────
 @contacts_bp.route('/api/contacts/<int:contact_id>', methods=['PUT'])
-@login_required
 def update_contact(contact_id):
     """
     Update an existing contact. Strictly scoped to the authenticated user.
     Expects JSON: { name, phone, email (optional), relationship (optional), close (optional) }
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id']
     data = request.get_json(silent=True) or {}
 
     name = (data.get('name') or '').strip()
@@ -157,12 +159,14 @@ def update_contact(contact_id):
 
 # ─── Route: DELETE /api/contacts/<id> ────────────────────────
 @contacts_bp.route('/api/contacts/<int:contact_id>', methods=['DELETE'])
-@login_required
 def delete_contact(contact_id):
     """
     Delete an emergency contact. Strictly scoped to the authenticated user.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id']
 
     conn = get_db()
     cursor = conn.cursor()
@@ -173,8 +177,12 @@ def delete_contact(contact_id):
         conn.close()
         return jsonify({"ok": False, "error": "Contact not found"}), 404
 
-    # Clear foreign key references on timers if any
+    # Clear foreign key references on timers, escort, and alert tables if any
     cursor.execute('UPDATE timers SET contact_id = NULL WHERE contact_id = ?;', (contact_id,))
+    cursor.execute('DELETE FROM alert_contacts WHERE contact_id = ?;', (contact_id,))
+    cursor.execute('DELETE FROM contact_responses WHERE contact_id = ?;', (contact_id,))
+    cursor.execute('DELETE FROM escort_contacts WHERE contact_id = ?;', (contact_id,))
+    cursor.execute('DELETE FROM escort_checkin_pings WHERE contact_id = ?;', (contact_id,))
     cursor.execute('DELETE FROM contacts WHERE id = ? AND user_id = ?;', (contact_id, user_id))
     conn.commit()
     conn.close()

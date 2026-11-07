@@ -559,7 +559,8 @@ SafeHer.api = (function() {
       }
 
       if (useBackend()) {
-        apiFetch('/api/contacts/' + id, {
+        var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
+        apiFetch('/api/contacts/' + id + query, {
           method: 'PUT',
           body: JSON.stringify({
             name: data.name,
@@ -594,7 +595,8 @@ SafeHer.api = (function() {
       }
 
       if (useBackend()) {
-        apiFetch('/api/contacts/' + id, { method: 'DELETE' })
+        var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
+        apiFetch('/api/contacts/' + id + query, { method: 'DELETE' })
           .then(function() {
             if (callback) callback(null, true);
             if (SafeHer.home && SafeHer.home.refresh) SafeHer.home.refresh();

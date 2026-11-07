@@ -61,10 +61,10 @@ SafeHer.contacts = (function() {
           '<a class="contact-action-btn call" href="tel:' + encodeURIComponent((c.phone || '').replace(/[^\d+]/g, '')) + '" aria-label="Call ' + escapeHtml(c.name) + '">' +
             '<span class="material-symbols-rounded">call</span>' +
           '</a>' +
-          '<button class="contact-action-btn" onclick="SafeHer.contacts.openModal(' + Number(c.id) + ')" aria-label="Edit">' +
+          '<button class="contact-action-btn" onclick="SafeHer.contacts.openModal(\'' + escapeHtml(c.id) + '\')" aria-label="Edit">' +
             '<span class="material-symbols-rounded">edit</span>' +
           '</button>' +
-          '<button class="contact-action-btn" onclick="SafeHer.contacts.deleteContact(' + Number(c.id) + ')" aria-label="Delete">' +
+          '<button class="contact-action-btn" onclick="SafeHer.contacts.deleteContact(\'' + escapeHtml(c.id) + '\')" aria-label="Delete">' +
             '<span class="material-symbols-rounded">delete</span>' +
           '</button>' +
         '</div>' +

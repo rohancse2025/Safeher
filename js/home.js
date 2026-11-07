@@ -130,11 +130,8 @@ SafeHer.home = (function() {
         var vEl = document.getElementById('home-volunteers-count');
         var vSub = document.getElementById('home-volunteers-sub');
         var finalCount = (!err && count !== undefined && count !== null) ? count : 0;
-        if (finalCount === 0) {
-          finalCount = 2; // Baseline verified community responders active
-        }
         if (vEl) vEl.textContent = finalCount;
-        if (vSub) vSub.textContent = finalCount > 0 ? 'Nearby & ready' : 'Available in city';
+        if (vSub) vSub.textContent = finalCount > 0 ? (finalCount === 1 ? '1 nearby & ready' : finalCount + ' nearby & ready') : 'Tap to become one';
       }, coords);
     }
 
