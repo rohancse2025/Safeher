@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 import json
 import sqlite3
 import datetime
@@ -32,6 +33,10 @@ class EscortModeTestCase(unittest.TestCase):
         cls.client = app.test_client()
 
     def setUp(self):
+        self.email_patcher = patch('routes.escorts.send_email', return_value=(True, None))
+        self.email_patcher.start()
+        self.alert_email_patcher = patch('routes.alerts.send_alert_notifications_background')
+        self.alert_email_patcher.start()
         self.conn = get_db()
         self.cursor = self.conn.cursor()
 
@@ -73,6 +78,8 @@ class EscortModeTestCase(unittest.TestCase):
         self.cursor.execute("DELETE FROM users WHERE id = 77777;")
         self.conn.commit()
         self.conn.close()
+        self.email_patcher.stop()
+        self.alert_email_patcher.stop()
 
     def test_01_route_distance_and_projection_maths(self):
         """Verify local equirectangular point-to-segment projection and polyline distance calculations."""

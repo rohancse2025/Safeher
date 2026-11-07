@@ -25,6 +25,8 @@ class EscortImprovementsTestCase(unittest.TestCase):
         init_db()
 
     def setUp(self):
+        self.email_patcher = patch('routes.escorts.send_email', return_value=(True, None))
+        self.email_patcher.start()
         self.client = app.test_client()
         self.conn = get_db()
         self.cursor = self.conn.cursor()
@@ -67,6 +69,7 @@ class EscortImprovementsTestCase(unittest.TestCase):
         self.cursor.execute("DELETE FROM users WHERE id = 88888;")
         self.conn.commit()
         self.conn.close()
+        self.email_patcher.stop()
 
     def test_01_ask_to_checkin_ping_and_rate_limit(self):
         """
