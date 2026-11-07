@@ -297,6 +297,9 @@
         </div>
       </div>
 
+      <!-- Active now section (between header and SOS section) -->
+      <div id="home-active-now" class="home-active-now" style="display: none;"></div>
+
       <!-- SOS section -->
       <div class="sos-section">
         <p class="sos-heading" data-i18n="homeEmergencyTitle">Are you in emergency?</p>
@@ -324,6 +327,9 @@
       </div>
 
       <!-- Tile grid: Core Safety Tools (3 columns by 3 rows) -->
+      <!-- Finish setup card (below SOS section, above tiles) -->
+      <div id="home-finish-setup" class="home-card finish-setup-card" style="display: none;"></div>
+
       <div class="tile-grid">
         <button class="tile" onclick="SafeHer.escort ? SafeHer.escort.open() : SafeHer.router.go('escort')">
           <span class="material-symbols-rounded">route</span>
@@ -362,6 +368,28 @@
           <span class="tile-label">History</span>
         </button>
       </div>
+
+      <!-- Helplines strip (below tile grid) -->
+      <div id="home-helplines-strip" class="home-helplines-strip">
+        <a href="tel:112" class="helpline-btn">
+          <span class="helpline-num">112</span>
+          <span class="helpline-sub">Emergency</span>
+        </a>
+        <a href="tel:181" class="helpline-btn">
+          <span class="helpline-num">181</span>
+          <span class="helpline-sub">Women helpline</span>
+        </a>
+        <a href="tel:1091" class="helpline-btn">
+          <span class="helpline-num">1091</span>
+          <span class="helpline-sub">Women (police)</span>
+        </a>
+      </div>
+
+      <!-- Nearest police station card -->
+      <div id="home-police-card" class="home-card home-police-card"></div>
+
+      <!-- Tip of the day card -->
+      <div id="home-tip-card" class="home-card home-tip-card"></div>
 
       <!-- Footer row: Contacts & Volunteers -->
       <div id="home-footer-row" class="home-footer-row">

@@ -858,6 +858,387 @@ body {
   line-height: 1.35;
 }
 
+/* Home Screen Flat Sections (Active now, Setup, Helplines, Police, Tips) */
+.home-card {
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+/* Active now section */
+.home-active-now {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.active-now-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dark);
+  box-shadow: none;
+  box-sizing: border-box;
+  transition: background 0.15s ease;
+}
+
+.active-now-row:hover {
+  background: #FDE8ED;
+}
+
+.active-now-row.active-now-sos {
+  background: #FEF2F2;
+  border-color: #FECACA;
+  color: #991B1B;
+  font-weight: 700;
+}
+
+.active-now-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.active-now-icon {
+  font-size: 18px;
+  color: var(--crimson);
+  flex-shrink: 0;
+}
+
+.active-now-sos .active-now-icon {
+  color: #991B1B;
+}
+
+.active-now-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.active-now-chevron {
+  font-size: 18px;
+  color: inherit;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* Finish Setup card */
+.finish-setup-card {
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.finish-setup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.finish-setup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin: 0;
+}
+
+.finish-setup-hide {
+  font-size: 11px;
+  color: var(--text-gray);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.finish-setup-hide:hover {
+  color: var(--crimson);
+  text-decoration: underline;
+}
+
+.finish-setup-progress-track {
+  height: 4px;
+  background: #EAD3DA;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.finish-setup-progress-fill {
+  height: 100%;
+  background: var(--crimson);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.finish-setup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.finish-setup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.finish-setup-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.finish-setup-item-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.finish-setup-item-icon.done {
+  color: var(--crimson);
+}
+
+.finish-setup-item-icon.pending {
+  color: #9CA3AF;
+}
+
+.finish-setup-item-text {
+  font-size: 12px;
+  color: var(--text-dark);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finish-setup-do-btn {
+  background: var(--crimson);
+  color: var(--white);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 26px;
+  line-height: 1.2;
+}
+
+.finish-setup-do-btn:hover {
+  background: #8A0C32;
+}
+
+/* Helplines strip */
+.home-helplines-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+
+.helpline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 4px;
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--crimson);
+  text-align: center;
+  box-shadow: none;
+  box-sizing: border-box;
+  transition: background 0.15s ease;
+}
+
+.helpline-btn:hover {
+  background: #FDE8ED;
+}
+
+.helpline-num {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--crimson);
+}
+
+.helpline-sub {
+  font-size: 10px;
+  color: var(--text-gray);
+  font-weight: 500;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Nearest Police Station Card */
+.home-police-card {
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.home-police-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--crimson);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.home-police-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin: 0 0 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-police-meta {
+  font-size: 11px;
+  color: var(--text-gray);
+  margin-bottom: 10px;
+}
+
+.home-police-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.home-police-btn {
+  padding: 5px 12px;
+  font-size: 11px;
+  height: 30px;
+  min-height: 30px;
+  border-radius: 6px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 600;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.home-police-placeholder {
+  font-size: 12px;
+  color: var(--text-gray);
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-police-fallback-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--crimson);
+  text-decoration: none;
+  padding: 4px 0;
+}
+
+.home-police-fallback-link:hover {
+  text-decoration: underline;
+}
+
+/* Tip of the Day Card */
+.home-tip-card {
+  background: #FFF5F7;
+  border: 1px solid #EAD3DA;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.home-tip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--crimson);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.home-tip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin: 0 0 2px 0;
+}
+
+.home-tip-desc {
+  font-size: 11.5px;
+  color: var(--text-gray);
+  line-height: 1.4;
+  margin: 0 0 8px 0;
+}
+
+.home-tip-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--crimson);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.home-tip-link:hover {
+  text-decoration: underline;
+}
+
 /* ─── Home Footer Row ──────────────────────────────────────────── */
 .home-footer-row {
   margin: 10px 0 14px;
