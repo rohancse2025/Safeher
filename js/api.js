@@ -184,9 +184,9 @@ SafeHer.api = (function() {
         if (!isBackground && err.status !== 401 && err.status !== 404 && err.status !== 429) {
           var friendlyMsg = err.message;
           if (isTimeout) {
-            friendlyMsg = 'Request timed out after 10s.';
+            friendlyMsg = 'Request timed out at ' + getApiBase() + '. Start backend.';
           } else if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
-            friendlyMsg = 'Unable to connect to server.';
+            friendlyMsg = 'Unable to reach backend at ' + getApiBase() + '. Start backend.';
           } else if (err.status >= 500) {
             friendlyMsg = 'Server temporarily unavailable.';
           }

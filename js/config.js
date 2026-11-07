@@ -15,7 +15,11 @@ window.SafeHer = window.SafeHer || {};
   // Allow manual override via localStorage if configured
   var storedApi = '';
   try {
-    storedApi = localStorage.getItem('safeher_api_base');
+    storedApi = (localStorage.getItem('safeher_api_base') || '').trim();
+    if (storedApi === 'null' || storedApi === 'undefined' || !storedApi) {
+      storedApi = '';
+      localStorage.removeItem('safeher_api_base');
+    }
   } catch (e) {}
 
   window.SafeHerConfig = {

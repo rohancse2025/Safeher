@@ -46,7 +46,8 @@ if frontend_url:
 # Limit CORS strictly to configured origins and localhost
 cors_origins = [
     re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"),
-    re.compile(r"^https?://(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$")
+    re.compile(r"^https?://(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$"),
+    "null"
 ] + origins_list
 
 
