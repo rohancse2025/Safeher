@@ -28,9 +28,10 @@ SafeHer.api = (function() {
           SafeHer.profile.changeServerUrl();
         } else {
           var curr = getApiBase();
-          var suggested = (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? (window.location.protocol + '//' + window.location.hostname + ':5000') : 'http://10.44.69.36:5000';
+          var cloudUrl = (window.SafeHerConfig && window.SafeHerConfig.CLOUD_BACKEND_URL) || '';
+          var suggested = cloudUrl || ((window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? (window.location.protocol + '//' + window.location.hostname + ':5000') : 'http://localhost:5000');
           var defaultVal = (curr && curr.indexOf('localhost') === -1) ? curr : suggested;
-          var input = prompt('Backend is unreachable at ' + curr + '\n\nTo connect your phone to your laptop on the same Wi-Fi, enter your laptop IP URL:\n(e.g. ' + suggested + ')\n\nOr tap OK to use suggested URL, or "reset" to reset:', defaultVal);
+          var input = prompt('Backend server is unreachable at ' + curr + '\n\n• To run 24/7 WITHOUT laptop: enter your Cloud Server URL (e.g. https://safeher-backend.onrender.com)\n• To run on laptop Wi-Fi: enter your laptop URL\n• Type "reset" to restore default:', defaultVal);
           if (input !== null) {
             var trimmed = input.trim().replace(/\/+$/, '');
             if (!trimmed || trimmed.toLowerCase() === 'reset') {
@@ -859,7 +860,8 @@ SafeHer.api = (function() {
               lng: alertData.lng || 77.5946,
               note: alertData.note || '',
               user_id: currentUser.id || userId,
-              phone: currentUser.phone || ''
+              phone: currentUser.phone || '',
+              contacts: (SafeHer.storage && SafeHer.storage.get ? SafeHer.storage.get('contacts') : []) || []
             }),
             _silent: true // SOS has dedicated retry & fallback UI
           }).then(function(json) {

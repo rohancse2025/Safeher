@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: safeher-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://rohancse2025.github.io/Safeher
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:3000,http://localhost:5000,http://localhost:8000,http://127.0.0.1:5500,https://rohancse2025.github.io
+      - key: EMAIL_ADDRESS
+        sync: false
+      - key: EMAIL_APP_PASSWORD
+        sync: false
+      - key: idInstance
+        sync: false
+      - key: apiTokenInstance
+        sync: false
+      - key: DATABASE_PATH
+        value: safeher.db
+      - key: DEBUG
+        value: "False"
+      - key: ADMIN_KEY
+        value: "1234567890"

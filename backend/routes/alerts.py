@@ -109,7 +109,7 @@ def is_valid_coord(lat, lng):
 
 
 # ─── Route: POST /api/alerts ─────────────────────────────────
-def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77.5946, reason='manual', note=None, bypass_rate_limit=False, cursor=None, conn=None):
+def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77.5946, reason='manual', note=None, bypass_rate_limit=False, cursor=None, conn=None, client_contacts=None):
     """
     Internal alert creation core logic.
     Reused by user SOS, timer auto-expiration, and escort system alerts.
@@ -181,6 +181,25 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
             INSERT INTO locations (alert_id, lat, lng)
             VALUES (?, ?, ?);
         ''', (alert_id, lat, lng))
+
+        # Sync any client-provided contacts into DB if not already present
+        if client_contacts and isinstance(client_contacts, list):
+            for cc in client_contacts:
+                if isinstance(cc, dict):
+                    c_name = str(cc.get('name') or '').strip()
+                    c_phone = str(cc.get('phone') or '').strip()
+                    c_email = str(cc.get('email') or '').strip()
+                    c_rel = str(cc.get('relation') or 'Emergency Contact').strip()
+                    c_close = 1 if cc.get('close') else 0
+                    if c_name and (c_phone or c_email):
+                        cursor.execute('''
+                            SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));
+                        ''', (user_id, c_phone, c_email))
+                        if not cursor.fetchone():
+                            cursor.execute('''
+                                INSERT INTO contacts (user_id, name, phone, email, relationship, close)
+                                VALUES (?, ?, ?, ?, ?, ?);
+                            ''', (user_id, c_name, c_phone, c_email or None, c_rel or None, c_close))
 
         # 3. Retrieve contacts: for uneasy mode, strictly notify close=true contacts only
         if mode == 'uneasy':
@@ -308,7 +327,8 @@ def create_alert():
         lng=lng,
         reason=reason,
         note=note or None,
-        bypass_rate_limit=False
+        bypass_rate_limit=False,
+        client_contacts=data.get('contacts')
     )
     if not ok:
         return jsonify({"ok": False, "error": res}), status_code

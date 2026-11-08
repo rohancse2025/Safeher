@@ -7,7 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="SafeHer" />
-  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+  <link rel="icon" type="image/png" href="./assets/icon-192.png?v=2" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png?v=2" />
   <title>SafeHer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,7 +32,7 @@
   <!-- ── Splash ──────────────────────────────────────────── -->
   <div id="screen-splash" class="screen screen-splash">
     <div class="splash-inner">
-      <img src="./assets/logo.png" alt="SafeHer" class="splash-logo"
+      <img src="./assets/logo.png?v=2" alt="SafeHer" class="splash-logo"
            onerror="this.style.display='none';document.getElementById('splash-fallback').style.display='block'" />
       <span id="splash-fallback" class="splash-fallback">SafeHer</span>
       <p class="splash-tagline">Your safety, always with you</p>
@@ -86,9 +87,9 @@
   <div id="screen-auth" class="screen">
     <div class="auth-welcome-wrap">
       <div class="auth-logo-box">
-        <span class="material-symbols-rounded auth-logo-icon">shield</span>
-        <img src="./assets/logo.png" alt="" class="auth-logo-img"
-             onerror="this.style.display='none'" />
+        <span id="auth-logo-icon-fallback" class="material-symbols-rounded auth-logo-icon" style="display:none;">shield</span>
+        <img src="./assets/logo.png?v=2" alt="SafeHer" class="auth-logo-img"
+             onerror="document.getElementById('auth-logo-icon-fallback').style.display='block';this.style.display='none'" />
       </div>
       <h1 class="auth-app-name">SafeHer</h1>
       <p class="auth-tagline">Your safety, always with you</p>

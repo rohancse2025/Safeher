@@ -68,18 +68,7 @@ def send_whatsapp(to_phone, message_text):
             if len(clean_digits) == 10:
                 clean_digits = '91' + clean_digits
 
-            # Verify if recipient is registered on WhatsApp
-            try:
-                chk_url = f"{green_host}/waInstance{green_id}/checkWhatsapp/{green_token}"
-                chk_resp = requests.post(chk_url, json={'phoneNumber': clean_digits}, timeout=5)
-                if chk_resp.status_code == 200:
-                    chk_data = chk_resp.json()
-                    if not chk_data.get('existsWhatsapp', True):
-                        app_logger.warning(f"[WHATSAPP NOT DELIVERED: {mask_phone(normalized)} is not registered on WhatsApp]")
-                        return False, f"Phone number {clean_digits} does not have a WhatsApp account"
-            except Exception:
-                pass
-
+            # Send WhatsApp message directly via Green API (100% automated background delivery)
             chat_id = f"{clean_digits}@c.us"
             url = f"{green_host}/waInstance{green_id}/sendMessage/{green_token}"
             payload = {
@@ -90,9 +79,9 @@ def send_whatsapp(to_phone, message_text):
             if resp.status_code in (200, 201):
                 app_logger.info(f"[GREEN-API WHATSAPP DELIVERED] to={mask_phone(normalized)}")
                 return True, None
-            return False, f"Green-API error {resp.status_code}: {resp.text}"
+            app_logger.warning(f"[GREEN-API WHATSAPP FAILED] to={mask_phone(normalized)} code={resp.status_code}: {resp.text}")
         except Exception as e:
-            return False, f"Green-API exception: {str(e)}"
+            app_logger.warning(f"[GREEN-API EXCEPTION] to={mask_phone(normalized)}: {e}")
 
     # ─── Option 2: Twilio WhatsApp REST API ───────────────────
     twilio_sid = os.getenv('TWILIO_ACCOUNT_SID', '').strip()

@@ -750,16 +750,30 @@ SafeHer.sos = (function() {
   function sendOfflineWhatsAppAll() {
     var contacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
     var targetPhone = '';
-    for (var i = 0; i < contacts.length; i++) {
-      var p = (contacts[i].phone || '').replace(/\D/g, '');
-      if (p.length === 10) { targetPhone = '91' + p; break; }
-      if (p.length > 10) { targetPhone = p; break; }
+    if (contacts.length === 1 && contacts[0].phone) {
+      var p = (contacts[0].phone || '').replace(/\D/g, '');
+      if (p.length === 10) targetPhone = '91' + p;
+      else if (p.length > 10) targetPhone = p;
     }
     var message = buildAlertMessage();
     var waUrl = targetPhone
       ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
       : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
     window.open(waUrl, '_blank');
+  }
+
+  function sendDirectWhatsApp(phone) {
+    var clean = (phone || '').replace(/\D/g, '');
+    if (clean.length === 10) clean = '91' + clean;
+    var message = buildAlertMessage();
+    var url = clean ? ('https://wa.me/' + clean + '?text=' + encodeURIComponent(message)) : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+    window.open(url, '_blank');
+  }
+
+  function sendDirectSms(phone) {
+    var clean = (phone || '').replace(/\D/g, '');
+    var message = buildAlertMessage();
+    window.location.href = 'sms:' + clean + '?body=' + encodeURIComponent(message);
   }
 
   // ─── Live Location Tracking (every 10s) ───────────────────
@@ -1511,6 +1525,8 @@ SafeHer.sos = (function() {
     copyAlertLink: copyAlertLink,
     sendOfflineSmsAll: sendOfflineSmsAll,
     sendOfflineWhatsAppAll: sendOfflineWhatsAppAll,
+    sendDirectWhatsApp: sendDirectWhatsApp,
+    sendDirectSms: sendDirectSms,
     isAlertActive: function() { return !!currentAlertId; },
     getCurrentAlertId: function() { return currentAlertId; },
     getCurrentMode: function() { return currentMode; }

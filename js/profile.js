@@ -544,25 +544,28 @@ SafeHer.profile = (function() {
 
   function changeServerUrl() {
     var current = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
-    var newUrl = window.prompt(
-      'Enter Backend Server URL (e.g. http://localhost:5000 or your laptop IP http://192.168.x.x:5000).\nLeave blank or type "reset" to restore default localhost:',
-      current
-    );
+    var cloudUrl = (window.SafeHerConfig && window.SafeHerConfig.CLOUD_BACKEND_URL) || '';
+    var promptMsg = 'Backend Server URL Configuration:\n\n' +
+      '• To run 24/7 WITHOUT laptop: enter your Cloud Server URL (e.g. https://safeher-backend.onrender.com)\n' +
+      '• To run locally on laptop: enter http://localhost:5000 or http://192.168.x.x:5000\n' +
+      '• Enter "reset" to restore default:';
+    var newUrl = window.prompt(promptMsg, current);
     if (newUrl !== null) {
       var trimmed = newUrl.trim().replace(/\/+$/, '');
-      if (!trimmed || trimmed.toLowerCase() === 'reset' || trimmed === 'http://localhost:5000') {
+      if (!trimmed || trimmed.toLowerCase() === 'reset') {
         try { localStorage.removeItem('safeher_api_base'); } catch (e) {}
-        if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = 'http://localhost:5000';
-        if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = 'http://localhost:5000';
-        SafeHer.toast('Server URL reset to http://localhost:5000');
+        var defaultVal = cloudUrl || 'http://localhost:5000';
+        if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = defaultVal;
+        if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = defaultVal;
+        SafeHer.toast('Server URL reset to ' + defaultVal);
       } else {
         try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
         if (window.SafeHerConfig) window.SafeHerConfig.API_BASE = trimmed;
         if (window.SafeHer && window.SafeHer.config) window.SafeHer.config.API_BASE = trimmed;
-        SafeHer.toast('Server URL updated! Checking...');
+        SafeHer.toast('Server URL updated! Connecting...');
       }
       updateBackendBadge();
-      setTimeout(function() { window.location.reload(); }, 1200);
+      setTimeout(function() { window.location.reload(); }, 1000);
       return;
     }
   }
