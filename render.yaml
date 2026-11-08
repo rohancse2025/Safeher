@@ -2,8 +2,8 @@ services:
   - type: web
     name: safeher-backend
     env: python
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     plan: free
     autoDeploy: true
     envVars:
@@ -22,7 +22,7 @@ services:
       - key: apiTokenInstance
         sync: false
       - key: DATABASE_PATH
-        value: safeher.db
+        value: backend/safeher.db
       - key: DEBUG
         value: "False"
       - key: ADMIN_KEY
