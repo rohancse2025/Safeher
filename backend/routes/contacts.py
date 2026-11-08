@@ -22,11 +22,31 @@ def get_contacts():
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-        (user_id,)
-    )
-    rows = cursor.fetchall()
+    rows = []
+    try:
+        cursor.execute(
+            'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+            (user_id,)
+        )
+        rows = cursor.fetchall()
+    except Exception:
+        try:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
+            conn.commit()
+            cursor.execute(
+                'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+                (user_id,)
+            )
+            rows = cursor.fetchall()
+        except Exception:
+            try:
+                cursor.execute(
+                    'SELECT id, name, phone, email, relationship FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+                    (user_id,)
+                )
+                rows = cursor.fetchall()
+            except Exception:
+                rows = []
     conn.close()
 
     contacts = []
@@ -74,10 +94,24 @@ def create_contact():
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
-        (user_id, name, phone, email or None, relationship or None, close_val)
-    )
+    try:
+        cursor.execute(
+            'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
+            (user_id, name, phone, email or None, relationship or None, close_val)
+        )
+    except Exception:
+        try:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
+            conn.commit()
+            cursor.execute(
+                'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
+                (user_id, name, phone, email or None, relationship or None, close_val)
+            )
+        except Exception:
+            cursor.execute(
+                'INSERT INTO contacts (user_id, name, phone, email, relationship) VALUES (?, ?, ?, ?, ?);',
+                (user_id, name, phone, email or None, relationship or None)
+            )
     contact_id = cursor.lastrowid
     conn.commit()
     conn.close()

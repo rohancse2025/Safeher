@@ -133,6 +133,11 @@ window.addEventListener('DOMContentLoaded', function() {
   // Initialize i18n translations first so all screens render with proper language
   SafeHer.i18n.init();
 
+  // Ping cloud backend health immediately on startup to establish online status
+  if (SafeHer.api && SafeHer.api.checkHealth) {
+    SafeHer.api.checkHealth();
+  }
+
   SafeHer.onboarding.init();
   SafeHer.auth.init();
   SafeHer.pin.init();

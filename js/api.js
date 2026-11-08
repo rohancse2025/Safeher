@@ -134,7 +134,7 @@ SafeHer.api = (function() {
       options.signal = controller.signal;
       timeoutId = setTimeout(function() {
         controller.abort();
-      }, 10000);
+      }, 35000);
     }
 
     var url = getApiBase().replace(/\/+$/, '') + endpoint;
@@ -241,6 +241,19 @@ SafeHer.api = (function() {
 
     getToken: getToken,
     setToken: setToken,
+
+    // GET /api/health check
+    checkHealth: function(callback) {
+      return apiFetch('/api/health', { method: 'GET', _silent: true })
+        .then(function(json) {
+          showOfflineNotice(false);
+          if (callback) callback(null, json);
+          return json;
+        })
+        .catch(function(err) {
+          if (callback) callback(err);
+        });
+    },
 
     // POST /api/register
     registerUser: function(data, callback) {

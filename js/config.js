@@ -3,21 +3,16 @@ window.SafeHer = window.SafeHer || {};
 
 (function() {
   // Primary Cloud Backend URL (Runs 24/7 in Cloud - No laptop required!)
-  // Set your deployed Render / Railway / Koyeb backend URL here:
   var CLOUD_BACKEND_URL = 'https://safeher-dwkj.onrender.com';
 
-  var defaultApiBase = 'http://localhost:5000';
+  var defaultApiBase = CLOUD_BACKEND_URL;
   if (typeof window !== 'undefined' && window.location) {
-    // If running on port 5000 directly from Flask server (e.g. http://192.168.x.x:5000 or http://localhost:5000)
     if (window.location.port === '5000' || (window.location.origin && window.location.origin.indexOf(':5000') !== -1)) {
       defaultApiBase = window.location.origin;
+    } else if (window.location.hostname && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      defaultApiBase = 'http://localhost:5000';
     } else if (window.location.hostname && window.location.hostname.endsWith('.github.io')) {
-      // Running on GitHub Pages (e.g. on mobile phone or public web)
-      if (CLOUD_BACKEND_URL) {
-        defaultApiBase = CLOUD_BACKEND_URL;
-      }
-    } else if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      defaultApiBase = window.location.protocol + '//' + window.location.hostname + ':5000';
+      defaultApiBase = CLOUD_BACKEND_URL;
     }
   }
 
@@ -29,9 +24,9 @@ window.SafeHer = window.SafeHer || {};
       storedApi = '';
       localStorage.removeItem('safeher_api_base');
     }
-    // Clean up stale localhost if running on GitHub Pages on phone when cloud URL exists
-    if (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.endsWith('.github.io') && CLOUD_BACKEND_URL) {
-      if (storedApi.indexOf('localhost') !== -1 || storedApi.indexOf('127.0.0.1') !== -1) {
+    // If running on GitHub Pages (phone or web), NEVER allow dead http:// or local IP addresses!
+    if (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.endsWith('.github.io')) {
+      if (!storedApi || storedApi.indexOf('http://') === 0 || storedApi.indexOf('localhost') !== -1 || storedApi.indexOf('127.0.0.1') !== -1 || storedApi.indexOf('10.') !== -1 || storedApi.indexOf('192.168.') !== -1 || storedApi.indexOf('onrender.com') === -1) {
         storedApi = CLOUD_BACKEND_URL;
         try { localStorage.setItem('safeher_api_base', CLOUD_BACKEND_URL); } catch (e) {}
       }
