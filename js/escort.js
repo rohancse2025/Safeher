@@ -21,6 +21,9 @@ SafeHer.escort = (function() {
   var polylineLayer = null;
   var startMarker = null;
   var destMarker = null;
+  var setupUserMarker = null;
+  var setupUserHalo = null;
+  var promptModalTimer = null;
 
   var activePolylineLayer = null;
   var activeUserMarker = null;
@@ -272,7 +275,46 @@ SafeHer.escort = (function() {
     }
   }
 
-  // ─── Setup Map Initialization ──────────────────────────────
+  // ─── Setup Map Initialization (Google Maps Style with Live Blue Dot) ─
+  function updateSetupUserMarker(lat, lng, accuracy) {
+    if (!setupMap || typeof L === 'undefined') return;
+
+    if (!setupUserHalo) {
+      setupUserHalo = L.circle([lat, lng], {
+        radius: Math.max(25, accuracy || 35),
+        color: '#4285F4',
+        fillColor: '#4285F4',
+        fillOpacity: 0.15,
+        weight: 1.5
+      }).addTo(setupMap);
+    } else {
+      setupUserHalo.setLatLng([lat, lng]);
+      if (accuracy) setupUserHalo.setRadius(Math.max(25, accuracy));
+    }
+
+    if (!setupUserMarker) {
+      setupUserMarker = L.circleMarker([lat, lng], {
+        radius: 8,
+        fillColor: '#4285F4',
+        color: '#ffffff',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 1
+      }).addTo(setupMap).bindPopup("You are here (Current Location)");
+    } else {
+      setupUserMarker.setLatLng([lat, lng]);
+    }
+  }
+
+  function recenterMap() {
+    if (!setupMap) return;
+    refreshUserOrigin(function(origin) {
+      updateSetupUserMarker(origin.lat, origin.lng);
+      setupMap.flyTo([origin.lat, origin.lng], 16, { animate: true, duration: 0.8 });
+      if (SafeHer.toast) SafeHer.toast("Centered on your location");
+    });
+  }
+
   function initSetupMap() {
     var container = document.getElementById('escort-setup-map');
     if (!container) return;
@@ -281,21 +323,27 @@ SafeHer.escort = (function() {
       setupMap = L.map('escort-setup-map', {
         zoomControl: true,
         attributionControl: false
-      }).setView([userOrigin.lat, userOrigin.lng], 13);
+      }).setView([userOrigin.lat, userOrigin.lng], 16);
 
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19
       }).addTo(setupMap);
 
+      // Tap ANYWHERE on the map at any time to set / change destination (Google Maps style)
       setupMap.on('click', function(e) {
-        if (!isPickingOnMap && !destMarker) {
-          setDestinationFromLatLng(e.latlng.lat, e.latlng.lng);
-        } else if (isPickingOnMap) {
-          setDestinationFromLatLng(e.latlng.lat, e.latlng.lng);
-          togglePickOnMap(false);
-        }
+        setDestinationFromLatLng(e.latlng.lat, e.latlng.lng);
       });
     }
+
+    updateSetupUserMarker(userOrigin.lat, userOrigin.lng);
+
+    // Immediately fetch high accuracy GPS and center street-level view
+    refreshUserOrigin(function(origin) {
+      updateSetupUserMarker(origin.lat, origin.lng);
+      if (!currentDest && setupMap) {
+        setupMap.setView([origin.lat, origin.lng], 16);
+      }
+    });
 
     if (setupMap) {
       setTimeout(function() {
@@ -304,7 +352,7 @@ SafeHer.escort = (function() {
     }
   }
 
-  // ─── Pick on Map Toggle ────────────────────────────────────
+    // ─── Pick on Map Toggle ────────────────────────────────────
   function togglePickOnMap(forceVal) {
     if (typeof forceVal === 'boolean') {
       isPickingOnMap = forceVal;
@@ -755,14 +803,14 @@ SafeHer.escort = (function() {
       fillOpacity: 1
     }).addTo(setupMap).bindPopup('Start: Your location');
 
-    destMarker = L.circleMarker(endPt, {
-      radius: 8,
-      fillColor: '#9E1B32',
-      color: '#ffffff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 1
+    destMarker = L.marker(endPt, {
+      draggable: true
     }).addTo(setupMap).bindPopup('Destination: ' + escapeHtml((currentDest && currentDest.name) || 'Destination'));
+
+    destMarker.on('dragend', function(e) {
+      var pos = e.target.getLatLng();
+      setDestinationFromLatLng(pos.lat, pos.lng);
+    });
 
     polylineLayer = L.polyline(routePoints, {
       color: '#9E1B32',
@@ -1433,18 +1481,19 @@ SafeHer.escort = (function() {
   // ─── Local Behaviour: (2) Off-Route & (3) Stationary ───────
   function handlePositionOffRouteCheck(lat, lng) {
     if (!currentRoutePoints || currentRoutePoints.length < 2 || !activeEscort) return;
-    if (activeEscort.status === 'paused') {
+    if (activeEscort.status === 'paused' || activeEscort.status === 'alerted') {
       offRouteStartedAt = null;
       return;
     }
 
     var dist = pointToRouteDistM(lat, lng, currentRoutePoints);
-    var threshold = activeEscort.deviation_m || selectedDeviation || 200;
+    var threshold = activeEscort.deviation_m || selectedDeviation || 150;
 
     if (dist > threshold) {
       if (!offRouteStartedAt) {
         offRouteStartedAt = Date.now();
-      } else if (Date.now() - offRouteStartedAt >= 60000 && !promptModalOpen) {
+      } else if (Date.now() - offRouteStartedAt >= 10000 && !promptModalOpen) {
+        // Trigger check-in prompt after 10s of being off route!
         showPromptModal('off_route');
       }
       updateActiveStatusChip('Off route');
@@ -1483,32 +1532,57 @@ SafeHer.escort = (function() {
     var modal = document.getElementById('escort-prompt-modal');
     var titleEl = document.getElementById('escort-prompt-title');
     var descEl = document.getElementById('escort-prompt-desc');
+    var countdownEl = document.getElementById('escort-prompt-countdown');
     if (!modal) return;
 
     if (type === 'stationary') {
-      if (titleEl) titleEl.textContent = "You haven't moved for 5 minutes. Are you OK?";
-      if (descEl) descEl.textContent = "We noticed no movement for 5 minutes. Please select an option:";
+      if (titleEl) titleEl.textContent = "Are you safe?";
+      if (descEl) descEl.textContent = "You haven't moved for 5 minutes. Are you safe?";
     } else {
-      if (titleEl) titleEl.textContent = "You’ve left the route. Are you OK?";
-      if (descEl) descEl.textContent = "We noticed you are away from your planned path. Please select an option:";
+      if (titleEl) titleEl.textContent = "Are you safe?";
+      if (descEl) descEl.textContent = "Route deviation detected. Are you safe?";
     }
 
     playCheckinBeep();
     triggerVibration();
     modal.style.display = 'flex';
+
+    // 30-Second Countdown: Auto-escalates and alerts emergency contacts if user does not respond!
+    var remaining = 30;
+    if (countdownEl) countdownEl.textContent = remaining + 's';
+    if (promptModalTimer) clearInterval(promptModalTimer);
+    promptModalTimer = setInterval(function() {
+      remaining--;
+      if (countdownEl) countdownEl.textContent = remaining + 's';
+      if (remaining % 3 === 0) {
+        playCheckinBeep();
+        triggerVibration();
+      }
+      if (remaining <= 0) {
+        clearInterval(promptModalTimer);
+        promptModalTimer = null;
+        closePromptModal();
+        if (SafeHer.toast) SafeHer.toast('No response received! Auto-alerting emergency contacts via WhatsApp & Email!');
+        escalate();
+      }
+    }, 1000);
   }
 
   function closePromptModal() {
     promptModalOpen = false;
+    if (promptModalTimer) {
+      clearInterval(promptModalTimer);
+      promptModalTimer = null;
+    }
     var modal = document.getElementById('escort-prompt-modal');
     if (modal) modal.style.display = 'none';
   }
 
-  function promptOkSameRoute() {
+    function promptOkSameRoute() {
     closePromptModal();
     offRouteStartedAt = null;
     if (stationaryAnchor) stationaryAnchor.time = Date.now();
-    if (SafeHer.toast) SafeHer.toast("Continuing on your journey.");
+    if (SafeHer.toast) SafeHer.toast("Safe status confirmed. Continuing escort.");
   }
 
   function promptReroute() {
@@ -1668,18 +1742,29 @@ SafeHer.escort = (function() {
   }
 
   function escalate() {
-    if (!activeEscort || !activeEscort.id) return;
-    SafeHer.api.escalateEscort(activeEscort.id, function(err) {
-      if (err) {
-        if (SafeHer.toast) SafeHer.toast('Escalation failed: ' + err);
-      } else {
-        if (SafeHer.toast) SafeHer.toast('Emergency Alert triggered! Help is notified.');
-        if (activeEscort) activeEscort.status = 'alerted';
-        saveActiveEscortToStorage();
-        updateActiveStatusChip('Alerted');
-        if (SafeHer.router) SafeHer.router.go('sos-active');
-      }
-    });
+    if (activeEscort) activeEscort.status = 'alerted';
+    saveActiveEscortToStorage();
+    updateActiveStatusChip('Alerted');
+
+    // Trigger full Emergency SOS Alert (sirens, volunteer dispatch, WhatsApp, emails)
+    if (SafeHer.sos && SafeHer.sos.triggerActiveAlert) {
+      SafeHer.sos.triggerActiveAlert('emergency');
+    } else if (SafeHer.api && SafeHer.api.createAlert) {
+      var liveLoc = userOrigin || { lat: 12.9716, lng: 77.5946 };
+      SafeHer.api.createAlert({
+        mode: 'emergency',
+        reason: 'route_deviation',
+        lat: liveLoc.lat,
+        lng: liveLoc.lng,
+        note: 'Escort route deviation detected: user did not respond to safety check'
+      }, function() {});
+    }
+
+    if (activeEscort && activeEscort.id && String(activeEscort.id).indexOf('local_') === -1) {
+      SafeHer.api.escalateEscort(activeEscort.id, function() {});
+    }
+
+    if (SafeHer.router) SafeHer.router.go('sos-active');
   }
 
   function endJourney(arrived) {
@@ -2009,6 +2094,7 @@ SafeHer.escort = (function() {
     open: open,
     switchTravelTab: switchTravelTab,
     goBack: goBack,
+    recenterMap: recenterMap,
     searchDestination: searchDestination,
     togglePickOnMap: togglePickOnMap,
     selectCheckin: selectCheckin,
