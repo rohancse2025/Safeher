@@ -325,8 +325,9 @@ SafeHer.escort = (function() {
         attributionControl: false
       }).setView([userOrigin.lat, userOrigin.lng], 16);
 
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3']
       }).addTo(setupMap);
 
       // Tap ANYWHERE on the map at any time to set / change destination (Google Maps style)
@@ -388,21 +389,30 @@ SafeHer.escort = (function() {
     togglePickOnMap(false);
     var latFixed = parseFloat(lat).toFixed(5);
     var lngFixed = parseFloat(lng).toFixed(5);
-    var defaultName = 'Pin (' + latFixed + ', ' + lngFixed + ')';
+    var defaultName = 'Location (' + latFixed + ', ' + lngFixed + ')';
 
     var input = document.getElementById('escort-dest-input');
-    if (input) input.value = 'Locating address...';
+    if (input) input.value = 'Locating street...';
 
     currentDest = { lat: parseFloat(lat), lng: parseFloat(lng), name: defaultName };
 
-    var revUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng;
+    var revUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1';
     fetch(revUrl, { headers: { 'Accept': 'application/json' } })
       .then(function(res) { return res.json(); })
       .then(function(data) {
-        if (data && data.display_name) {
-          var parts = data.display_name.split(',');
-          var cleanName = parts.slice(0, 3).join(',').trim();
-          currentDest.name = cleanName || data.display_name;
+        if (data && (data.display_name || data.address)) {
+          var addr = data.address || {};
+          var primary = data.name || addr.amenity || addr.school || addr.hospital || addr.shop || addr.building || addr.road || addr.neighbourhood || addr.suburb;
+          var road = addr.road || addr.neighbourhood || addr.suburb || addr.town || addr.city || '';
+          var fullTitle = '';
+          if (primary && road && primary !== road) {
+            fullTitle = primary + ', ' + road;
+          } else if (primary) {
+            fullTitle = primary;
+          } else if (data.display_name) {
+            fullTitle = data.display_name.split(',').slice(0, 3).join(', ').trim();
+          }
+          currentDest.name = fullTitle || defaultName;
           if (input) input.value = currentDest.name;
         } else {
           if (input) input.value = defaultName;
@@ -415,7 +425,7 @@ SafeHer.escort = (function() {
       });
   }
 
-  // ─── Destination Search (Nominatim with Local Proximity Bias & Fallbacks) ─
+  // ??? Destination Search (Photon Fuzzy Geocoder + Nominatim Multilingual Fallback) ?
   function searchDestination(queryOverride) {
     var input = document.getElementById('escort-dest-input');
     var resultsBox = document.getElementById('escort-search-results');
@@ -428,11 +438,11 @@ SafeHer.escort = (function() {
 
     var rawQuery = (input.value || '').trim();
     if (!rawQuery) {
-      if (SafeHer.toast) SafeHer.toast('Please enter a destination or choose a nearby place');
+      if (SafeHer.toast) SafeHer.toast('Please enter a destination or tap map above');
       return;
     }
 
-    // Strip conversational keywords like "near", "nearby", "approx", "100m" so Nominatim finds the POI
+    // Strip conversational keywords like "near", "nearby", "approx", "100m" so search finds POIs
     var cleanedQuery = rawQuery.replace(/\b(near\s+me|nearby|near|around|close\s+to|approx\.?|\d+\s*m|\d+\s*meters?)\b/gi, '').replace(/\s+/g, ' ').trim();
     var queryToSearch = cleanedQuery || rawQuery;
 
@@ -455,42 +465,60 @@ SafeHer.escort = (function() {
       }
     }
 
-    var viewboxParam = '';
-    if (originLat && originLng) {
-      var left = (originLng - 0.25).toFixed(4);
-      var top = (originLat + 0.25).toFixed(4);
-      var right = (originLng + 0.25).toFixed(4);
-      var bottom = (originLat - 0.25).toFixed(4);
-      viewboxParam = '&viewbox=' + left + ',' + top + ',' + right + ',' + bottom + '&bounded=0';
-    }
+    // Step 1: Query Photon Fuzzy Geocoder (High tolerance for typos, local biasing)
+    var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(queryToSearch) +
+      (originLat && originLng ? ('&lat=' + originLat + '&lon=' + originLng) : '') + '&limit=12';
 
-    function doFetch(qStr, useBox, callback) {
-      var box = useBox ? viewboxParam : '';
-      var url = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12' + box + '&q=' + encodeURIComponent(qStr);
-      fetch(url, { headers: { 'Accept': 'application/json' } })
-        .then(function(res) { return res.json(); })
-        .then(function(items) { callback(null, items || []); })
-        .catch(function(err) { callback(err, []); });
-    }
+    fetch(photonUrl)
+      .then(function(res) { return res.json(); })
+      .then(function(pData) {
+        var pItems = [];
+        if (pData && pData.features && pData.features.length > 0) {
+          pItems = pData.features.map(function(f) {
+            var props = f.properties || {};
+            var geom = f.geometry || {};
+            var coords = geom.coordinates || [0, 0];
+            var parts = [];
+            if (props.name) parts.push(props.name);
+            if (props.street) parts.push(props.street);
+            if (props.city || props.town || props.county) parts.push(props.city || props.town || props.county);
+            if (props.state) parts.push(props.state);
+            return {
+              lat: coords[1],
+              lon: coords[0],
+              name: props.name || parts[0] || 'Landmark',
+              display_name: parts.join(', ') || props.name || 'Location'
+            };
+          });
+        }
 
-    // First try with cleaned query and local viewbox
-    doFetch(queryToSearch, true, function(err1, items1) {
-      if (!items1 || items1.length === 0) {
-        // Fallback 1: try raw query with viewbox
-        doFetch(rawQuery, true, function(err2, items2) {
-          if (!items2 || items2.length === 0) {
-            // Fallback 2: try cleaned query nationwide without viewbox
-            doFetch(queryToSearch, false, function(err3, items3) {
-              renderResults(items3);
+        if (pItems.length > 0) {
+          renderResults(pItems);
+        } else {
+          // Step 2: Fallback to Nominatim (Handles Kannada text & administrative names)
+          var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12&q=' + encodeURIComponent(queryToSearch);
+          fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
+            .then(function(nRes) { return nRes.json(); })
+            .then(function(nItems) {
+              renderResults(nItems || []);
+            })
+            .catch(function() {
+              renderResults([]);
             });
-          } else {
-            renderResults(items2);
-          }
-        });
-      } else {
-        renderResults(items1);
-      }
-    });
+        }
+      })
+      .catch(function() {
+        // Fallback to Nominatim if Photon request fails
+        var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12&q=' + encodeURIComponent(queryToSearch);
+        fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
+          .then(function(nRes) { return nRes.json(); })
+          .then(function(nItems) {
+            renderResults(nItems || []);
+          })
+          .catch(function() {
+            renderResults([]);
+          });
+      });
 
     function renderResults(items) {
       if (btn) {
@@ -1137,8 +1165,9 @@ SafeHer.escort = (function() {
         attributionControl: false
       }).setView([escortData.dest_lat, escortData.dest_lng], 14);
 
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3']
       }).addTo(activeMap);
     }
 
