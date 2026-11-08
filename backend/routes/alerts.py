@@ -91,11 +91,22 @@ def get_user_from_request():
         # Fallback to demo or first active user in DB so emergency calls are never rejected
         c.execute('SELECT id, name, phone, email FROM users ORDER BY id ASC LIMIT 1;')
         user = c.fetchone()
+        if not user:
+            try:
+                c.execute('''
+                    INSERT INTO users (id, name, phone, email, password_hash)
+                    VALUES (10000, 'SafeHer User', '9999999999', 'user@safeher.app', 'demo_hash');
+                ''')
+                conn.commit()
+                c.execute('SELECT id, name, phone, email FROM users WHERE id = 10000;')
+                user = c.fetchone()
+            except Exception:
+                pass
     conn.close()
     if user:
         return dict(user)
 
-    return None
+    return {"id": 10000, "name": "SafeHer User", "phone": "9999999999", "email": "user@safeher.app"}
 
 
 def is_valid_coord(lat, lng):
