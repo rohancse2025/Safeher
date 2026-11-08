@@ -20,28 +20,22 @@ SafeHer.api = (function() {
       badge = document.createElement('div');
       badge.id = 'offline-mode-badge';
       badge.className = 'offline-mode-badge';
-      badge.textContent = 'Offline mode';
-      badge.title = 'Backend server unreachable. Tap to configure server URL.';
+      badge.textContent = 'Offline (Tap to reconnect)';
+      badge.title = 'Backend server unreachable. Tap to reconnect.';
       badge.style.cursor = 'pointer';
+      badge.style.pointerEvents = 'auto';
       badge.onclick = function() {
-        if (SafeHer.profile && SafeHer.profile.changeServerUrl) {
-          SafeHer.profile.changeServerUrl();
-        } else {
-          var curr = getApiBase();
-          var cloudUrl = (window.SafeHerConfig && window.SafeHerConfig.CLOUD_BACKEND_URL) || '';
-          var suggested = cloudUrl || ((window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') ? (window.location.protocol + '//' + window.location.hostname + ':5000') : 'http://localhost:5000');
-          var defaultVal = (curr && curr.indexOf('localhost') === -1) ? curr : suggested;
-          var input = prompt('Backend server is unreachable at ' + curr + '\n\n• To run 24/7 WITHOUT laptop: enter your Cloud Server URL (e.g. https://safeher-backend.onrender.com)\n• To run on laptop Wi-Fi: enter your laptop URL\n• Type "reset" to restore default:', defaultVal);
-          if (input !== null) {
-            var trimmed = input.trim().replace(/\/+$/, '');
-            if (!trimmed || trimmed.toLowerCase() === 'reset') {
-              try { localStorage.removeItem('safeher_api_base'); } catch (e) {}
-            } else {
-              try { localStorage.setItem('safeher_api_base', trimmed); } catch (e) {}
-            }
-            window.location.reload();
+        if (SafeHer.toast) SafeHer.toast('Checking cloud backend connection...');
+        if (badge) badge.textContent = 'Connecting...';
+        SafeHer.api.checkHealth(function(err, res) {
+          if (!err && res && res.ok) {
+            if (SafeHer.toast) SafeHer.toast('Connected to SafeHer Cloud!');
+            showOfflineNotice(false);
+          } else {
+            if (SafeHer.toast) SafeHer.toast('Backend waking up from sleep. Please wait a few seconds.');
+            if (badge) badge.textContent = 'Offline (Tap to retry)';
           }
-        }
+        });
       };
       document.body.appendChild(badge);
     }
@@ -50,9 +44,9 @@ SafeHer.api = (function() {
     }
     if (show && !offlineNotified) {
       offlineNotified = true;
-      if (SafeHer.toast) SafeHer.toast('Offline mode: Backend unreachable. Tap badge to fix URL.');
-    } else if (!show) {
+    } else if (!show && offlineNotified) {
       offlineNotified = false;
+      if (SafeHer.toast) SafeHer.toast('Connected to SafeHer Cloud!');
     }
   }
 
@@ -1610,6 +1604,28 @@ SafeHer.api = (function() {
 
     isOfflineMode: function() {
       return !useBackend() || !!offlineNotified;
+    },
+
+    startHeartbeat: function() {
+      // Periodic background health check every 12s so offline badge auto-clears as soon as Render is awake
+      setInterval(function() {
+        if (SafeHer.api && SafeHer.api.checkHealth) {
+          SafeHer.api.checkHealth();
+        }
+      }, 12000);
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', function() {
+          if (!document.hidden && SafeHer.api && SafeHer.api.checkHealth) {
+            SafeHer.api.checkHealth();
+          }
+        });
+        window.addEventListener('online', function() {
+          if (SafeHer.api && SafeHer.api.checkHealth) {
+            SafeHer.api.checkHealth();
+          }
+        });
+      }
     },
 
     useBackend: function() {

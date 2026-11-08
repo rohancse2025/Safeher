@@ -4019,7 +4019,9 @@ input:checked + .slider:before {
   padding: 3px 8px;
   border-radius: 12px;
   z-index: 250;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 
 /* ─── Home Sharing Banner ────────────────────────────────────── */

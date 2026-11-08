@@ -226,9 +226,14 @@ window.addEventListener('DOMContentLoaded', function() {
   // Initialize i18n translations first so all screens render with proper language
   SafeHer.i18n.init();
 
-  // Ping cloud backend health immediately on startup to establish online status
+  // Ping cloud backend health immediately on startup to establish online status and start auto-heartbeat
   if (SafeHer.api && SafeHer.api.checkHealth) {
     SafeHer.api.checkHealth();
+    setTimeout(function() { if (SafeHer.api && SafeHer.api.checkHealth) SafeHer.api.checkHealth(); }, 2000);
+    setTimeout(function() { if (SafeHer.api && SafeHer.api.checkHealth) SafeHer.api.checkHealth(); }, 6000);
+    if (SafeHer.api.startHeartbeat) {
+      SafeHer.api.startHeartbeat();
+    }
   }
 
   SafeHer.onboarding.init();
