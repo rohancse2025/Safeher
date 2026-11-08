@@ -257,25 +257,60 @@ SafeHer.escort = (function() {
     } catch (e) {}
   }
 
+  var setupWatchId = null;
+
   function refreshUserOrigin(callback) {
-    getStoredOrigin();
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function(pos) {
           userOrigin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          if (callback) callback(userOrigin);
+          if (SafeHer.api && SafeHer.api.setLiveLocation) {
+            SafeHer.api.setLiveLocation(pos.coords.latitude, pos.coords.longitude);
+          }
+          if (callback) callback(userOrigin, pos.coords.accuracy);
         },
-        function() {
-          if (callback) callback(userOrigin);
+        function(err) {
+          console.warn('[GPS] High accuracy timed out, trying network location:', err);
+          // If high accuracy GPS timed out (e.g. indoors), try network/cell tower location
+          navigator.geolocation.getCurrentPosition(
+            function(netPos) {
+              userOrigin = { lat: netPos.coords.latitude, lng: netPos.coords.longitude };
+              if (callback) callback(userOrigin, netPos.coords.accuracy);
+            },
+            function() {
+              if (callback) callback(userOrigin, 100);
+            },
+            { enableHighAccuracy: false, timeout: 6000, maximumAge: 0 }
+          );
         },
-        { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     } else {
-      if (callback) callback(userOrigin);
+      if (callback) callback(userOrigin, 100);
     }
   }
 
-  // ─── Setup Map Initialization (Google Maps Style with Live Blue Dot) ─
+  function startSetupMapGpsWatch() {
+    if (!navigator.geolocation) return;
+    if (setupWatchId) navigator.geolocation.clearWatch(setupWatchId);
+    setupWatchId = navigator.geolocation.watchPosition(
+      function(pos) {
+        var lat = pos.coords.latitude;
+        var lng = pos.coords.longitude;
+        var acc = pos.coords.accuracy;
+        var movedFar = !userOrigin || Math.abs(userOrigin.lat - lat) > 0.0005 || Math.abs(userOrigin.lng - lng) > 0.0005;
+        userOrigin = { lat: lat, lng: lng };
+        updateSetupUserMarker(lat, lng, acc);
+        if (movedFar && !currentDest && setupMap) {
+          setupMap.panTo([lat, lng]);
+        }
+      },
+      function() {},
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+  }
+
+  // ??? Setup Map Initialization (Google Maps Style with Live Blue Dot) ?
   function updateSetupUserMarker(lat, lng, accuracy) {
     if (!setupMap || typeof L === 'undefined') return;
 
@@ -308,10 +343,11 @@ SafeHer.escort = (function() {
 
   function recenterMap() {
     if (!setupMap) return;
-    refreshUserOrigin(function(origin) {
-      updateSetupUserMarker(origin.lat, origin.lng);
-      setupMap.flyTo([origin.lat, origin.lng], 16, { animate: true, duration: 0.8 });
-      if (SafeHer.toast) SafeHer.toast("Centered on your location");
+    if (SafeHer.toast) SafeHer.toast("Finding your exact GPS location...");
+    refreshUserOrigin(function(origin, acc) {
+      updateSetupUserMarker(origin.lat, origin.lng, acc);
+      setupMap.flyTo([origin.lat, origin.lng], 17, { animate: true, duration: 0.8 });
+      if (SafeHer.toast) SafeHer.toast("Centered on your live location");
     });
   }
 
@@ -337,6 +373,7 @@ SafeHer.escort = (function() {
     }
 
     updateSetupUserMarker(userOrigin.lat, userOrigin.lng);
+    startSetupMapGpsWatch();
 
     // Immediately fetch high accuracy GPS and center street-level view
     refreshUserOrigin(function(origin) {
@@ -466,8 +503,9 @@ SafeHer.escort = (function() {
     }
 
     // Step 1: Query Photon Fuzzy Geocoder (High tolerance for typos, local biasing)
+    var isGeneric = /^(school|hospital|pharmacy|police|cafe|store|station|atm|bus|metro)$/i.test(queryToSearch.trim());
     var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(queryToSearch) +
-      (originLat && originLng ? ('&lat=' + originLat + '&lon=' + originLng) : '') + '&limit=12';
+      (isGeneric && originLat && originLng ? ('&lat=' + originLat + '&lon=' + originLng) : '') + '&limit=12';
 
     fetch(photonUrl)
       .then(function(res) { return res.json(); })

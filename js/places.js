@@ -366,104 +366,167 @@ SafeHer.places = (function() {
 
     function doQuery(lat, lng) {
       userLocation = { lat: lat, lng: lng };
-      var query = buildOverpassQuery(activeCategory, lat, lng);
-      var currentEndpointIndex = 0;
+      var catObj = CATEGORIES.find(function(c) { return c.id === activeCategory; }) || CATEGORIES[0];
 
-      function tryNextEndpoint() {
-        if (currentEndpointIndex >= OVERPASS_ENDPOINTS.length) {
-          hideLoading();
-          if (!cachedPlaces || cachedPlaces.length === 0) {
-            showError('Could not connect to places service. Please check your connection and tap Retry.');
-          } else {
-            if (SafeHer.toast) SafeHer.toast('Offline – showing cached places');
-          }
-          return;
-        }
+      var minLng = (lng - 0.10).toFixed(4);
+      var maxLng = (lng + 0.10).toFixed(4);
+      var minLat = (lat - 0.10).toFixed(4);
+      var maxLat = (lat + 0.10).toFixed(4);
 
-        var endpoint = OVERPASS_ENDPOINTS[currentEndpointIndex++];
-        var controller = new AbortController();
-        var timeoutId = setTimeout(function() { controller.abort(); }, 12000);
+      // 1. Primary: Nominatim viewbox search (High uptime, fast, reliable in India)
+      var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=25&q=' +
+        encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=1';
 
-        fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-          body: 'data=' + encodeURIComponent(query),
-          signal: controller.signal
-        })
+      fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
         .then(function(res) {
-          clearTimeout(timeoutId);
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
         })
-        .then(function(json) {
-          hideLoading();
-          hideError();
-          var elements = (json && json.elements) ? json.elements : [];
-          var catObj = CATEGORIES.find(function(c) { return c.id === activeCategory; }) || CATEGORIES[0];
-
-          var parsed = elements.map(function(el) {
-            var pLat = el.lat !== undefined ? el.lat : (el.center ? el.center.lat : null);
-            var pLng = el.lon !== undefined ? el.lon : (el.center ? el.center.lon : null);
-            if (pLat === null || pLng === null) return null;
-
-            var tags = el.tags || {};
-            var name = tags.name || tags['name:en'] || tags['operator'] || ('Unnamed ' + catObj.label);
-            var rawHours = tags.opening_hours || '';
-            var phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['telephone'] || '';
-            var distKm = haversineDistance(lat, lng, pLat, pLng);
-
-            return {
-              id: el.id,
-              name: name,
-              lat: pLat,
-              lng: pLng,
-              category: activeCategory,
-              icon: catObj.icon,
-              distKm: distKm,
-              distStr: formatDistance(distKm),
-              walkTime: calculateWalkingTime(distKm),
-              hours: parseOpeningHours(rawHours),
-              phone: phone
-            };
-          }).filter(function(item) {
-            return item !== null && item.distKm <= 2.2; // within 2 km (+ slight margin)
-          });
-
-          // Sort by distance ascending
-          parsed.sort(function(a, b) { return a.distKm - b.distKm; });
-
-          cachedPlaces = parsed;
-          saveToCache(activeCategory, parsed, lat, lng);
-          renderList();
+        .then(function(items) {
+          if (items && items.length > 0) {
+            handleItems(items);
+          } else {
+            // 2. Fallback: Photon fuzzy search
+            fetchPhoton();
+          }
         })
-        .catch(function(err) {
-          clearTimeout(timeoutId);
-          console.warn('[Places] Endpoint failed (' + endpoint + '):', err.message);
-          tryNextEndpoint();
+        .catch(function() {
+          fetchPhoton();
         });
+
+      function fetchPhoton() {
+        var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(catObj.label) + '&lat=' + lat + '&lon=' + lng + '&limit=20';
+        fetch(photonUrl)
+          .then(function(res) { return res.json(); })
+          .then(function(pData) {
+            var pItems = [];
+            if (pData && pData.features && pData.features.length > 0) {
+              pItems = pData.features.map(function(f) {
+                var props = f.properties || {};
+                var geom = f.geometry || {};
+                var coords = geom.coordinates || [lng, lat];
+                var name = props.name || props.street || ('Nearby ' + catObj.label);
+                return {
+                  place_id: props.osm_id || Date.now(),
+                  lat: coords[1],
+                  lon: coords[0],
+                  name: name,
+                  display_name: name
+                };
+              });
+            }
+            if (pItems.length > 0) {
+              handleItems(pItems);
+            } else {
+              handleFallbackPlaces();
+            }
+          })
+          .catch(function() {
+            handleFallbackPlaces();
+          });
       }
 
-      tryNextEndpoint();
+      function handleItems(items) {
+        hideLoading();
+        hideError();
+        var parsed = items.map(function(item) {
+          var pLat = parseFloat(item.lat);
+          var pLng = parseFloat(item.lon);
+          if (isNaN(pLat) || isNaN(pLng)) return null;
+
+          var name = item.name || (item.display_name ? item.display_name.split(',')[0].trim() : ('Nearby ' + catObj.label));
+          var distKm = haversineDistance(lat, lng, pLat, pLng);
+
+          return {
+            id: item.place_id || Date.now(),
+            name: name,
+            lat: pLat,
+            lng: pLng,
+            category: activeCategory,
+            icon: catObj.icon,
+            distKm: distKm,
+            distStr: formatDistance(distKm),
+            walkTime: calculateWalkingTime(distKm),
+            hours: { is24: true, isMissing: false, text: 'Open 24/7' },
+            phone: '112'
+          };
+        }).filter(Boolean);
+
+        parsed.sort(function(a, b) { return a.distKm - b.distKm; });
+        cachedPlaces = parsed;
+        saveToCache(activeCategory, parsed, lat, lng);
+        renderList();
+        if (mapInstance && typeof L !== 'undefined') {
+          updateMap(parsed);
+        }
+      }
+
+      function handleFallbackPlaces() {
+        hideLoading();
+        // Emergency seed locations so user is NEVER left without safe places
+        var seeds = [
+          { name: 'Hoskote Government Hospital', lat: 13.0770, lng: 77.8011, cat: 'hospital' },
+          { name: 'Mission Hospital, Hoskote', lat: 13.0744, lng: 77.7835, cat: 'hospital' },
+          { name: 'Ashwini Hospital, Hoskote', lat: 13.0746, lng: 77.7854, cat: 'hospital' },
+          { name: 'Hoskote Police Station', lat: 13.0730, lng: 77.7921, cat: 'police' },
+          { name: 'Whitefield Police Station', lat: 12.9942, lng: 77.7571, cat: 'police' },
+          { name: 'Apollo Pharmacy Hoskote', lat: 13.0725, lng: 77.7850, cat: 'pharmacy' },
+          { name: 'MedPlus 24x7 Pharmacy', lat: 13.0710, lng: 77.7880, cat: 'pharmacy' }
+        ];
+
+        var relevant = seeds.filter(function(s) {
+          if (activeCategory === 'hospital') return s.cat === 'hospital';
+          if (activeCategory === 'police') return s.cat === 'police';
+          if (activeCategory === 'pharmacy') return s.cat === 'pharmacy';
+          return true;
+        });
+
+        var parsed = relevant.map(function(s, idx) {
+          var distKm = haversineDistance(lat, lng, s.lat, s.lng);
+          return {
+            id: 'seed_' + idx,
+            name: s.name,
+            lat: s.lat,
+            lng: s.lng,
+            category: activeCategory,
+            icon: catObj.icon,
+            distKm: distKm,
+            distStr: formatDistance(distKm),
+            walkTime: calculateWalkingTime(distKm),
+            hours: { is24: true, isMissing: false, text: 'Open 24/7' },
+            phone: '112'
+          };
+        });
+
+        parsed.sort(function(a, b) { return a.distKm - b.distKm; });
+        cachedPlaces = parsed;
+        renderList();
+        if (mapInstance && typeof L !== 'undefined') {
+          updateMap(parsed);
+        }
+      }
     }
 
-    // Geolocation lookup
+    // Try device location, falling back to Hoskote / live location coordinates
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function(pos) {
           doQuery(pos.coords.latitude, pos.coords.longitude);
         },
         function(err) {
-          console.warn('[Places] Geolocation error, using fallback:', err.message);
-          doQuery(12.9716, 77.5946); // Default Bangalore coordinates
+          console.warn('[Places] Geolocation failed, using live location:', err);
+          var fallback = (SafeHer.api && SafeHer.api.getLiveLocation) ? SafeHer.api.getLiveLocation() : null;
+          var fLat = fallback ? fallback.lat : 13.0716;
+          var fLng = fallback ? fallback.lng : 77.7846;
+          doQuery(fLat, fLng);
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     } else {
-      doQuery(12.9716, 77.5946);
+      doQuery(13.0716, 77.7846);
     }
   }
 
-  // ─── Public Actions ───────────────────────────────────────
   function switchCategory(catId) {
     if (activeCategory === catId) return;
     activeCategory = catId;

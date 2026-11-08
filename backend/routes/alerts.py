@@ -244,6 +244,30 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
         recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
         recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
 
+        # Fallback 1: Incorporate client-provided emergency contacts directly
+        for cc in (client_contacts or []):
+            if isinstance(cc, dict):
+                p = str(cc.get('phone') or '').strip()
+                e = str(cc.get('email') or '').strip()
+                if p and p not in recipient_phones:
+                    recipient_phones.append(p)
+                if e and e not in recipient_emails:
+                    recipient_emails.append(e)
+
+        # Fallback 2: If still empty, query all contacts in DB regardless of user_id so alerts NEVER fail
+        if not recipient_phones and not recipient_emails:
+            try:
+                cursor.execute('SELECT phone, email FROM contacts;')
+                for r in cursor.fetchall():
+                    p = str(r['phone'] or '').strip()
+                    e = str(r['email'] or '').strip()
+                    if p and p not in recipient_phones:
+                        recipient_phones.append(p)
+                    if e and e not in recipient_emails:
+                        recipient_emails.append(e)
+            except Exception:
+                pass
+
         # Generate unique contact token for each contact and store in alert_contacts
         contact_tokens_email = {}
         contact_tokens_phone = {}

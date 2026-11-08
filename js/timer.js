@@ -184,6 +184,23 @@ SafeHer.timer = (function() {
   }
 
   function cancel() {
+    if (SafeHer.pin && SafeHer.pin.askPin) {
+      SafeHer.pin.askPin(
+        function() {
+          performCancel();
+        },
+        function(reason) {
+          if (reason !== 'cancelled') {
+            SafeHer.toast('Incorrect PIN. Safe Timer continues running.');
+          }
+        }
+      );
+    } else {
+      performCancel();
+    }
+  }
+
+  function performCancel() {
     clearInterval(timerInterval);
     timerInterval = null;
 
@@ -193,7 +210,7 @@ SafeHer.timer = (function() {
     currentTimer = null;
 
     showSetupView();
-    SafeHer.toast('Safe Timer cancelled');
+    SafeHer.toast('Safe Timer stopped safely');
   }
 
   function checkSavedTimer() {
