@@ -9,7 +9,8 @@ SafeHer.escort = (function() {
   var setupMap = null;
   var activeMap = null;
 
-  var userOrigin = { lat: 12.9716, lng: 77.5946 }; // Default Bangalore coordinates
+  var savedLoc = (window.SafeHer && SafeHer.getLastLocation) ? SafeHer.getLastLocation() : null;
+  var userOrigin = (savedLoc && savedLoc.lat) ? { lat: savedLoc.lat, lng: savedLoc.lng } : { lat: 12.9716, lng: 77.5946 };
   var currentDest = null; // { lat: number, lng: number, name: string }
   var currentRoutePoints = []; // Array of [lat, lng]
   var selectedCheckin = '10'; // 5, 10, 15, 30 or 'off'
@@ -300,6 +301,9 @@ SafeHer.escort = (function() {
         var acc = pos.coords.accuracy;
         var movedFar = !userOrigin || Math.abs(userOrigin.lat - lat) > 0.0005 || Math.abs(userOrigin.lng - lng) > 0.0005;
         userOrigin = { lat: lat, lng: lng };
+        if (window.SafeHer && SafeHer.setLastLocation) {
+          SafeHer.setLastLocation(lat, lng);
+        }
         updateSetupUserMarker(lat, lng, acc);
         if (movedFar && !currentDest && setupMap) {
           setupMap.panTo([lat, lng]);

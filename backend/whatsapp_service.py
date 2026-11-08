@@ -193,3 +193,84 @@ def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at
 
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
+
+
+def send_safe_update_whatsapp_notifications_background(alert_id, user_name, safe_time_str, recipient_phones):
+    """
+    Send WhatsApp message confirming the user has cancelled the alert and is safe.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        message = (
+            f"✅ *SAFE UPDATE - SafeHer* ✅\n\n"
+            f"*{user_name}* has cancelled the emergency SOS alert and confirmed she is *SAFE*.\n\n"
+            f"🕒 *Time*: {safe_time_str}\n"
+            f"🛡️ *Status*: Safe & Resolved\n\n"
+            f"Thank you for watching out for her safety! Everything is under control."
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[SAFE WHATSAPP SENT] alert_id={alert_id}, to={masked}")
+            else:
+                app_logger.error(f"[SAFE WHATSAPP FAILED] alert_id={alert_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_escort_whatsapp_notifications_background(escort_id, user_name, dest_name, expected_end_str, recipient_phones, tokens_map=None):
+    """
+    Send WhatsApp notification to emergency contacts when user starts an Escort Mode journey.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        for phone in recipient_phones:
+            tok = ''
+            if tokens_map and isinstance(tokens_map, dict):
+                tok = tokens_map.get(phone) or ''
+            track_url = f"{frontend_url}/track.html?t={tok}" if tok else f"{frontend_url}/track.html"
+            message = (
+                f"🚶‍♀️ *SafeHer Escort Mode Started* 🚶‍♀️\n\n"
+                f"*{user_name}* has started an escorted journey to *{dest_name}*.\n\n"
+                f"🕒 *Expected Arrival*: {expected_end_str}\n"
+                f"🔴 *Live Journey Tracking*:\n{track_url}\n\n"
+                f"SafeHer is actively monitoring her route and check-ins."
+            )
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[ESCORT WHATSAPP SENT] escort_id={escort_id}, to={masked}")
+            else:
+                app_logger.error(f"[ESCORT WHATSAPP FAILED] escort_id={escort_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_name, recipient_phones):
+    """
+    Send WhatsApp notification to emergency contacts when user safely arrives at their destination.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        message = (
+            f"✅ *JOURNEY COMPLETED - SafeHer* ✅\n\n"
+            f"*{user_name}* has arrived safely at *{dest_name}*.\n\n"
+            f"The live escort tracking session has ended. Thank you for your support!"
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[ESCORT ARRIVED WHATSAPP SENT] escort_id={escort_id}, to={masked}")
+            else:
+                app_logger.error(f"[ESCORT ARRIVED WHATSAPP FAILED] escort_id={escort_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()

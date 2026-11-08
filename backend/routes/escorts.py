@@ -360,6 +360,21 @@ def create_escort():
         daemon=True
     ).start()
 
+    escort_phones = [c_item['phone'].strip() for c_item in valid_contacts if ('phone' in c_item.keys() and c_item['phone'] and str(c_item['phone']).strip())]
+    if escort_phones:
+        try:
+            from whatsapp_service import send_escort_whatsapp_notifications_background
+            send_escort_whatsapp_notifications_background(
+                escort_id=escort_id,
+                user_name=user_name,
+                dest_name=dest_name,
+                expected_end_str=expected_end_str,
+                recipient_phones=escort_phones,
+                tokens_map=tokens_map
+            )
+        except Exception as wa_esc_err:
+            app_logger.error(f"[Escort] WhatsApp trigger error: {wa_esc_err}")
+
     return jsonify({
         "ok": True,
         "data": {
@@ -519,7 +534,7 @@ def update_escort_position(escort_id):
 
         # Send "arrived safely" emails to selected contacts
         cursor.execute('''
-            SELECT c.name, c.email FROM escort_contacts ec
+            SELECT c.name, c.email, c.phone FROM escort_contacts ec
             JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.escort_id = ?;
         ''', (escort_id,))
@@ -540,6 +555,14 @@ def update_escort_position(escort_id):
                     send_email(c['email'].strip(), subj, body_txt)
                 except Exception as mail_err:
                     app_logger.error(f"[Escort Arrived] Email error to {c['email']}: {mail_err}")
+
+        arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
+        if arrived_phones:
+            try:
+                from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
+                send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones)
+            except Exception as wa_arr_err:
+                app_logger.error(f"[Escort Arrived] WhatsApp error: {wa_arr_err}")
 
     conn.commit()
     conn.close()
@@ -907,7 +930,7 @@ def end_escort(escort_id):
 
         # Notify contacts
         cursor.execute('''
-            SELECT c.name, c.email FROM escort_contacts ec
+            SELECT c.name, c.email, c.phone FROM escort_contacts ec
             JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.escort_id = ?;
         ''', (escort_id,))
@@ -1059,7 +1082,7 @@ def notify_contacts_arrived_safely(escort_id):
         return jsonify({"ok": False, "error": "Escort journey not found"}), 404
 
     cursor.execute('''
-        SELECT c.name, c.email FROM escort_contacts ec
+        SELECT c.name, c.email, c.phone FROM escort_contacts ec
         JOIN contacts c ON ec.contact_id = c.id
         WHERE ec.escort_id = ?;
     ''', (escort_id,))

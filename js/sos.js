@@ -215,8 +215,9 @@ SafeHer.sos = (function() {
       SafeHer.home.setSOSActive(true);
     }
 
-    currentLat = BENGALURU_LAT;
-    currentLng = BENGALURU_LNG;
+    var savedLoc = (window.SafeHer && SafeHer.getLastLocation) ? SafeHer.getLastLocation() : null;
+    currentLat = (savedLoc && savedLoc.lat) ? savedLoc.lat : BENGALURU_LAT;
+    currentLng = (savedLoc && savedLoc.lng) ? savedLoc.lng : BENGALURU_LNG;
 
     var now = new Date();
     currentAlertTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -358,6 +359,9 @@ SafeHer.sos = (function() {
         function(pos) {
           currentLat = pos.coords.latitude;
           currentLng = pos.coords.longitude;
+          if (window.SafeHer && SafeHer.setLastLocation) {
+            SafeHer.setLastLocation(currentLat, currentLng);
+          }
 
           if (currentAlertId) {
             SafeHer.api.updateAlert(currentAlertId, {
@@ -788,6 +792,9 @@ SafeHer.sos = (function() {
         function(pos) {
           currentLat = pos.coords.latitude;
           currentLng = pos.coords.longitude;
+          if (window.SafeHer && SafeHer.setLastLocation) {
+            SafeHer.setLastLocation(currentLat, currentLng);
+          }
 
           if (currentAlertId) {
             SafeHer.api.updateAlert(currentAlertId, {

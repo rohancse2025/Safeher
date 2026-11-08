@@ -59,6 +59,9 @@ SafeHer.home = (function() {
         if (timedOut) return;
 
         locFetched = true;
+        if (window.SafeHer && SafeHer.setLastLocation) {
+          SafeHer.setLastLocation(pos.coords.latitude, pos.coords.longitude);
+        }
         var lat = pos.coords.latitude.toFixed(5);
         var lon = pos.coords.longitude.toFixed(5);
 

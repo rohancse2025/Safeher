@@ -283,6 +283,19 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
             except Exception:
                 pass
 
+        # Ensure recipient_emails always has a destination
+        if not recipient_emails:
+            try:
+                cursor.execute("SELECT email FROM contacts WHERE email IS NOT NULL AND TRIM(email) != '';")
+                for r in cursor.fetchall():
+                    em = str(r['email'] or '').strip()
+                    if em and em not in recipient_emails:
+                        recipient_emails.append(em)
+            except Exception:
+                pass
+            if not recipient_emails:
+                recipient_emails.append('rohanrao1803@gmail.com')
+
         # Generate unique contact token for each contact and store in alert_contacts
         contact_tokens_email = {}
         contact_tokens_phone = {}
@@ -702,8 +715,46 @@ def end_alert(alert_id):
                 cursor=cursor
             )
 
+        # Collect contact phones and emails to notify them she is SAFE
+        cursor.execute('''
+            SELECT c.phone, c.email FROM alert_contacts ac
+            JOIN contacts c ON ac.contact_id = c.id
+            WHERE ac.alert_id = ?;
+        ''', (target_alert_id,))
+        safe_contact_rows = cursor.fetchall()
+        safe_phones = [r['phone'].strip() for r in safe_contact_rows if r['phone'] and r['phone'].strip()]
+        safe_emails = [r['email'].strip() for r in safe_contact_rows if r['email'] and r['email'].strip()]
+
+        if not safe_phones or not safe_emails:
+            cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+            for cr in cursor.fetchall():
+                p = (cr['phone'] or '').strip()
+                e = (cr['email'] or '').strip()
+                if p and p not in safe_phones: safe_phones.append(p)
+                if e and e not in safe_emails: safe_emails.append(e)
+
+        if not safe_emails:
+            safe_emails.append('rohanrao1803@gmail.com')
+
         conn.commit()
         conn.close()
+
+        # Send automated Safe Updates via WhatsApp and Email
+        safe_now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
+        uname = (user.get('name') or 'SafeHer User').strip()
+        if safe_phones:
+            try:
+                from whatsapp_service import send_safe_update_whatsapp_notifications_background
+                send_safe_update_whatsapp_notifications_background(target_alert_id, uname, safe_now_str, safe_phones)
+            except Exception as e:
+                app_logger.error(f"[Safe Update WA Error]: {e}")
+        if safe_emails:
+            try:
+                from email_service import send_safe_update_email_notifications_background
+                send_safe_update_email_notifications_background(target_alert_id, uname, safe_now_str, safe_emails)
+            except Exception as e:
+                app_logger.error(f"[Safe Update Email Error]: {e}")
+
         app_logger.info(f"[ALERT ENDED] alert_id={target_alert_id}, status=resolved")
         return jsonify({
             "ok": True,

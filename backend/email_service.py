@@ -46,14 +46,21 @@ def send_email(to_email, subject, body_text, body_html=None):
         if body_html:
             msg.attach(MIMEText(body_html, 'html', 'utf-8'))
 
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-
-        return True, None
+        # Try port 587 STARTTLS first, fallback to port 465 SSL for cloud environments
+        try:
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=12) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+            return True, None
+        except Exception as e587:
+            print(f"[EmailService 587 Error, trying 465 SSL]: {e587}")
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=12) as server:
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+            return True, None
     except Exception as e:
         err_msg = str(e)
         print(f"[EmailService Error] Failed to send email to {to_email}: {err_msg}")
@@ -199,3 +206,49 @@ def send_alert_notifications_background(alert_id, user_name, mode, started_at_st
 
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
+
+
+def send_safe_update_email_notifications_background(alert_id, user_name, safe_time_str, recipient_emails):
+    """
+    Send "I am Safe" cancellation notification to contacts via email.
+    """
+    if not recipient_emails:
+        return
+
+    def worker():
+        subject = f"✅ SAFE UPDATE: {user_name} is now Safe – SafeHer Alert Resolved"
+        body_text = (
+            f"✅ SAFE UPDATE - SafeHer ✅\n\n"
+            f"{user_name} has cancelled the SOS distress alert and confirmed she is SAFE.\n\n"
+            f"Time Resolved: {safe_time_str}\n"
+            f"Status: Safe & Resolved\n\n"
+            f"Thank you for being on alert and watching out for her safety.\n\n"
+            f"SafeHer Community Safety"
+        )
+        body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F0FDF4; padding: 20px;">
+  <div style="max-width: 540px; margin: auto; background: #ffffff; border-radius: 12px; border: 2px solid #16A34A; overflow: hidden; box-shadow: 0 4px 12px rgba(22,163,74,0.15);">
+    <div style="background: #16A34A; color: #ffffff; padding: 18px 24px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">✅ EMERGENCY RESOLVED &bull; USER IS SAFE</h1>
+    </div>
+    <div style="padding: 24px; color: #1F2937; line-height: 1.6;">
+      <p style="font-size: 16px; margin-top: 0;"><strong>{user_name}</strong> has entered her safety PIN, cancelled the emergency SOS, and confirmed that she is <strong>SAFE</strong>.</p>
+      <div style="background: #DCFCE7; border: 1px solid #BBF7D0; border-radius: 8px; padding: 14px; margin: 18px 0;">
+        <div style="font-size: 13px; color: #166534; font-weight: 700;">Resolution Details:</div>
+        <div style="font-size: 13px; color: #14532D; margin-top: 4px;">Time: <strong>{safe_time_str}</strong></div>
+        <div style="font-size: 13px; color: #14532D;">Status: <strong>Safe &amp; Cancelled</strong></div>
+      </div>
+      <p style="font-size: 14px; color: #4B5563;">No further emergency action is required. Thank you for your support and vigilance.</p>
+    </div>
+    <div style="background: #F0FDF4; padding: 12px; text-align: center; font-size: 12px; color: #6B7280; border-top: 1px solid #DCFCE7;">
+      Sent automatically by SafeHer Women's Safety Network
+    </div>
+  </div>
+</body>
+</html>"""
+        for email in recipient_emails:
+            send_email(email, subject, body_text, body_html)
+
+    threading.Thread(target=worker, daemon=True).start()

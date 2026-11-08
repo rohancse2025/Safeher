@@ -13,6 +13,35 @@ SafeHer.escapeHtml = function(str) {
     .replace(/'/g, '&#39;');
 };
 
+/* ─── Global Location Cache ──────────────────────────────── */
+SafeHer.getLastLocation = function() {
+  try {
+    var raw = localStorage.getItem('safeher_last_location');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+        return parsed;
+      }
+    }
+  } catch(e) {}
+  return null;
+};
+
+SafeHer.setLastLocation = function(lat, lng) {
+  if (!lat || !lng) return;
+  try {
+    var nLat = parseFloat(lat);
+    var nLng = parseFloat(lng);
+    if (!isNaN(nLat) && !isNaN(nLng) && (nLat !== 12.9716 || nLng !== 77.5946)) {
+      localStorage.setItem('safeher_last_location', JSON.stringify({
+        lat: nLat,
+        lng: nLng,
+        updatedAt: Date.now()
+      }));
+    }
+  } catch(e) {}
+};
+
 /* ─── Router ─────────────────────────────────────────────── */
 SafeHer.router = (function() {
   // screens where the bottom nav must stay hidden
