@@ -61,9 +61,14 @@ def init_db():
             phone TEXT NOT NULL,
             email TEXT,
             relationship TEXT,
+            close INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
+    try:
+        cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
+    except Exception:
+        pass
 
     # 3. Alerts table
     cursor.execute('''

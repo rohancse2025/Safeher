@@ -195,35 +195,52 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
 
         # Sync any client-provided contacts into DB if not already present
         if client_contacts and isinstance(client_contacts, list):
-            for cc in client_contacts:
-                if isinstance(cc, dict):
-                    c_name = str(cc.get('name') or '').strip()
-                    c_phone = str(cc.get('phone') or '').strip()
-                    c_email = str(cc.get('email') or '').strip()
-                    c_rel = str(cc.get('relation') or 'Emergency Contact').strip()
-                    c_close = 1 if cc.get('close') else 0
-                    if c_name and (c_phone or c_email):
-                        cursor.execute('''
-                            SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));
-                        ''', (user_id, c_phone, c_email))
-                        if not cursor.fetchone():
+            try:
+                for cc in client_contacts:
+                    if isinstance(cc, dict):
+                        c_name = str(cc.get('name') or '').strip()
+                        c_phone = str(cc.get('phone') or '').strip()
+                        c_email = str(cc.get('email') or '').strip()
+                        c_rel = str(cc.get('relation') or 'Emergency Contact').strip()
+                        c_close = 1 if cc.get('close') else 0
+                        if c_name and (c_phone or c_email):
                             cursor.execute('''
-                                INSERT INTO contacts (user_id, name, phone, email, relationship, close)
-                                VALUES (?, ?, ?, ?, ?, ?);
-                            ''', (user_id, c_name, c_phone, c_email or None, c_rel or None, c_close))
+                                SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));
+                            ''', (user_id, c_phone, c_email))
+                            if not cursor.fetchone():
+                                try:
+                                    cursor.execute('''
+                                        INSERT INTO contacts (user_id, name, phone, email, relationship, close)
+                                        VALUES (?, ?, ?, ?, ?, ?);
+                                    ''', (user_id, c_name, c_phone, c_email or None, c_rel or None, c_close))
+                                except Exception:
+                                    cursor.execute('''
+                                        INSERT INTO contacts (user_id, name, phone, email, relationship)
+                                        VALUES (?, ?, ?, ?, ?);
+                                    ''', (user_id, c_name, c_phone, c_email or None, c_rel or None))
+            except Exception as e:
+                app_logger.warning(f"[CONTACT SYNC WARNING] {e}")
 
         # 3. Retrieve contacts: for uneasy mode, strictly notify close=true contacts only
-        if mode == 'uneasy':
-            cursor.execute('''
-                SELECT id, name, phone, email FROM contacts
-                WHERE user_id = ? AND close = 1;
-            ''', (user_id,))
-        else:
+        contact_rows = []
+        try:
+            if mode == 'uneasy':
+                cursor.execute('''
+                    SELECT id, name, phone, email FROM contacts
+                    WHERE user_id = ? AND close = 1;
+                ''', (user_id,))
+            else:
+                cursor.execute('''
+                    SELECT id, name, phone, email FROM contacts
+                    WHERE user_id = ?;
+                ''', (user_id,))
+            contact_rows = cursor.fetchall()
+        except Exception:
             cursor.execute('''
                 SELECT id, name, phone, email FROM contacts
                 WHERE user_id = ?;
             ''', (user_id,))
-        contact_rows = cursor.fetchall()
+            contact_rows = cursor.fetchall()
         recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
         recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
 
