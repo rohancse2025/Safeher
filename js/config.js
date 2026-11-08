@@ -4,7 +4,7 @@ window.SafeHer = window.SafeHer || {};
 (function() {
   // Primary Cloud Backend URL (Runs 24/7 in Cloud - No laptop required!)
   // Set your deployed Render / Railway / Koyeb backend URL here:
-  var CLOUD_BACKEND_URL = '';
+  var CLOUD_BACKEND_URL = 'https://safeher-dwkj.onrender.com';
 
   var defaultApiBase = 'http://localhost:5000';
   if (typeof window !== 'undefined' && window.location) {
