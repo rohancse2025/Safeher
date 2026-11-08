@@ -121,6 +121,94 @@ SafeHer.showRetryToast = function(msg, onRetry) {
   return SafeHer.toast(msg, onRetry);
 };
 
+SafeHer.pwa = (function() {
+  var deferredPrompt = null;
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                     window.navigator.standalone === true ||
+                     document.referrer.indexOf('android-app://') !== -1;
+
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+
+  function showBanner() {
+    if (isStandalone) return;
+    if (SafeHer.storage && SafeHer.storage.get('pwa_banner_dismissed')) return;
+    var banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.style.display = 'block';
+  }
+
+  function dismissBanner() {
+    var banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.style.display = 'none';
+    if (SafeHer.storage) SafeHer.storage.set('pwa_banner_dismissed', true);
+  }
+
+  function promptInstall() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function(choice) {
+        if (choice && choice.outcome === 'accepted') {
+          dismissBanner();
+          if (SafeHer.toast) SafeHer.toast('SafeHer installed successfully!');
+        }
+        deferredPrompt = null;
+      });
+    } else {
+      openInstallModal();
+    }
+  }
+
+  function openInstallModal() {
+    var modal = document.getElementById('pwa-install-modal');
+    if (!modal) return;
+    var iosGuide = document.getElementById('pwa-guide-ios');
+    var androidGuide = document.getElementById('pwa-guide-android');
+    if (isIOS()) {
+      if (iosGuide) iosGuide.style.display = 'block';
+      if (androidGuide) androidGuide.style.display = 'none';
+    } else {
+      if (iosGuide) iosGuide.style.display = 'none';
+      if (androidGuide) androidGuide.style.display = 'block';
+    }
+    modal.style.display = 'flex';
+  }
+
+  function closeInstallModal() {
+    var modal = document.getElementById('pwa-install-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function init() {
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      window.deferredInstallPrompt = e;
+      showBanner();
+    });
+
+    window.addEventListener('appinstalled', function() {
+      deferredPrompt = null;
+      window.deferredInstallPrompt = null;
+      dismissBanner();
+      if (SafeHer.toast) SafeHer.toast('SafeHer installed on your device!');
+    });
+
+    if (!isStandalone) {
+      setTimeout(showBanner, 1200);
+    }
+  }
+
+  return {
+    init: init,
+    promptInstall: promptInstall,
+    dismissBanner: dismissBanner,
+    openInstallModal: openInstallModal,
+    closeInstallModal: closeInstallModal,
+    isStandalone: function() { return isStandalone; }
+  };
+})();
+
 /* ─── Init ───────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', function() {
   // Register Service Worker with relative path
@@ -128,6 +216,11 @@ window.addEventListener('DOMContentLoaded', function() {
     navigator.serviceWorker.register('./sw.js').catch(function(err) {
       console.warn('SW registration failed:', err);
     });
+  }
+
+  // Initialize PWA installation handlers
+  if (SafeHer.pwa && SafeHer.pwa.init) {
+    SafeHer.pwa.init();
   }
 
   // Initialize i18n translations first so all screens render with proper language

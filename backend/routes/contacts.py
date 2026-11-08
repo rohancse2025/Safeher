@@ -49,6 +49,50 @@ def get_contacts():
                 rows = []
     conn.close()
 
+    if not rows:
+        # Auto-seed standard emergency contacts so user never has zero contacts
+        defaults = [
+            ("Emergency Contact (Family)", "7483245232", "rohanrao1803@gmail.com", "Family", 1),
+            ("Police Helpline", "112", "help@112.gov.in", "Emergency", 1),
+            ("Women Helpline", "181", "womenhelpline@gov.in", "Emergency", 1)
+        ]
+        try:
+            seed_conn = get_db()
+            seed_cursor = seed_conn.cursor()
+            for d_name, d_phone, d_email, d_rel, d_close in defaults:
+                try:
+                    seed_cursor.execute(
+                        'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
+                        (user_id, d_name, d_phone, d_email, d_rel, d_close)
+                    )
+                except Exception:
+                    try:
+                        seed_cursor.execute(
+                            'INSERT INTO contacts (user_id, name, phone, email, relationship) VALUES (?, ?, ?, ?, ?);',
+                            (user_id, d_name, d_phone, d_email, d_rel)
+                        )
+                    except Exception:
+                        pass
+            seed_conn.commit()
+            try:
+                seed_cursor.execute(
+                    'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+                    (user_id,)
+                )
+                rows = seed_cursor.fetchall()
+            except Exception:
+                try:
+                    seed_cursor.execute(
+                        'SELECT id, name, phone, email, relationship FROM contacts WHERE user_id = ? ORDER BY id ASC;',
+                        (user_id,)
+                    )
+                    rows = seed_cursor.fetchall()
+                except Exception:
+                    rows = []
+            seed_conn.close()
+        except Exception:
+            pass
+
     contacts = []
     for r in rows:
         c = dict(r)

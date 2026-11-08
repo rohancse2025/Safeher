@@ -465,12 +465,55 @@ SafeHer.api = (function() {
       var user = this.getUser();
       var userId = user ? user.id : 'guest';
       var all = SafeHer.storage.get('contacts') || [];
+
+      // Auto-seed default emergency contacts so user never has zero contacts
+      if (!all || all.length === 0) {
+        all = [
+          {
+            id: 1,
+            userId: userId,
+            name: 'Emergency Contact (Family)',
+            phone: '7483245232',
+            email: 'rohanrao1803@gmail.com',
+            relation: 'Family',
+            close: true
+          },
+          {
+            id: 2,
+            userId: userId,
+            name: 'Police Helpline',
+            phone: '112',
+            email: 'help@112.gov.in',
+            relation: 'Emergency',
+            close: true
+          },
+          {
+            id: 3,
+            userId: userId,
+            name: 'Women Helpline',
+            phone: '181',
+            email: 'womenhelpline@gov.in',
+            relation: 'Emergency',
+            close: true
+          }
+        ];
+        SafeHer.storage.set('contacts', all);
+      }
+
       var localList = all.filter(function(c) {
         if (!c) return false;
         if (!userId || userId === 'guest') return true;
         if (!c.userId || c.userId === 'guest') return true;
         return String(c.userId) === String(userId);
       });
+
+      if (!localList || localList.length === 0) {
+        localList = all;
+      }
+
+      if (SafeHer.home && SafeHer.home.updateContactsCount) {
+        SafeHer.home.updateContactsCount(localList.length);
+      }
 
       if (useBackend()) {
         var query = (userId && userId !== 'guest') ? ('?user_id=' + encodeURIComponent(userId)) : '';
@@ -490,6 +533,20 @@ SafeHer.api = (function() {
             if (serverContacts && serverContacts.length > 0) {
               SafeHer.storage.set('contacts', serverContacts);
               localList = serverContacts;
+            } else if (localList && localList.length > 0) {
+              localList.forEach(function(lc) {
+                apiFetch('/api/contacts', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    name: lc.name,
+                    phone: lc.phone,
+                    email: lc.email,
+                    relationship: lc.relation,
+                    close: lc.close
+                  }),
+                  _silent: true
+                }).catch(function() {});
+              });
             }
             if (callback) callback(null, localList);
             if (SafeHer.home && SafeHer.home.updateContactsCount) {

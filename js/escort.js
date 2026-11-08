@@ -367,15 +367,19 @@ SafeHer.escort = (function() {
   }
 
   // ─── Destination Search (Nominatim) ────────────────────────
-  function searchDestination() {
+  function searchDestination(queryOverride) {
     var input = document.getElementById('escort-dest-input');
     var resultsBox = document.getElementById('escort-search-results');
     var btn = document.getElementById('escort-search-btn');
     if (!input || !resultsBox) return;
 
+    if (queryOverride && typeof queryOverride === 'string') {
+      input.value = queryOverride;
+    }
+
     var query = (input.value || '').trim();
     if (!query) {
-      if (SafeHer.toast) SafeHer.toast('Please enter a destination to search');
+      if (SafeHer.toast) SafeHer.toast('Please enter a destination or choose a nearby place');
       return;
     }
 
@@ -385,9 +389,30 @@ SafeHer.escort = (function() {
     }
 
     resultsBox.style.display = 'block';
-    resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-gray);">Searching India locations...</div>';
+    resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-gray);">Searching places nearby...</div>';
 
-    var nominatimUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=5&q=' + encodeURIComponent(query);
+    var originLat = userOrigin ? userOrigin.lat : null;
+    var originLng = userOrigin ? userOrigin.lng : null;
+    if ((!originLat || !originLng) && SafeHer.api && SafeHer.api.getLiveLocation) {
+      var liveLoc = SafeHer.api.getLiveLocation();
+      if (liveLoc && liveLoc.lat) {
+        originLat = parseFloat(liveLoc.lat);
+        originLng = parseFloat(liveLoc.lng);
+        userOrigin = { lat: originLat, lng: originLng };
+      }
+    }
+
+    var viewboxParam = '';
+    if (originLat && originLng) {
+      var left = (originLng - 0.25).toFixed(4);
+      var top = (originLat + 0.25).toFixed(4);
+      var right = (originLng + 0.25).toFixed(4);
+      var bottom = (originLat - 0.25).toFixed(4);
+      viewboxParam = '&viewbox=' + left + ',' + top + ',' + right + ',' + bottom + '&bounded=0';
+    }
+
+    var nominatimUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12' +
+      viewboxParam + '&q=' + encodeURIComponent(query);
 
     fetch(nominatimUrl, { headers: { 'Accept': 'application/json' } })
       .then(function(res) { return res.json(); })
@@ -402,12 +427,31 @@ SafeHer.escort = (function() {
           return;
         }
 
+        // Sort items by distance from origin
+        items.forEach(function(item) {
+          var itemLat = parseFloat(item.lat);
+          var itemLng = parseFloat(item.lon);
+          if (originLat && originLng && !isNaN(itemLat) && !isNaN(itemLng)) {
+            item._distM = haversineDistM(originLat, originLng, itemLat, itemLng);
+          } else {
+            item._distM = 999999999;
+          }
+        });
+        items.sort(function(a, b) { return a._distM - b._distM; });
+
         var html = '';
         items.forEach(function(item, idx) {
           var name = item.display_name;
           var shortName = item.display_name.split(',').slice(0, 3).join(',').trim();
-          html += '<div class="escort-search-item" data-index="' + idx + '">' +
-            '<div style="font-weight:600;color:var(--crimson);">' + escapeHtml(shortName) + '</div>' +
+          var distBadge = '';
+          if (item._distM < 999999999) {
+            var distText = item._distM < 1000 ? (Math.round(item._distM) + ' m') : ((item._distM / 1000).toFixed(1) + ' km');
+            distBadge = ' <span style="font-size:11px;font-weight:600;color:#9E1B32;background:#FFE4E6;padding:1px 6px;border-radius:10px;margin-left:6px;">' + distText + '</span>';
+          }
+          html += '<div class="escort-search-item" data-index="' + idx + '" style="padding:8px 12px;border-bottom:1px solid #f1f1f1;cursor:pointer;">' +
+            '<div style="font-weight:600;color:var(--crimson);display:flex;align-items:center;justify-content:space-between;">' +
+              '<span>' + escapeHtml(shortName) + '</span>' + distBadge +
+            '</div>' +
             '<div style="font-size:11px;color:var(--text-gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
           '</div>';
         });
@@ -803,7 +847,7 @@ SafeHer.escort = (function() {
 
     var minsInput = document.getElementById('escort-expected-mins');
     var expectedMinutes = parseInt(minsInput ? minsInput.value : 30, 10);
-    if (!expectedMinutes || expectedMinutes < 5) expectedMinutes = 30;
+    if (!expectedMinutes || expectedMinutes < 1) expectedMinutes = 10;
 
     var startBtn = document.getElementById('escort-start-btn');
     if (startBtn) {
@@ -1514,7 +1558,19 @@ SafeHer.escort = (function() {
     if (!currentDest || currentDest.lat === undefined || arrivalPromptShown) return;
     var dist = haversineDistM(lat, lng, currentDest.lat, currentDest.lng);
 
-    if (dist <= 100) {
+    var totalDist = (activeEscort && activeEscort.route_distance_m) ? activeEscort.route_distance_m : (userOrigin ? haversineDistM(userOrigin.lat, userOrigin.lng, currentDest.lat, currentDest.lng) : 1000);
+    // Dynamic threshold: for short trips (< 300m), require getting within 25m or 25% of trip
+    var threshold = (totalDist < 300) ? Math.max(20, Math.min(35, totalDist * 0.25)) : 80;
+
+    // Prevent immediate false arrival on startup for short trips (give at least 15s)
+    if (activeEscort && activeEscort.started_at) {
+      var elapsedSec = (Date.now() - new Date(activeEscort.started_at).getTime()) / 1000;
+      if (totalDist < 300 && elapsedSec < 15) {
+        return;
+      }
+    }
+
+    if (dist <= threshold) {
       arrivalPromptShown = true;
       showArrivalModal();
     }
