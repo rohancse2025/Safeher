@@ -7,6 +7,7 @@ SafeHer.sos = (function() {
   var volunteerStatusInterval = null;
   var currentAlertId = null;
   var alertStartTime = null;
+  var prevContactResponseCount = 0;
   var durationTimer = null;
   var currentMode = 'normal'; // 'normal' | 'silent' | 'emergency'
 
@@ -893,7 +894,7 @@ SafeHer.sos = (function() {
   function startVolunteerStatusPolling() {
     stopVolunteerStatusPolling();
     pollVolunteerStatus();
-    volunteerStatusInterval = setInterval(pollVolunteerStatus, 5000);
+    volunteerStatusInterval = setInterval(pollVolunteerStatus, 3000);
   }
 
   function stopVolunteerStatusPolling() {
@@ -901,6 +902,7 @@ SafeHer.sos = (function() {
       clearInterval(volunteerStatusInterval);
       volunteerStatusInterval = null;
     }
+    prevContactResponseCount = 0;
   }
 
   function pollVolunteerStatus() {
@@ -929,6 +931,25 @@ SafeHer.sos = (function() {
         updateVolunteerStatusDisplay();
         renderResponders(responders);
         renderContactsResponding(contactResponses);
+        if (contactResponses.length > prevContactResponseCount) {
+          if (prevContactResponseCount > 0 && contactResponses.length > 0) {
+            var latest = contactResponses[0];
+            var lMap = {
+              'on_my_way': "I’m on my way",
+              'called': "I called you",
+              'alerted_police': "I alerted police",
+              'cannot_reach': "I can’t reach you"
+            };
+            var lText = lMap[latest.status] || latest.status;
+            if (SafeHer.toast) {
+              SafeHer.toast('🔔 ' + (latest.name || 'Emergency contact') + ': ' + lText);
+            }
+            if (navigator.vibrate) {
+              try { navigator.vibrate([200, 100, 200]); } catch(e) {}
+            }
+          }
+          prevContactResponseCount = contactResponses.length;
+        }
       });
     }
   }
@@ -1002,16 +1023,33 @@ SafeHer.sos = (function() {
         } catch(e) {}
       }
 
+      var cardBg = '#FCEFF3';
+      var cardBorder = '#EAD3DA';
+      var statusColor = '#A80F3C';
+      if (statusKey === 'on_my_way') {
+        cardBg = '#E8F5E9';
+        cardBorder = '#C8E6C9';
+        statusColor = '#1B5E20';
+      } else if (statusKey === 'alerted_police') {
+        cardBg = '#E3F2FD';
+        cardBorder = '#BBDEFB';
+        statusColor = '#0D47A1';
+      } else if (statusKey === 'cannot_reach') {
+        cardBg = '#FFF3E0';
+        cardBorder = '#FFE0B2';
+        statusColor = '#E65100';
+      }
+
       return (
-        '<div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--crimson-bg, #FCEFF3); border: 1px solid var(--border-color, #EAD3DA); border-radius: 6px;">' +
+        '<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: ' + cardBg + '; border: 1px solid ' + cardBorder + '; border-radius: 8px;">' +
           '<div>' +
             '<div style="font-size: 13px; font-weight: 700; color: var(--text-dark, #222);">' + escapeHtml(name) + '</div>' +
-            '<div style="font-size: 12px; font-weight: 600; color: var(--crimson, #A80F3C); display: flex; align-items: center; gap: 4px; margin-top: 2px;">' +
-              '<span class="material-symbols-rounded" style="font-size: 15px;">' + icon + '</span>' +
+            '<div style="font-size: 12px; font-weight: 700; color: ' + statusColor + '; display: flex; align-items: center; gap: 4px; margin-top: 2px;">' +
+              '<span class="material-symbols-rounded" style="font-size: 16px;">' + icon + '</span>' +
               '<span>' + escapeHtml(label) + '</span>' +
             '</div>' +
           '</div>' +
-          '<span style="font-size: 11px; color: var(--text-gray, #777); font-weight: 500;">' + escapeHtml(timeStr) + '</span>' +
+          '<span style="font-size: 11px; color: var(--text-gray, #777); font-weight: 600;">' + escapeHtml(timeStr) + '</span>' +
         '</div>'
       );
     }).join('');

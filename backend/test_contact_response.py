@@ -82,11 +82,12 @@ class TestContactResponses(unittest.TestCase):
         self.assertEqual(track_contact['contact_first_name'], 'Ananya')
         self.assertEqual(track_contact['contact_name'], 'Ananya Sharma')
 
-        # 5. POST /api/track/<share_token>/respond must fail (only contact tokens can respond)
-        res_fail_share = self.client.post(f'/api/track/{share_token}/respond', json={
+        # 5. POST /api/track/<share_token>/respond succeeds as general emergency contact
+        res_ok_share = self.client.post(f'/api/track/{share_token}/respond', json={
             "status": "on_my_way"
         })
-        self.assertEqual(res_fail_share.status_code, 403)
+        self.assertEqual(res_ok_share.status_code, 200)
+        self.assertEqual(res_ok_share.get_json()['data']['status'], 'on_my_way')
 
         # 6. POST /api/track/<contact_token>/respond with invalid status must fail (400)
         res_bad_status = self.client.post(f'/api/track/{contact_token}/respond', json={
@@ -94,21 +95,15 @@ class TestContactResponses(unittest.TestCase):
         })
         self.assertEqual(res_bad_status.status_code, 400)
 
-        # 7. POST /api/track/<contact_token>/respond with valid status ("on_my_way")
-        res_resp1 = self.client.post(f'/api/track/{contact_token}/respond', json={
-            "status": "on_my_way"
-        })
-        self.assertEqual(res_resp1.status_code, 200)
-        self.assertEqual(res_resp1.get_json()['data']['status'], 'on_my_way')
-        self.assertEqual(res_resp1.get_json()['data']['contact_name'], 'Ananya Sharma')
-
-        # 8. POST /api/track/<contact_token>/respond with another valid status ("called")
+        # 7. POST /api/track/<contact_token>/respond with valid status ("called")
         res_resp2 = self.client.post(f'/api/track/{contact_token}/respond', json={
             "status": "called"
         })
         self.assertEqual(res_resp2.status_code, 200)
+        self.assertEqual(res_resp2.get_json()['data']['status'], 'called')
+        self.assertEqual(res_resp2.get_json()['data']['contact_name'], 'Ananya Sharma')
 
-        # 9. GET /api/alerts/<id>/status returns contact_responses and volunteers_coming
+        # 8. GET /api/alerts/<id>/status returns contact_responses and volunteers_coming
         res_status = self.client.get(f'/api/alerts/{alert_id}/status')
         self.assertEqual(res_status.status_code, 200)
         status_data = res_status.get_json()['data']

@@ -1,4 +1,5 @@
 # backend/routes/alerts.py – Emergency alerts, live tracking updates, duress PIN handling, and public tracking
+import re
 import secrets
 import datetime
 import math
@@ -241,23 +242,35 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                 WHERE user_id = ?;
             ''', (user_id,))
             contact_rows = cursor.fetchall()
-        recipient_emails = [r['email'].strip() for r in contact_rows if r['email'] and r['email'].strip()]
-        recipient_phones = [r['phone'].strip() for r in contact_rows if r['phone'] and r['phone'].strip()]
+        contact_rows = [dict(r) for r in contact_rows]
+        recipient_emails = [r['email'].strip() for r in contact_rows if r.get('email') and r['email'].strip()]
+        recipient_phones = [r['phone'].strip() for r in contact_rows if r.get('phone') and r['phone'].strip()]
 
         # Fallback 1: Incorporate client-provided emergency contacts directly
         for cc in (client_contacts or []):
             if isinstance(cc, dict):
                 p = str(cc.get('phone') or '').strip()
                 e = str(cc.get('email') or '').strip()
+                nm = str(cc.get('name') or 'Emergency Contact').strip()
                 if p and p not in recipient_phones:
                     recipient_phones.append(p)
                 if e and e not in recipient_emails:
                     recipient_emails.append(e)
+                if not any(r.get('phone') == p or (e and r.get('email') == e) for r in contact_rows):
+                    try:
+                        cursor.execute(
+                            "INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);",
+                            (user_id, nm, p, e)
+                        )
+                        new_cid = cursor.lastrowid
+                        contact_rows.append({'id': new_cid, 'name': nm, 'phone': p, 'email': e})
+                    except Exception:
+                        pass
 
         # Fallback 2: If still empty, query all contacts in DB regardless of user_id so alerts NEVER fail
         if not recipient_phones and not recipient_emails:
             try:
-                cursor.execute('SELECT phone, email FROM contacts;')
+                cursor.execute('SELECT id, name, phone, email FROM contacts;')
                 for r in cursor.fetchall():
                     p = str(r['phone'] or '').strip()
                     e = str(r['email'] or '').strip()
@@ -265,6 +278,8 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                         recipient_phones.append(p)
                     if e and e not in recipient_emails:
                         recipient_emails.append(e)
+                    if not any(cr['id'] == r['id'] for cr in contact_rows):
+                        contact_rows.append(dict(r))
             except Exception:
                 pass
 
@@ -277,10 +292,21 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                 INSERT INTO alert_contacts (alert_id, contact_id, token)
                 VALUES (?, ?, ?);
             ''', (alert_id, r['id'], c_token))
-            if r['email'] and r['email'].strip():
-                contact_tokens_email[r['email'].strip()] = c_token
-            if r['phone'] and r['phone'].strip():
-                contact_tokens_phone[r['phone'].strip()] = c_token
+            if r.get('email') and r['email'].strip():
+                em = r['email'].strip()
+                contact_tokens_email[em] = c_token
+                contact_tokens_email[em.lower()] = c_token
+            if r.get('phone') and r['phone'].strip():
+                raw_ph = r['phone'].strip()
+                digits = re.sub(r'\D', '', raw_ph)
+                contact_tokens_phone[raw_ph] = c_token
+                if digits:
+                    contact_tokens_phone[digits] = c_token
+                    if digits.startswith('91') and len(digits) > 10:
+                        contact_tokens_phone[digits[2:]] = c_token
+                    elif len(digits) == 10:
+                        contact_tokens_phone['91' + digits] = c_token
+                        contact_tokens_phone['+91' + digits] = c_token
 
         if close_conn:
             conn.commit()
@@ -1385,11 +1411,45 @@ def respond_contact_track(token):
                 }
             }), 200
 
-        conn.close()
-        return jsonify({
-            "ok": False,
-            "error": "Only personalized contact links can submit status responses. Read-only links cannot respond."
-        }), 403
+        # Check if clean_token matches alerts.share_token (allow emergency contact response from share link)
+        cursor.execute('''
+            SELECT a.id AS alert_id, a.user_id, a.status AS alert_status,
+                   ac.contact_id,
+                   c.name AS contact_name
+            FROM alerts a
+            LEFT JOIN alert_contacts ac ON ac.alert_id = a.id
+            LEFT JOIN contacts c ON ac.contact_id = c.id
+            WHERE a.share_token = ?
+            ORDER BY ac.id ASC
+            LIMIT 1;
+        ''', (clean_token,))
+        share_match = cursor.fetchone()
+        if share_match:
+            row = dict(share_match)
+            if not row.get('contact_id'):
+                cursor.execute('SELECT id, name FROM contacts WHERE user_id = ? LIMIT 1;', (row['user_id'],))
+                c_fb = cursor.fetchone()
+                if not c_fb:
+                    cursor.execute('SELECT id, name FROM contacts LIMIT 1;')
+                    c_fb = cursor.fetchone()
+                if c_fb:
+                    row['contact_id'] = c_fb['id']
+                    row['contact_name'] = c_fb['name']
+                else:
+                    cursor.execute(
+                        "INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);",
+                        (row['user_id'], 'Emergency Contact', 'Emergency', 'emergency@safeher.app')
+                    )
+                    row['contact_id'] = cursor.lastrowid
+                    row['contact_name'] = 'Emergency Contact'
+            if not row.get('contact_name'):
+                row['contact_name'] = 'Emergency Contact'
+        else:
+            conn.close()
+            return jsonify({
+                "ok": False,
+                "error": "Tracking link not found or expired"
+            }), 404
 
     if row['alert_status'] != 'active':
         conn.close()

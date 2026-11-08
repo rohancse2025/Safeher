@@ -491,8 +491,13 @@
       <!-- Leaflet Live Map -->
       <div id="track-map"></div>
 
-      <!-- Contact Response Controls (Shown when link is a contact link) -->
-      <div id="track-contact-actions-section" style="display: none; margin-bottom: 14px;">
+      <!-- Contact Response Controls -->
+      <div id="track-contact-actions-section" style="margin-bottom: 16px; background: #FFFFFF; border: 1px solid #EAD3DA; border-radius: 8px; padding: 14px;">
+        <div style="font-size: 14px; font-weight: 700; color: #A80F3C; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-rounded" style="font-size: 19px;">quickreply</span>
+          <span>Respond to Emergency</span>
+        </div>
+        <p style="font-size: 12px; color: #666; margin: 0 0 10px; line-height: 1.4;">Tap an update below — she will immediately see your response on her screen:</p>
         <!-- Ask her to check in button (limit 3 per hour per contact) -->
         <div id="track-ask-checkin-container" style="display: none; margin-bottom: 12px;">
           <button type="button" class="btn-ask-checkin" id="btn-ask-checkin" onclick="askHerToCheckin()">
@@ -807,10 +812,14 @@
           }
         }
 
-        // Show four large contact response buttons and navigate button when link is a contact link
-        if (data.is_contact) {
-          var contactSection = document.getElementById('track-contact-actions-section');
-          if (contactSection) contactSection.style.display = 'block';
+        // Show contact response buttons and navigate button for active tracking links
+        var contactSection = document.getElementById('track-contact-actions-section');
+        if (contactSection) {
+          if (data.status === 'Resolved' || data.status === 'Safe' || data.status === 'Journey ended') {
+            contactSection.style.display = 'none';
+          } else {
+            contactSection.style.display = 'block';
+          }
         }
       }
 
@@ -960,7 +969,7 @@
           btns.forEach(function(b) { b.disabled = false; });
           if (confirmBox) confirmBox.style.display = 'flex';
           if (res.ok && res.json.ok) {
-            if (confirmText) confirmText.textContent = 'Sent. She can see this.';
+            if (confirmText) confirmText.textContent = 'Sent! She can see your response on her screen now.';
             if (confirmBox) {
               confirmBox.style.background = '#E8F5E9';
               confirmBox.style.borderColor = '#C8E6C9';

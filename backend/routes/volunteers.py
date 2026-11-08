@@ -828,16 +828,16 @@ def get_alert_volunteer_status(alert_id):
 
     # Fetch contact responses (name, status, time)
     cursor.execute('''
-        SELECT c.name, cr.status, cr.created_at AS time
+        SELECT COALESCE(c.name, 'Emergency Contact') AS name, cr.status, cr.created_at AS time
         FROM contact_responses cr
-        JOIN contacts c ON cr.contact_id = c.id
+        LEFT JOIN contacts c ON cr.contact_id = c.id
         WHERE cr.alert_id = ?
         ORDER BY cr.id DESC;
     ''', (target_alert_id,))
     resp_rows = cursor.fetchall()
     contact_responses = [
         {
-            "name": r['name'],
+            "name": r['name'] or 'Emergency Contact',
             "status": r['status'],
             "time": r['time']
         }
