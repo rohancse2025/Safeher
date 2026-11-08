@@ -349,6 +349,7 @@ def start_timer_monitor():
     Launch background thread checking for expired timers every 10 seconds.
     """
     def loop():
+        time.sleep(5)
         while True:
             try:
                 check_expired_timers()

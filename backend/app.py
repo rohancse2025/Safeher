@@ -30,7 +30,7 @@ load_dotenv()
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'default-safeher-secret-key')
 PORT = int(os.getenv('PORT', 5000))
-DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 # Parse allowed CORS origins strictly from .env
 allowed_env = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5000,http://localhost:8000,http://127.0.0.1:5500')

@@ -1460,6 +1460,7 @@ def start_escort_monitor():
     Launch background thread checking active escorts every 10 seconds.
     """
     def loop():
+        time.sleep(5)
         while True:
             try:
                 check_active_escorts()

@@ -277,7 +277,8 @@ def start_scheduler():
     Starts background maintenance thread running hourly.
     """
     def loop():
-        # Run immediately upon server startup
+        # Defer startup DB operations by 5s to let Gunicorn bind immediately to port
+        time.sleep(5)
         cleanup_old_evidence_sessions()
         cleanup_old_volunteer_id_images()
         promote_eligible_volunteers_to_trusted()
