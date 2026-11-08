@@ -7,12 +7,24 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 load_dotenv()
 
-# Database path: resolves relative paths relative to backend directory
-db_env = os.getenv('DATABASE_PATH', 'safeher.db')
-if not os.path.isabs(db_env):
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_env)
-else:
+# Database path: safely resolves relative paths whether called from root or backend
+db_env = (os.getenv('DATABASE_PATH') or 'safeher.db').strip()
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+
+clean_env = db_env.replace('\\', '/')
+if os.path.isabs(db_env):
     DB_PATH = db_env
+elif clean_env.startswith('backend/'):
+    # Strip redundant 'backend/' if environment variable specified relative to repo root
+    DB_PATH = os.path.join(backend_dir, clean_env[8:])
+else:
+    DB_PATH = os.path.join(backend_dir, clean_env)
+
+# Always ensure parent directory exists before any SQLite connection
+try:
+    os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+except Exception:
+    pass
 
 
 def get_db():

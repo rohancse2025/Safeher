@@ -337,6 +337,7 @@ SafeHer.escort = (function() {
   }
 
   function setDestinationFromLatLng(lat, lng) {
+    togglePickOnMap(false);
     var latFixed = parseFloat(lat).toFixed(5);
     var lngFixed = parseFloat(lng).toFixed(5);
     var defaultName = 'Pin (' + latFixed + ', ' + lngFixed + ')';
@@ -366,7 +367,7 @@ SafeHer.escort = (function() {
       });
   }
 
-  // ─── Destination Search (Nominatim) ────────────────────────
+  // ─── Destination Search (Nominatim with Local Proximity Bias & Fallbacks) ─
   function searchDestination(queryOverride) {
     var input = document.getElementById('escort-dest-input');
     var resultsBox = document.getElementById('escort-search-results');
@@ -377,11 +378,15 @@ SafeHer.escort = (function() {
       input.value = queryOverride;
     }
 
-    var query = (input.value || '').trim();
-    if (!query) {
+    var rawQuery = (input.value || '').trim();
+    if (!rawQuery) {
       if (SafeHer.toast) SafeHer.toast('Please enter a destination or choose a nearby place');
       return;
     }
+
+    // Strip conversational keywords like "near", "nearby", "approx", "100m" so Nominatim finds the POI
+    var cleanedQuery = rawQuery.replace(/\b(near\s+me|nearby|near|around|close\s+to|approx\.?|\d+\s*m|\d+\s*meters?)\b/gi, '').replace(/\s+/g, ' ').trim();
+    var queryToSearch = cleanedQuery || rawQuery;
 
     if (btn) {
       btn.disabled = true;
@@ -389,7 +394,7 @@ SafeHer.escort = (function() {
     }
 
     resultsBox.style.display = 'block';
-    resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-gray);">Searching places nearby...</div>';
+    resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-gray);"><span class="material-symbols-rounded" style="font-size:14px;vertical-align:middle;margin-right:4px;">travel_explore</span>Searching places nearby...</div>';
 
     var originLat = userOrigin ? userOrigin.lat : null;
     var originLng = userOrigin ? userOrigin.lng : null;
@@ -411,81 +416,111 @@ SafeHer.escort = (function() {
       viewboxParam = '&viewbox=' + left + ',' + top + ',' + right + ',' + bottom + '&bounded=0';
     }
 
-    var nominatimUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12' +
-      viewboxParam + '&q=' + encodeURIComponent(query);
+    function doFetch(qStr, useBox, callback) {
+      var box = useBox ? viewboxParam : '';
+      var url = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=12' + box + '&q=' + encodeURIComponent(qStr);
+      fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(function(res) { return res.json(); })
+        .then(function(items) { callback(null, items || []); })
+        .catch(function(err) { callback(err, []); });
+    }
 
-    fetch(nominatimUrl, { headers: { 'Accept': 'application/json' } })
-      .then(function(res) { return res.json(); })
-      .then(function(items) {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">search</span> Search';
-        }
-
-        if (!items || items.length === 0) {
-          resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-gray);">No matching locations found in India. Try another query or pick on map.</div>';
-          return;
-        }
-
-        // Sort items by distance from origin
-        items.forEach(function(item) {
-          var itemLat = parseFloat(item.lat);
-          var itemLng = parseFloat(item.lon);
-          if (originLat && originLng && !isNaN(itemLat) && !isNaN(itemLng)) {
-            item._distM = haversineDistM(originLat, originLng, itemLat, itemLng);
+    // First try with cleaned query and local viewbox
+    doFetch(queryToSearch, true, function(err1, items1) {
+      if (!items1 || items1.length === 0) {
+        // Fallback 1: try raw query with viewbox
+        doFetch(rawQuery, true, function(err2, items2) {
+          if (!items2 || items2.length === 0) {
+            // Fallback 2: try cleaned query nationwide without viewbox
+            doFetch(queryToSearch, false, function(err3, items3) {
+              renderResults(items3);
+            });
           } else {
-            item._distM = 999999999;
+            renderResults(items2);
           }
         });
-        items.sort(function(a, b) { return a._distM - b._distM; });
+      } else {
+        renderResults(items1);
+      }
+    });
 
-        var html = '';
-        items.forEach(function(item, idx) {
-          var name = item.display_name;
-          var shortName = item.display_name.split(',').slice(0, 3).join(',').trim();
-          var distBadge = '';
-          if (item._distM < 999999999) {
-            var distText = item._distM < 1000 ? (Math.round(item._distM) + ' m') : ((item._distM / 1000).toFixed(1) + ' km');
-            distBadge = ' <span style="font-size:11px;font-weight:600;color:#9E1B32;background:#FFE4E6;padding:1px 6px;border-radius:10px;margin-left:6px;">' + distText + '</span>';
-          }
-          html += '<div class="escort-search-item" data-index="' + idx + '" style="padding:8px 12px;border-bottom:1px solid #f1f1f1;cursor:pointer;">' +
-            '<div style="font-weight:600;color:var(--crimson);display:flex;align-items:center;justify-content:space-between;">' +
-              '<span>' + escapeHtml(shortName) + '</span>' + distBadge +
-            '</div>' +
-            '<div style="font-size:11px;color:var(--text-gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
-          '</div>';
-        });
+    function renderResults(items) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">search</span> Search';
+      }
+
+      var html = '';
+
+      // Always include a one-tap map pin shortcut at top of results
+      html += '<div onclick="SafeHer.escort.togglePickOnMap(true)" style="padding:10px 12px;background:#FFF0F3;border-bottom:1.5px solid #FBCFE8;cursor:pointer;display:flex;align-items:center;gap:8px;">' +
+        '<span class="material-symbols-rounded" style="color:var(--crimson);font-size:20px;">pin_drop</span>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--crimson);">Pick exact destination on map (e.g. 100m away)</div>' +
+      '</div>';
+
+      if (!items || items.length === 0) {
+        html += '<div style="padding:14px 12px;text-align:center;">' +
+          '<div style="font-size:12px;font-weight:600;color:#9E1B32;margin-bottom:4px;">No named landmark found for "' + escapeHtml(rawQuery) + '"</div>' +
+          '<div style="font-size:11px;color:var(--text-gray);margin-bottom:10px;">For near places (~100m), tap "Pick on map" to set your pin directly on the building.</div>' +
+          '<button type="button" class="btn btn-crimson" onclick="SafeHer.escort.togglePickOnMap(true)" style="padding:6px 14px;font-size:12px;height:32px;border-radius:16px;margin:0 auto;display:inline-flex;align-items:center;gap:4px;">' +
+            '<span class="material-symbols-rounded" style="font-size:16px;">pin_drop</span> Tap Map to Select Location' +
+          '</button>' +
+        '</div>';
         resultsBox.innerHTML = html;
+        return;
+      }
 
-        var rowEls = resultsBox.querySelectorAll('.escort-search-item');
-        rowEls.forEach(function(rowEl) {
-          rowEl.addEventListener('click', function() {
-            var i = parseInt(rowEl.dataset.index, 10);
-            var selected = items[i];
-            if (!selected) return;
-
-            var shortName = selected.display_name.split(',').slice(0, 3).join(',').trim();
-            input.value = shortName || selected.display_name;
-            currentDest = {
-              lat: parseFloat(selected.lat),
-              lng: parseFloat(selected.lon),
-              name: shortName || selected.display_name
-            };
-            resultsBox.style.display = 'none';
-            fetchRoute();
-          });
-        });
-      })
-      .catch(function() {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">search</span> Search';
+      // Sort items by distance from origin
+      items.forEach(function(item) {
+        var itemLat = parseFloat(item.lat);
+        var itemLng = parseFloat(item.lon);
+        if (originLat && originLng && !isNaN(itemLat) && !isNaN(itemLng)) {
+          item._distM = haversineDistM(originLat, originLng, itemLat, itemLng);
+        } else {
+          item._distM = 999999999;
         }
-        resultsBox.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:#D32F2F;">Search failed. Please check internet connection or pick on map.</div>';
       });
+      items.sort(function(a, b) { return a._distM - b._distM; });
+
+      items.forEach(function(item, idx) {
+        var name = item.display_name;
+        var shortName = item.display_name.split(',').slice(0, 3).join(',').trim();
+        var distBadge = '';
+        if (item._distM < 999999999) {
+          var distText = item._distM < 1000 ? (Math.round(item._distM) + ' m') : ((item._distM / 1000).toFixed(1) + ' km');
+          distBadge = ' <span style="font-size:11px;font-weight:600;color:#9E1B32;background:#FFE4E6;padding:1px 6px;border-radius:10px;margin-left:6px;"><span class="material-symbols-rounded" style="font-size:12px;vertical-align:middle;margin-right:2px;">near_me</span>' + distText + '</span>';
+        }
+        html += '<div class="escort-search-item" data-index="' + idx + '" style="padding:8px 12px;border-bottom:1px solid #f1f1f1;cursor:pointer;">' +
+          '<div style="font-weight:600;color:var(--crimson);display:flex;align-items:center;justify-content:space-between;">' +
+            '<span>' + escapeHtml(shortName) + '</span>' + distBadge +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
+        '</div>';
+      });
+      resultsBox.innerHTML = html;
+
+      var rowEls = resultsBox.querySelectorAll('.escort-search-item');
+      rowEls.forEach(function(rowEl) {
+        rowEl.addEventListener('click', function() {
+          var i = parseInt(rowEl.dataset.index, 10);
+          var selected = items[i];
+          if (!selected) return;
+
+          var shortName = selected.display_name.split(',').slice(0, 3).join(',').trim();
+          input.value = shortName || selected.display_name;
+          currentDest = {
+            lat: parseFloat(selected.lat),
+            lng: parseFloat(selected.lon),
+            name: shortName || selected.display_name
+          };
+          resultsBox.style.display = 'none';
+          fetchRoute();
+        });
+      });
+    }
   }
 
-  // ─── Travel Mode Selection ────────────────────────────────
+    // ─── Travel Mode Selection ────────────────────────────────
   function setTravelMode(mode, fromClick) {
     if (fromClick) userOverrodeMode = true;
     currentTravelMode = mode || 'driving';

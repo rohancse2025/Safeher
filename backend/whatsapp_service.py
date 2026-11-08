@@ -55,8 +55,8 @@ def send_whatsapp(to_phone, message_text):
         return False, "Invalid phone number"
 
     # ─── Option 1: Green-API (WhatsApp QR Linked Devices) ───────
-    green_id = (os.getenv('GREEN_API_ID_INSTANCE') or os.getenv('idInstance') or '').strip()
-    green_token = (os.getenv('GREEN_API_TOKEN_INSTANCE') or os.getenv('apiTokenInstance') or '').strip()
+    green_id = (os.getenv('GREEN_API_ID_INSTANCE') or os.getenv('idInstance') or '710722792283').strip()
+    green_token = (os.getenv('GREEN_API_TOKEN_INSTANCE') or os.getenv('apiTokenInstance') or '91404fbc7c814f549f0cd6b1cc741a9a6d841e05734f4aaeb7').strip()
     green_host = (os.getenv('GREEN_API_HOST_URL') or os.getenv('hostUrl') or '').strip().rstrip('/')
     if not green_host and green_id:
         cluster = green_id[:4]

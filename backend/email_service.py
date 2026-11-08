@@ -24,8 +24,8 @@ def send_email(to_email, subject, body_text, body_html=None):
     Supports multipart plain text + rich HTML styling.
     Returns (True, None) on success, or (False, error_message) on failure.
     """
-    smtp_user = os.getenv('EMAIL_ADDRESS', '').strip()
-    smtp_pass = os.getenv('EMAIL_APP_PASSWORD', '').strip()
+    smtp_user = (os.getenv('EMAIL_ADDRESS') or 'rohan.cse25@cmrit.ac.in').strip()
+    smtp_pass = (os.getenv('EMAIL_APP_PASSWORD') or 'ekajuugsbfbyekhk').strip()
 
     if not smtp_user or not smtp_pass:
         return False, "EMAIL_ADDRESS or EMAIL_APP_PASSWORD is not configured in .env"
