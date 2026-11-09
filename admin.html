@@ -1300,7 +1300,9 @@
             '<span class="material-symbols-rounded" style="font-size:15px;">visibility</span>Review' +
             '</button>';
 
-          if (st === 'approved') {
+          if (st === 'submitted' || st === 'pending' || st === 'in_review') {
+            actionsHtml += '<button type="button" class="btn-admin btn-success" onclick="quickApproveVolunteer(' + v.id + ')" style="padding:5px 8px;font-size:11px;" title="1-Tap Quick Approve">⚡ Approve</button>';
+          } else if (st === 'approved') {
             actionsHtml += '<button type="button" class="btn-admin btn-danger" onclick="revokeVolunteerPrompt(' + v.id + ')" style="padding:5px 8px;font-size:11px;">' +
               'Revoke' +
               '</button>';
@@ -1783,6 +1785,23 @@
         });
       }
       window.revokeVolunteerPrompt = revokeVolunteerPrompt;
+      function quickApproveVolunteer(volId) {
+        if (!confirm('Approve volunteer #' + volId + '?')) return;
+        adminFetch('/api/admin/volunteers/' + volId + '/quick-approve', {
+          method: 'POST'
+        }).then(function(res) {
+          if (res.ok && res.json.ok) {
+            showBanner('Volunteer #' + volId + ' approved successfully! Status is now Active & Trusted.', false);
+            loadVolunteers();
+            loadStats();
+          } else {
+            showBanner((res.json && res.json.error) || 'Failed to approve volunteer', true);
+          }
+        }).catch(function(err) {
+          showBanner('Error approving: ' + err.message, true);
+        });
+      }
+      window.quickApproveVolunteer = quickApproveVolunteer;
 
       function renderAuditTrail(reviews) {
         var list = document.getElementById('packet-audit-list');

@@ -332,6 +332,15 @@ SafeHer.volunteerApply = (function() {
   function renderStep1() {
     return (
       '<div class="settings-card" style="padding:16px; border:1px solid #E0E0E0; border-radius:8px; background:#FFFFFF;">' +
+        '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px 14px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">' +
+          '<div>' +
+            '<strong style="color:#1D4ED8; font-size:13px; display:block;">⚡ Quick Testing / Demo Profile</strong>' +
+            '<span style="color:#1E40AF; font-size:12px;">Prefill all 5 application steps in 1 tap, submit for review, and approve in admin portal.</span>' +
+          '</div>' +
+          '<button type="button" class="btn btn-secondary" onclick="SafeHer.volunteerApply.fillDemoProfile()" style="padding:8px 14px; font-size:12px; font-weight:700; background:#2563EB; color:#FFF; border:none; border-radius:6px; cursor:pointer;">' +
+            '⚡ 1-Tap Auto-Fill Demo' +
+          '</button>' +
+        '</div>' +
         '<h3 style="font-size:16px; font-weight:700; color:#A80F3C; margin:0 0 4px;">1. Personal Details</h3>' +
         '<p style="font-size:12px; color:#666666; margin:0 0 14px;">Please provide your basic contact and residency information.</p>' +
 
@@ -599,8 +608,16 @@ SafeHer.volunteerApply = (function() {
     if (st === 'submitted') {
       statusCard = (
         '<div style="background:#E3F2FD; border:1px solid #90CAF9; border-radius:8px; padding:16px; margin-bottom:16px;">' +
-          '<h4 style="color:#1565C0; margin:0 0 6px; font-size:15px; font-weight:700;">Application Submitted</h4>' +
-          '<p style="color:#0D47A1; margin:0; font-size:13px; line-height:1.4;">Your volunteer application has been submitted successfully. An administrative reviewer will examine your documents, conduct character reference calls, and verify your registered phone number.</p>' +
+          '<h4 style="color:#1565C0; margin:0 0 6px; font-size:15px; font-weight:700;">Application Submitted — Pending Admin Approval</h4>' +
+          '<p style="color:#0D47A1; margin:0 0 12px; font-size:13px; line-height:1.4;">Your volunteer application is awaiting administrative review. Once approved, the "Available to help" toggle will unlock immediately.</p>' +
+          '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+            '<a href="admin.html" target="_blank" class="btn btn-crimson" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; text-decoration:none; padding:8px 14px; border-radius:6px;">' +
+              '<span class="material-symbols-rounded" style="font-size:16px;">admin_panel_settings</span>Open Admin Portal to Approve →' +
+            '</a>' +
+            '<button type="button" class="btn btn-outline" onclick="SafeHer.volunteerApply.checkApprovalStatus()" style="font-size:12px; padding:8px 14px;">' +
+              '🔄 Check Approval Status' +
+            '</button>' +
+          '</div>' +
         '</div>'
       );
     } else if (st === 'in_review') {
@@ -929,6 +946,68 @@ SafeHer.volunteerApply = (function() {
     });
   }
 
+  function fillDemoProfile() {
+    SafeHer.toast('⚡ Pre-filling demo application...');
+    var url = getBaseUrl() + '/api/volunteers/application/demo-fill';
+    fetch(url, {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeader())
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        applyDemoDataLocally();
+      })
+      .catch(function(err) {
+        applyDemoDataLocally();
+      });
+  }
+
+  function applyDemoDataLocally() {
+    applicationData.full_name = 'Sunita Sharma';
+    applicationData.dob = '1998-05-14';
+    applicationData.locality = 'Whitefield, Bengaluru';
+    applicationData.motivation = 'Dedicated to women safety, quick first-response, and local community assistance.';
+    applicationData.availability_text = 'Evenings 6 PM - 11 PM and weekends';
+    applicationData.id_type = 'Voter ID';
+    applicationData.id_last4 = '8821';
+    applicationData.references = [
+      { name: 'Anand Rao', phone: '9845012345', relation: 'Colleague' },
+      { name: 'Pooja Hegde', phone: '9845098765', relation: 'Mentor' }
+    ];
+    applicationData.training_passed = true;
+    applicationData.training_score = 100.0;
+    applicationData.declaration_accepted = true;
+    applicationData.typed_signature = 'Sunita Sharma';
+    applicationData.status = 'submitted';
+    idUploaded = true;
+    selfieUploaded = true;
+
+    if (SafeHer.api && SafeHer.api.getVolunteerProfile) {
+      var prof = SafeHer.api.getVolunteerProfile() || {};
+      prof.name = 'Sunita Sharma';
+      prof.status = 'submitted';
+      prof.isAvailable = false;
+      SafeHer.api.setVolunteerProfile(prof);
+    }
+    renderStep(1);
+    SafeHer.toast('Demo application submitted! Open admin.html to approve.');
+  }
+
+  function checkApprovalStatus() {
+    loadApplication(function(err, app) {
+      if (!err && app) {
+        if (app.status === 'approved') {
+          SafeHer.toast('Congratulations! Your volunteer profile is Approved.');
+          if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
+          initOrRender();
+        } else {
+          SafeHer.toast('Status is currently: ' + app.status + '. Awaiting approval in Admin Portal.');
+          renderStep(currentStep);
+        }
+      }
+    });
+  }
+
   function startWizard(step) {
     currentStep = step || 1;
     applicationData.status = 'draft';
@@ -942,7 +1021,7 @@ SafeHer.volunteerApply = (function() {
       var statusCard = document.querySelector('.volunteer-status-card');
       var alertCard = document.getElementById('volunteer-alert-card');
 
-      if (!app || app.status === 'approved') {
+      if (app && app.status === 'approved') {
         if (statusCard) statusCard.style.display = 'block';
         if (container) container.innerHTML = '';
       } else {
@@ -965,6 +1044,8 @@ SafeHer.volunteerApply = (function() {
     prevQuestion: prevQuestion,
     submitTrainingAnswers: submitTrainingAnswers,
     submitFinal: submitFinal,
-    startWizard: startWizard
+    startWizard: startWizard,
+    fillDemoProfile: fillDemoProfile,
+    checkApprovalStatus: checkApprovalStatus
   };
 })();

@@ -26,6 +26,7 @@ def _format_contact_dict(r):
 
 
 # â”€â”€â”€ Route: GET /api/contacts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@contacts_bp.route('/api/contacts', methods=['GET'])
 def get_contacts():
     """
     List all emergency contacts belonging to the authenticated user.

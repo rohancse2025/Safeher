@@ -1159,7 +1159,7 @@ SafeHer.ride = (function() {
 
 
 
-    if (SafeHer.toast) SafeHer.toast('🚖 Ride started! Contacts alerted automatically via WhatsApp & Email.');
+    if (SafeHer.toast) SafeHer.toast('🚖 Ride started! Contacts alerted automatically via WhatsApp.');
 
 
 
@@ -1431,7 +1431,7 @@ SafeHer.ride = (function() {
         vehicle_number: completedRecord.vehicleNumber,
         share_token: activeRide.shareToken || completedRecord.id
       });
-      if (SafeHer.toast) SafeHer.toast('Safe arrival notification sent to contacts via WhatsApp & Email!');
+      if (SafeHer.toast) SafeHer.toast('Safe arrival notification sent to contacts via WhatsApp!');
     }
     if (SafeHer.deliveryTracker) {
       SafeHer.deliveryTracker.stopAll();

@@ -149,11 +149,10 @@ SafeHer.volunteer = (function() {
 
 
         showAlertCardData(firstAlert);
-
+        showGlobalBanner(firstAlert);
       } else {
-
         hideAlertCard();
-
+        hideGlobalBanner();
       }
 
     });
@@ -161,6 +160,46 @@ SafeHer.volunteer = (function() {
   }
 
 
+
+
+  // --- Global In-App Alert Banner for Available Volunteers ---
+  function showGlobalBanner(alertData) {
+    var cur = (SafeHer.router && SafeHer.router.getCurrentScreen) ? SafeHer.router.getCurrentScreen() : '';
+    if (cur === 'volunteers') {
+      hideGlobalBanner();
+      return;
+    }
+    var banner = document.getElementById('global-volunteer-sos-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'global-volunteer-sos-banner';
+      banner.style.cssText = 'position:fixed;top:10px;left:12px;right:12px;background:#B91C1C;color:#FFFFFF;padding:12px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);z-index:999999;display:flex;align-items:center;justify-content:space-between;gap:10px;';
+      document.body.appendChild(banner);
+    }
+    var dist = formatDistanceBand(alertData.distance_km, alertData.distance_band);
+    banner.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex:1;">' +
+      '<span class="material-symbols-rounded" style="font-size:24px;color:#FEE2E2;">emergency</span>' +
+      '<div>' +
+        '<strong style="display:block;font-size:13px;letter-spacing:0.5px;">🚨 EMERGENCY SOS NEARBY (' + escapeHtml(dist) + ')</strong>' +
+        '<span style="font-size:11px;color:#FECACA;">A user needs assistance. Tap to view location & respond.</span>' +
+      '</div>' +
+    '</div>' +
+    '<button type="button" onclick="SafeHer.volunteer.openAlertFromBanner()" style="background:#FFFFFF;color:#B91C1C;font-weight:700;font-size:12px;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;">Respond</button>';
+    banner.style.display = 'flex';
+    if (navigator.vibrate) {
+      try { navigator.vibrate([200, 100, 200, 100, 400]); } catch(e) {}
+    }
+  }
+
+  function hideGlobalBanner() {
+    var banner = document.getElementById('global-volunteer-sos-banner');
+    if (banner) banner.style.display = 'none';
+  }
+
+  function openAlertFromBanner() {
+    hideGlobalBanner();
+    SafeHer.router.go('volunteers');
+  }
 
   // ─── Save & Toggle Availability ───────────────────────────
 
@@ -170,21 +209,19 @@ SafeHer.volunteer = (function() {
 
     var status = profile.status || 'draft';
 
-
-
     if (status === 'suspended') {
-
       var toggle = document.getElementById('volunteer-available-toggle');
-
       if (toggle) toggle.checked = false;
-
       SafeHer.toast('Your account is paused while we review a report');
-
       return;
-
     }
 
-    profile.status = 'approved';
+    if (status !== 'approved') {
+      var toggle = document.getElementById('volunteer-available-toggle');
+      if (toggle) toggle.checked = false;
+      SafeHer.toast('Approval required: Submit your application and wait for admin approval.');
+      return;
+    }
 
 
 
@@ -647,65 +684,47 @@ SafeHer.volunteer = (function() {
 
 
   function updateHomeVolunteerCount() {
-
     var countEl = document.getElementById('home-volunteers-count');
-
+    var subEl = document.getElementById('home-volunteers-sub');
     if (!countEl) return;
 
+    // 1. Instant 0ms cache rendering
+    try {
+      var cached = localStorage.getItem('safeher_volunteers_count');
+      var localProf = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
+      if (cached !== null) {
+        countEl.textContent = String(cached);
+        if (subEl) {
+          var cn = Number(cached);
+          subEl.textContent = cn > 0 ? (cn === 1 ? '1 nearby & ready' : cn + ' nearby & ready') : 'Tap to become one';
+        }
+      } else if (localProf && localProf.isAvailable && localProf.status === 'approved') {
+        countEl.textContent = '1';
+        if (subEl) subEl.textContent = '1 nearby & ready';
+      }
+    } catch(e) {}
 
-
+    // 2. Immediate asynchronous query using last known location without waiting
     var loc = (SafeHer.api && SafeHer.api.getLiveLocation) ? SafeHer.api.getLiveLocation() : null;
-
-    if (loc && loc.lat != null && loc.lng != null) {
-
-      fetchWithCoords(loc);
-
-    } else if (navigator.geolocation) {
-
-      navigator.geolocation.getCurrentPosition(
-
-        function(pos) {
-
-          fetchWithCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-
-        },
-
-        function() {
-
-          fetchWithCoords(null);
-
-        },
-
-        { timeout: 4000, maximumAge: 60000 }
-
-      );
-
-    } else {
-
-      fetchWithCoords(null);
-
+    if (!loc && SafeHer.storage && SafeHer.storage.get) {
+      loc = SafeHer.storage.get('last_location');
     }
 
-
+    fetchWithCoords(loc);
 
     function fetchWithCoords(coords) {
-
       if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
-
         SafeHer.api.getAvailableVolunteersCount(function(err, count) {
-
-          if (!err && count !== undefined && countEl) {
-
+          if (!err && count !== undefined && count !== null && countEl) {
             countEl.textContent = String(count);
-
+            try { localStorage.setItem('safeher_volunteers_count', String(count)); } catch(e) {}
+            if (subEl) {
+              subEl.textContent = count > 0 ? (count === 1 ? '1 nearby & ready' : count + ' nearby & ready') : 'Tap to become one';
+            }
           }
-
         }, coords);
-
       }
-
     }
-
   }
 
 
@@ -755,11 +774,7 @@ SafeHer.volunteer = (function() {
       if (suspendedBox) suspendedBox.style.display = 'none';
 
       if (toggle) {
-
-        // (2) Enable switch for non-suspended accounts
-
-        toggle.disabled = (status === 'suspended');
-
+        toggle.disabled = (status !== 'approved');
       }
 
     }
@@ -1123,17 +1138,11 @@ SafeHer.volunteer = (function() {
       if (descEl) {
 
         if (profile.status === 'suspended') {
-
           descEl.textContent = 'Your account is paused while we review a report.';
-
         } else if (profile.status !== 'approved') {
-
-          descEl.textContent = 'Available to help is enabled only after application approval.';
-
+          descEl.textContent = 'Available to help unlocks once your application is approved by Admin.';
         } else {
-
           descEl.textContent = 'Turn on to receive emergency alerts near you.';
-
         }
 
       }
@@ -1229,8 +1238,8 @@ SafeHer.volunteer = (function() {
     confirmSafeComing: confirmSafeComing,
 
     respondComing: promptSafeConfirm,
-
     respondCantContinue: respondCantContinue,
+    openAlertFromBanner: openAlertFromBanner,
 
     respondCantHelp: respondCantHelp,
 

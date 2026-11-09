@@ -1000,19 +1000,34 @@ SafeHer.sos = (function() {
     if (!subEl) return;
 
     var n = (activeSos && activeSos.volunteersEnRoute) ? activeSos.volunteersEnRoute : 0;
+    var box = subEl.parentElement;
+    var icon = box ? box.querySelector('.material-symbols-rounded') : null;
+
     if (n > 0) {
-      subEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way';
-      var box = subEl.parentElement;
-      if (box) {
-        var icon = box.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = 'directions_run';
+      subEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way to help!';
+      subEl.style.color = '#15803D';
+      if (icon) {
+        icon.textContent = 'directions_run';
+        icon.style.color = '#15803D';
       }
     } else {
-      subEl.textContent = 'Waiting for volunteers...';
-      var box = subEl.parentElement;
-      if (box) {
-        var icon = box.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = 'hourglass_top';
+      var startTime = (activeSos && (activeSos.createdAt || activeSos.timestamp)) ? new Date(activeSos.createdAt || activeSos.timestamp).getTime() : Date.now();
+      var elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+
+      if (elapsedSec >= 25) {
+        subEl.textContent = 'No community volunteers responding nearby. Emergency contacts & Police (112) have been alerted.';
+        subEl.style.color = '#DC2626';
+        if (icon) {
+          icon.textContent = 'warning';
+          icon.style.color = '#DC2626';
+        }
+      } else {
+        subEl.textContent = 'Alerting nearby community volunteers & emergency contacts...';
+        subEl.style.color = '';
+        if (icon) {
+          icon.textContent = 'hourglass_top';
+          icon.style.color = '';
+        }
       }
     }
   }

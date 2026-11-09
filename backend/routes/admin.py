@@ -1110,3 +1110,30 @@ def get_admin_logs():
             "count": len(lines)
         }
     }), 200
+
+
+# --- Route: POST /api/admin/volunteers/<int:volunteer_id>/quick-approve ---
+@admin_bp.route('/api/admin/volunteers/<int:volunteer_id>/quick-approve', methods=['POST'])
+@admin_required
+def quick_approve_volunteer(volunteer_id):
+    """
+    1-Tap Quick Approve for testing and fast approval from admin dashboard.
+    """
+    reviewer = getattr(g, 'admin_reviewer', 'Admin')
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE volunteers SET status = 'approved', level = 'trusted', badge = 'Trusted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, valid_until = datetime('now', '+1 year'), updated_at = CURRENT_TIMESTAMP WHERE id = ? OR user_id = ?;", (reviewer, volunteer_id, volunteer_id))
+
+    record_review_audit(cursor, volunteer_id, reviewer, 'approve', None, 'Quick-approved via admin dashboard')
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "volunteer_id": volunteer_id,
+            "status": "approved",
+            "message": f"Volunteer #{volunteer_id} quick-approved successfully!"
+        }
+    }), 200

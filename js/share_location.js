@@ -90,6 +90,9 @@ SafeHer.shareLocation = (function() {
 
     // Contacts checkboxes list
     var contacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    if ((!contacts || contacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
+      contacts = SafeHer.storage.get('contacts') || [];
+    }
     var listEl = document.getElementById('share-setup-contacts-list');
     if (!listEl) return;
 
@@ -111,7 +114,7 @@ SafeHer.shareLocation = (function() {
 
       html += '<div class="share-setup-contact-item">' +
         '<label class="share-contact-check-label" for="share-contact-' + c.id + '">' +
-          '<input type="checkbox" id="share-contact-' + c.id + '" class="share-contact-checkbox" value="' + c.id + '" ' + (isChecked ? 'checked' : '') + ' onchange="SafeHer.shareLocation.onContactToggle(' + c.id + ', this.checked)" />' +
+          '<input type="checkbox" id="share-contact-' + c.id + '" class="share-contact-checkbox" value="' + c.id + '" ' + (isChecked ? 'checked' : '') + ' onchange="SafeHer.shareLocation.onContactToggle(\'' + escapeHtml(c.id || c.phone) + '\', this.checked)" />' +
           '<div class="share-contact-avatar">' + escapeHtml(initial) + '</div>' +
           '<div class="share-contact-info">' +
             '<span class="share-contact-name">' + escapeHtml(c.name) + '</span>' +
@@ -613,6 +616,13 @@ SafeHer.shareLocation = (function() {
 
     SafeHer.router.onShow('share-location', function() {
       render();
+      if (SafeHer.api && SafeHer.api.getContacts) {
+        SafeHer.api.getContacts(function(err, fetched) {
+          if (!err && fetched) {
+            render();
+          }
+        });
+      }
     });
   }
 

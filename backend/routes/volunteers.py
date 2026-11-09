@@ -3676,3 +3676,62 @@ def submit_volunteer_application():
 
     }), 200
 
+
+
+# --- Route: POST /api/volunteers/application/demo-fill ---
+@volunteers_bp.route('/api/volunteers/application/demo-fill', methods=['POST'])
+def demo_fill_volunteer_application():
+    """
+    1-Tap Demo Volunteer Application:
+    Prefills all 5 steps with realistic data (Sunita Sharma),
+    marks training passed with 100%, and sets status to 'submitted'
+    so an administrator can approve it via admin.html.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    if not user:
+        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id']
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, status FROM volunteers WHERE user_id = ?;', (user_id,))
+    existing = cursor.fetchone()
+
+    demo_name = 'Sunita Sharma'
+    demo_dob = '1998-05-14'
+    demo_locality = 'Whitefield, Bengaluru'
+    demo_motivation = 'Dedicated to women safety, quick first-response, and local community assistance.'
+    demo_availability = 'Evenings 6 PM - 11 PM and weekends'
+    demo_id_type = 'Voter ID'
+    demo_id_last4 = '8821'
+
+    if existing:
+        vol_id = existing['id']
+        cursor.execute("UPDATE volunteers SET full_name = ?, dob = ?, locality = ?, motivation = ?, availability_text = ?, id_type = ?, id_last4 = ?, id_image_path = COALESCE(id_image_path, 'uploads/demo_voter_id.jpg'), selfie_path = COALESCE(selfie_path, 'uploads/demo_selfie.jpg'), training_score = 100.0, training_passed_at = CURRENT_TIMESTAMP, declaration_accepted_at = CURRENT_TIMESTAMP, declaration_version = 'v1.0', typed_signature = ?, status = 'submitted', available = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name, vol_id))
+    else:
+        cursor.execute("INSERT INTO volunteers (user_id, full_name, dob, locality, motivation, availability_text, id_type, id_last4, id_image_path, selfie_path, training_score, training_passed_at, declaration_accepted_at, declaration_version, typed_signature, status, available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'uploads/demo_voter_id.jpg', 'uploads/demo_selfie.jpg', 100.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'v1.0', ?, 'submitted', 0);", (user_id, demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name))
+        vol_id = cursor.lastrowid
+
+    try:
+        cursor.execute('DELETE FROM volunteer_references WHERE volunteer_id = ?;', (vol_id,))
+        cursor.execute("INSERT INTO volunteer_references (volunteer_id, name, phone, relationship, verification_status) VALUES (?, 'Anand Rao', '9845012345', 'Colleague', 'verified'), (?, 'Pooja Hegde', '9845098765', 'Mentor', 'verified');", (vol_id, vol_id))
+    except Exception:
+        pass
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "id": vol_id,
+            "full_name": demo_name,
+            "dob": demo_dob,
+            "locality": demo_locality,
+            "status": "submitted",
+            "training_passed": True,
+            "training_score": 100.0,
+            "message": "Demo volunteer application submitted! Please approve in admin.html."
+        }
+    }), 200

@@ -3137,7 +3137,7 @@ SafeHer.escort = (function() {
 
         closePromptModal();
 
-        if (SafeHer.toast) SafeHer.toast('No response received! Auto-alerting emergency contacts via WhatsApp & Email!');
+        if (SafeHer.toast) SafeHer.toast('No response received! Auto-alerting emergency contacts via WhatsApp!');
 
         escalate();
 
