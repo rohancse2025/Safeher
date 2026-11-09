@@ -116,13 +116,17 @@ SafeHer.home = (function() {
       nameEl.textContent = firstName;
     }
 
-    // 2. Trusted Contacts Count
+    // 2. Trusted Contacts Count & Setup Checklist
     var cachedContacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts(function(err, list) {
       if (!err && list) {
         updateContactsCount(list.length);
+        updateSetupChecklist(list);
       }
     }) : [];
     updateContactsCount((cachedContacts && cachedContacts.length) ? cachedContacts.length : 0);
+    if (cachedContacts && Array.isArray(cachedContacts)) {
+      updateSetupChecklist(cachedContacts);
+    }
 
     // 3. Nearby Volunteers Count
     if (SafeHer.api && SafeHer.api.getAvailableVolunteersCount) {
@@ -144,6 +148,66 @@ SafeHer.home = (function() {
 
     if (SafeHer.sos && SafeHer.sos.updateUneasyBanner) {
       SafeHer.sos.updateUneasyBanner();
+    }
+  }
+
+  function updateSetupChecklist(contactsList) {
+    var hasEmail = false;
+    var count = (contactsList && Array.isArray(contactsList)) ? contactsList.length : 0;
+    if (count > 0) {
+      for (var i = 0; i < count; i++) {
+        if (contactsList[i] && contactsList[i].email && contactsList[i].email.trim()) {
+          hasEmail = true;
+          break;
+        }
+      }
+    }
+
+    var chkEmailIcon = document.getElementById('chk-email-icon');
+    var chkEmailText = document.getElementById('chk-email-text');
+    var chkContactsIcon = document.getElementById('chk-contacts-icon');
+    var chkBadge = document.getElementById('setup-progress-badge');
+
+    if (chkEmailIcon) {
+      if (hasEmail) {
+        chkEmailIcon.textContent = 'check_circle';
+        chkEmailIcon.style.color = '#16A34A';
+        if (chkEmailText) {
+          chkEmailText.style.color = '#16A34A';
+          chkEmailText.style.fontWeight = '600';
+          chkEmailText.textContent = 'Email configured for contact ✓';
+        }
+      } else {
+        chkEmailIcon.textContent = 'radio_button_unchecked';
+        chkEmailIcon.style.color = '#DC2626';
+        if (chkEmailText) {
+          chkEmailText.style.color = '#DC2626';
+          chkEmailText.style.fontWeight = '600';
+          chkEmailText.textContent = 'Add an email for at least one contact (Action needed)';
+        }
+      }
+    }
+
+    if (chkContactsIcon) {
+      if (count > 0) {
+        chkContactsIcon.textContent = 'check_circle';
+        chkContactsIcon.style.color = '#16A34A';
+      } else {
+        chkContactsIcon.textContent = 'radio_button_unchecked';
+        chkContactsIcon.style.color = '#9CA3AF';
+      }
+    }
+
+    if (chkBadge) {
+      if (hasEmail && count >= 1) {
+        chkBadge.textContent = 'Ready';
+        chkBadge.style.background = '#E8F5E9';
+        chkBadge.style.color = '#2E7D32';
+      } else {
+        chkBadge.textContent = 'Action needed';
+        chkBadge.style.background = '#FFF0F3';
+        chkBadge.style.color = 'var(--crimson)';
+      }
     }
   }
 

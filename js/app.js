@@ -50,7 +50,7 @@ SafeHer.router = (function() {
     'auth', 'register', 'verify-otp', 'signup-success', 'login',
     'fake-call', 'location', 'live-location', 'share-location', 'map',
     'helplines', 'help-rights', 'complaint-letter', 'evidence-checklist', 'nearby-places', 'police', 'volunteers', 'safe-timer',
-    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history', 'ride', 'ride-check', 'record-evidence', 'evidence-vault', 'escort'
+    'evidence', 'sos-active', 'silent-mode', 'emergency-mode', 'set-pin', 'change-pin', '404', 'history', 'ride', 'ride-check', 'record-evidence', 'evidence-vault', 'escort', 'notifications'
   ];
 
   var current = null;
@@ -285,6 +285,7 @@ window.addEventListener('DOMContentLoaded', function() {
   if (SafeHer.ride && SafeHer.ride.init) SafeHer.ride.init();
   if (SafeHer.escort && SafeHer.escort.init) SafeHer.escort.init();
   if (SafeHer.vault && SafeHer.vault.init) SafeHer.vault.init();
+  if (SafeHer.notifications && SafeHer.notifications.init) SafeHer.notifications.init();
 
   // Continuous global background GPS acquisition on app launch
   if (navigator.geolocation) {

@@ -120,9 +120,19 @@ def create_timer():
         app_logger.error(f'[Timer] WhatsApp start notification error: {wa_err}')
 
     try:
-        send_timer_started_email_notifications_background(timer_id, user_name, minutes, deadline_str, recipient_emails)
-    except Exception as mail_err:
-        app_logger.error(f'[Timer] Email start notification error: {mail_err}')
+        from services.notify import notify
+        notify(
+            event_type='timer_start',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'minutes': minutes
+            },
+            contact_ids=[contact_id] if contact_id else None,
+            event_key=f"timer:{timer_id}:started"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY TIMER START ERROR] {notify_err}")
 
     try:
         from services.notify import notify
@@ -211,9 +221,17 @@ def mark_timer_safe(timer_id):
         app_logger.error(f'[Timer Safe] WhatsApp error: {wa_safe_err}')
 
     try:
-        send_timer_safe_email_notifications_background(timer_id, user_name, recipient_emails)
-    except Exception as mail_safe_err:
-        app_logger.error(f'[Timer Safe] Email error: {mail_safe_err}')
+        from services.notify import notify
+        notify(
+            event_type='timer_safe',
+            user_id=user_id,
+            context={
+                'user_name': user_name
+            },
+            event_key=f"timer:{timer_id}:safe"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY TIMER SAFE ERROR] {notify_err}")
 
     try:
         from services.notify import notify
@@ -403,19 +421,25 @@ def _check_expired_timers_inner(conn):
 
         conn.commit()
 
-        # 5. Dispatch emergency emails to contacts
-        if contacts_emails:
-            send_alert_notifications_background(
+        # 5. Central notification engine dispatch (idempotent, outbox, Brevo delivery)
+        try:
+            from services.notify import notify
+            frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+            notify(
+                event_type='timer_expired',
+                user_id=user_id,
                 alert_id=alert_id,
-                user_name=user_name,
-                mode="timer",
-                started_at_str=now_utc_str,
-                lat=last_lat,
-                lng=last_lng,
-                share_token=share_token,
-                recipient_emails=contacts_emails,
-                contact_tokens=contact_tokens_email
+                context={
+                    'user_name': user_name,
+                    'lat': last_lat,
+                    'lng': last_lng,
+                    'alert_id': alert_id,
+                    'track_url': f"{frontend_url}/track.html?t={share_token}"
+                },
+                event_key=f"timer:{timer_id}:expired"
             )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY TIMER EXPIRED ERROR] {notify_err}")
 
         # 6. Dispatch automated emergency WhatsApp to contacts
         if contacts_phones:

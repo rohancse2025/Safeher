@@ -211,8 +211,28 @@ def get_notification_settings():
     rows = cursor.fetchall()
     conn.close()
 
-    # Standard default settings
+    # Standard default settings covering all event types
     settings = {
+        "alert_created": True,
+        "alert_uneasy": True,
+        "alert_escalated": True,
+        "alert_ended": True,
+        "volunteer_coming": True,
+        "escort_started": True,
+        "escort_arrived": True,
+        "escort_off_route": True,
+        "escort_missed_checkin": True,
+        "escort_no_signal": True,
+        "escort_late_arrival": True,
+        "escort_ended": True,
+        "timer_expired": True,
+        "share_started": True,
+        "share_ended": True,
+        "ride_started": True,
+        "ride_ended": True,
+        "ride_late": True,
+        "contact_added": True,
+        # Backward compatibility aliases
         "sos": True,
         "sos_safe": True,
         "escort_start": True,
@@ -222,7 +242,6 @@ def get_notification_settings():
         "share_stop": True,
         "timer_start": True,
         "timer_safe": True,
-        "timer_expired": True,
         "ride_start": True,
         "ride_safe": True,
         "welcome": True
@@ -242,7 +261,7 @@ def get_notification_settings():
         "data": {
             "user_id": user_id,
             "settings": settings,
-            "locked_events": list(sorted(is_sos_event(k) for k in settings.keys() if is_sos_event(k)))
+            "locked_events": sorted([k for k in settings.keys() if is_sos_event(k)])
         }
     }), 200
 

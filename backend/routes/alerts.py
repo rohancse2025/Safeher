@@ -332,27 +332,15 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
         if close_conn:
             conn.close()
 
-    # 4. Trigger background email dispatch to contacts (works for all modes including silent and uneasy)
-    if recipient_emails:
-        send_alert_notifications_background(
-            alert_id=alert_id,
-            user_name=user_name,
-            mode=mode,
-            started_at_str=now_str,
-            lat=lat,
-            lng=lng,
-            share_token=share_token,
-            recipient_emails=recipient_emails,
-            note=note,
-            contact_tokens=contact_tokens_email
-        )
-
+    # 4. Central notification engine dispatch (idempotent outbox, Brevo delivery & webhooks)
     try:
         from services.notify import notify
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         track_url = f"{frontend_url}/track.html?t={share_token}"
+        notif_event = 'alert_uneasy' if mode == 'uneasy' else 'alert_created'
+        notif_key = f"alert:{alert_id}:uneasy" if mode == 'uneasy' else f"alert:{alert_id}:created"
         notify(
-            event_type='sos',
+            event_type=notif_event,
             user_id=user_id,
             context={
                 'user_name': user_name,
@@ -364,10 +352,10 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                 'note': note or ''
             },
             alert_id=alert_id,
-            event_key=f"sos_{alert_id}"
+            event_key=notif_key
         )
     except Exception as notify_err:
-        app_logger.warning(f"[NOTIFY SOS ERROR] {notify_err}")
+        app_logger.warning(f"[NOTIFY ALERT ERROR] {notify_err}")
 
     # 5. Trigger background automated WhatsApp dispatch to contacts
     if recipient_phones:
@@ -535,8 +523,25 @@ def quick_trigger_alert():
     conn.commit()
     conn.close()
 
-    if recipient_emails:
-        send_alert_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_emails, contact_tokens=contact_tokens_email)
+    try:
+        from services.notify import notify
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        notify(
+            event_type='alert_created',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'mode': 'emergency',
+                'lat': lat,
+                'lng': lng,
+                'alert_id': alert_id,
+                'track_url': f"{frontend_url}/track.html?t={share_token}"
+            },
+            alert_id=alert_id,
+            event_key=f"alert:{alert_id}:created"
+        )
+    except Exception as q_err:
+        app_logger.warning(f"[NOTIFY QUICK ERROR] {q_err}")
     if recipient_phones:
         send_whatsapp_notifications_background(alert_id, user_name, 'emergency', now_str, lat, lng, share_token, recipient_phones, contact_tokens=contact_tokens_phone)
 
@@ -771,17 +776,10 @@ def end_alert(alert_id):
                 send_safe_update_whatsapp_notifications_background(target_alert_id, uname, safe_now_str, safe_phones)
             except Exception as e:
                 app_logger.error(f"[Safe Update WA Error]: {e}")
-        if safe_emails:
-            try:
-                from email_service import send_safe_update_email_notifications_background
-                send_safe_update_email_notifications_background(target_alert_id, uname, safe_now_str, safe_emails)
-            except Exception as e:
-                app_logger.error(f"[Safe Update Email Error]: {e}")
-
         try:
             from services.notify import notify
             notify(
-                event_type='sos_safe',
+                event_type='alert_ended',
                 user_id=user_id,
                 context={
                     'user_name': uname,
@@ -789,10 +787,10 @@ def end_alert(alert_id):
                     'time_str': safe_now_str
                 },
                 alert_id=target_alert_id,
-                event_key=f"sos_safe_{target_alert_id}"
+                event_key=f"alert:{target_alert_id}:ended"
             )
         except Exception as notify_err:
-            app_logger.warning(f"[NOTIFY SOS_SAFE ERROR] {notify_err}")
+            app_logger.warning(f"[NOTIFY ALERT ENDED ERROR] {notify_err}")
 
         app_logger.info(f"[ALERT ENDED] alert_id={target_alert_id}, status=resolved")
         return jsonify({
@@ -884,18 +882,25 @@ def escalate_alert(alert_id):
     # Log the escalation event
     app_logger.info(f"[ALERT ESCALATED] alert_id={target_id}, user_id={user_id}, from={old_mode}, to={to_mode}")
 
-    # Resend emails to all contacts
-    if recipient_emails:
-        send_alert_notifications_background(
+    try:
+        from services.notify import notify
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        notify(
+            event_type='alert_escalated',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'mode': to_mode,
+                'lat': lat,
+                'lng': lng,
+                'alert_id': target_id,
+                'track_url': f"{frontend_url}/track.html?t={share_token}"
+            },
             alert_id=target_id,
-            user_name=user_name,
-            mode=to_mode,
-            started_at_str=now_str,
-            lat=lat,
-            lng=lng,
-            share_token=share_token,
-            recipient_emails=recipient_emails
+            event_key=f"alert:{target_id}:escalated"
         )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY ALERT ESCALATED ERROR] {notify_err}")
 
     # Resend WhatsApp to all contacts
     if recipient_phones:
@@ -1346,6 +1351,113 @@ def get_public_track(token):
                     }
                 }), 200
 
+            # 4. Check if clean_token is a share contact token in share_contacts
+            cursor.execute('''
+                SELECT sc.id AS sc_id, sc.share_id, sc.contact_id, sc.token AS contact_token,
+                       c.name AS contact_name,
+                       s.id AS share_id, s.user_id, s.duration_minutes, s.until_stopped,
+                       s.started_at, s.expires_at, s.status, s.last_lat, s.last_lng,
+                       s.last_update_at, s.ended_at,
+                       u.name AS owner_name
+                FROM share_contacts sc
+                JOIN shares s ON sc.share_id = s.id
+                JOIN users u ON s.user_id = u.id
+                JOIN contacts c ON sc.contact_id = c.id
+                WHERE sc.token = ?;
+            ''', (clean_token,))
+            share_match = cursor.fetchone()
+
+            if share_match:
+                owner_name = share_match['owner_name'] or 'User'
+                first_name = owner_name.split()[0] if owner_name else 'User'
+                contact_name = share_match['contact_name'] or 'Contact'
+                contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
+                curr_lat = share_match['last_lat']
+                curr_lng = share_match['last_lng']
+                share_status = share_match['status']
+
+                conn.close()
+                return jsonify({
+                    "ok": True,
+                    "data": {
+                        "type": "share",
+                        "first_name": first_name,
+                        "owner_name": owner_name,
+                        "status": share_status,
+                        "current_position": {
+                            "lat": curr_lat,
+                            "lng": curr_lng
+                        },
+                        "latest_lat": curr_lat,
+                        "latest_lng": curr_lng,
+                        "last_update_time": share_match['last_update_at'] or share_match['started_at'],
+                        "started_at": share_match['started_at'],
+                        "expires_at": share_match['expires_at'],
+                        "duration_minutes": share_match['duration_minutes'],
+                        "until_stopped": bool(share_match['until_stopped']),
+                        "is_contact": True,
+                        "contact_first_name": contact_first_name,
+                        "contact_name": contact_name
+                    }
+                }), 200
+
+            # 5. Check if clean_token is a ride contact token in ride_contacts
+            cursor.execute('''
+                SELECT rc.id AS rc_id, rc.ride_id, rc.contact_id, rc.token AS contact_token,
+                       c.name AS contact_name,
+                       r.id AS ride_id, r.user_id, r.vehicle_type, r.vehicle_number,
+                       r.driver_name, r.driver_phone, r.app_used, r.pickup, r.destination,
+                       r.expected_minutes, r.started_at, r.expected_end_at, r.status,
+                       r.last_lat, r.last_lng, r.last_update_at, r.ended_at,
+                       u.name AS owner_name
+                FROM ride_contacts rc
+                JOIN rides r ON rc.ride_id = r.id
+                JOIN users u ON r.user_id = u.id
+                JOIN contacts c ON rc.contact_id = c.id
+                WHERE rc.token = ?;
+            ''', (clean_token,))
+            ride_match = cursor.fetchone()
+
+            if ride_match:
+                owner_name = ride_match['owner_name'] or 'User'
+                first_name = owner_name.split()[0] if owner_name else 'User'
+                contact_name = ride_match['contact_name'] or 'Contact'
+                contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
+                curr_lat = ride_match['last_lat']
+                curr_lng = ride_match['last_lng']
+                ride_status = ride_match['status']
+
+                conn.close()
+                return jsonify({
+                    "ok": True,
+                    "data": {
+                        "type": "ride",
+                        "first_name": first_name,
+                        "owner_name": owner_name,
+                        "status": ride_status,
+                        "vehicle_type": ride_match['vehicle_type'],
+                        "vehicle_number": ride_match['vehicle_number'],
+                        "driver_name": ride_match['driver_name'],
+                        "driver_phone": ride_match['driver_phone'],
+                        "app_used": ride_match['app_used'],
+                        "pickup": ride_match['pickup'],
+                        "destination": ride_match['destination'],
+                        "expected_minutes": ride_match['expected_minutes'],
+                        "started_at": ride_match['started_at'],
+                        "expected_end_at": ride_match['expected_end_at'],
+                        "current_position": {
+                            "lat": curr_lat,
+                            "lng": curr_lng
+                        },
+                        "latest_lat": curr_lat,
+                        "latest_lng": curr_lng,
+                        "last_update_time": ride_match['last_update_at'] or ride_match['started_at'],
+                        "is_contact": True,
+                        "contact_first_name": contact_first_name,
+                        "contact_name": contact_name
+                    }
+                }), 200
+
             conn.close()
             return jsonify({"ok": False, "error": "Tracking link not found or expired"}), 404
         owner_name = alert['owner_name'] or 'User'
@@ -1391,6 +1503,7 @@ def get_public_track(token):
     first_name = owner_name.split()[0] if owner_name else 'User'
 
     res_data = {
+        "type": "alert",
         "first_name": first_name,
         "mode": alert['mode'],
         "status": status,

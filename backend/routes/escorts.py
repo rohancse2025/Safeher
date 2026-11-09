@@ -376,45 +376,25 @@ def create_escort():
     except Exception as notify_err:
         app_logger.warning(f"[NOTIFY ESCORT_START ERROR] {notify_err}")
 
-    def send_escort_emails_bg(contact_list, u_name, d_name, exp_str, t_map):
-        f_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
-        for c_item in contact_list:
-            if c_item.get('email') and c_item['email'].strip():
-                c_tok = t_map.get(c_item['id']) or t_map.get(str(c_item['id']))
-                if not c_tok:
-                    continue
-                t_link = f"{f_url}/track.html?t={c_tok}"
-                subj = f"SafeHer – {u_name} started a journey to {d_name}"
-                body_txt = (
-                    f"Hello {c_item['name']},\n\n"
-                    f"{u_name} has started an Escort Mode journey to {d_name}, expected by {exp_str}.\n"
-                    f"Track the journey in real time here:\n{t_link}\n\n"
-                    f"SafeHer Women Safety"
-                )
-                body_html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"/></head>
-<body style="font-family: 'Poppins', sans-serif; background: #FCEFF3; padding: 20px;">
-  <div style="max-width: 500px; margin: auto; background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #F3C2CE;">
-    <h2 style="color: #9E1B32; margin-top: 0;">SafeHer Escort Mode</h2>
-    <p><strong>{u_name}</strong> started a journey to <strong>{d_name}</strong>, expected by <strong>{exp_str}</strong>.</p>
-    <div style="text-align: center; margin: 24px 0;">
-      <a href="{t_link}" style="background: #9E1B32; color: #ffffff; padding: 12px 24px; border-radius: 24px; text-decoration: none; font-weight: 600; display: inline-block;">Track Live Journey</a>
-    </div>
-    <p style="font-size: 13px; color: #666;">This link allows you to follow along live without needing an account. It expires 1 hour after arrival.</p>
-  </div>
-</body>
-</html>"""
-                try:
-                    send_email(c_item['email'].strip(), subj, body_txt, body_html)
-                except Exception as mail_err:
-                    app_logger.error(f"[Escort] Email dispatch error to {c_item['email']}: {mail_err}")
-
-    threading.Thread(
-        target=send_escort_emails_bg,
-        args=([dict(item) for item in valid_contacts], user_name, dest_name, expected_end_str, dict(tokens_map)),
-        daemon=True
-    ).start()
+    try:
+        from services.notify import notify
+        c_ids = [c_item['id'] for c_item in valid_contacts]
+        notify(
+            event_type='escort_started',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'destination': dest_name,
+                'escort_id': escort_id,
+                'expected_end': expected_end_str,
+                'lat': origin_lat,
+                'lng': origin_lng
+            },
+            contact_ids=c_ids,
+            event_key=f"escort:{escort_id}:started"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY ESCORT START ERROR] {notify_err}")
 
     escort_phones = [c_item['phone'].strip() for c_item in valid_contacts if ('phone' in c_item.keys() and c_item['phone'] and str(c_item['phone']).strip())]
     if escort_phones:
@@ -599,19 +579,24 @@ def update_escort_position(escort_id):
         user_name = user_name or 'SafeHer User'
         dest_title = escort['dest_name']
 
-        for c in contacts_to_notify:
-            if c['email'] and c['email'].strip():
-                subj = f"SafeHer – {user_name} arrived safely at {dest_title}"
-                body_txt = (
-                    f"Hello {c['name']},\n\n"
-                    f"{user_name} has arrived safely at {dest_title}.\n"
-                    f"Thank you for looking out for them!\n\n"
-                    f"SafeHer Women Safety"
-                )
-                try:
-                    send_email(c['email'].strip(), subj, body_txt)
-                except Exception as mail_err:
-                    app_logger.error(f"[Escort Arrived] Email error to {c['email']}: {mail_err}")
+        try:
+            from services.notify import notify
+            c_ids = [c['id'] for c in contacts_to_notify]
+            notify(
+                event_type='escort_arrived',
+                user_id=user_id,
+                context={
+                    'user_name': user_name,
+                    'destination': dest_title,
+                    'escort_id': escort_id,
+                    'lat': escort['dest_lat'],
+                    'lng': escort['dest_lng']
+                },
+                contact_ids=c_ids,
+                event_key=f"escort:{escort_id}:arrived"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY ESCORT ARRIVED ERROR] {notify_err}")
 
         arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
         if arrived_phones:
@@ -994,19 +979,22 @@ def end_escort(escort_id):
         contacts_to_notify = cursor.fetchall()
         dest_title = escort['dest_name']
 
-        for c in contacts_to_notify:
-            if c['email'] and c['email'].strip():
-                subj = f"SafeHer – {user_name} arrived safely at {dest_title}"
-                body_txt = (
-                    f"Hello {c['name']},\n\n"
-                    f"{user_name} has arrived safely at {dest_title}.\n"
-                    f"Thank you for looking out for them!\n\n"
-                    f"SafeHer Women Safety"
-                )
-                try:
-                    send_email(c['email'].strip(), subj, body_txt)
-                except Exception as mail_err:
-                    app_logger.error(f"[Escort End] Email error to {c['email']}: {mail_err}")
+        try:
+            from services.notify import notify
+            c_ids = [c['id'] for c in contacts_to_notify]
+            notify(
+                event_type='escort_ended',
+                user_id=user_id,
+                context={
+                    'user_name': user_name,
+                    'destination': dest_title,
+                    'escort_id': escort_id
+                },
+                contact_ids=c_ids,
+                event_key=f"escort:{escort_id}:ended"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY ESCORT ENDED ERROR] {notify_err}")
 
         arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
         if arrived_phones:
@@ -1178,7 +1166,18 @@ def notify_contacts_arrived_safely(escort_id):
                 f"SafeHer Women Safety"
             )
             try:
-                send_email(c['email'].strip(), subj, body_txt)
+                from services.notify import notify
+                notify(
+                    event_type='escort_arrived',
+                    user_id=escort['user_id'],
+                    context={
+                        'user_name': user_name,
+                        'destination': dest_title,
+                        'escort_id': escort_id
+                    },
+                    contact_ids=[c['id']],
+                    event_key=f"escort:{escort_id}:arrived"
+                )
                 sent_count += 1
             except Exception as mail_err:
                 app_logger.error(f"[Escort Notify Arrived] Email error to {c['email']}: {mail_err}")
@@ -1361,6 +1360,24 @@ def check_active_escorts():
                             cursor=cursor
                         )
                         conn.commit()
+                        try:
+                            from services.notify import notify
+                            notify(
+                                event_type='escort_off_route',
+                                user_id=user_id,
+                                alert_id=new_aid,
+                                context={
+                                    'user_name': user_name,
+                                    'destination': escort['dest_name'],
+                                    'lat': lat,
+                                    'lng': lng,
+                                    'escort_id': escort_id,
+                                    'alert_id': new_aid
+                                },
+                                event_key=f"escort:{escort_id}:off_route"
+                            )
+                        except Exception as e_err:
+                            app_logger.warning(f"[NOTIFY ESCORT OFF ROUTE ERROR] {e_err}")
                     continue
 
             # ─── Condition (b): Missed Check-in (> 60s overdue) ────────────────────
@@ -1399,6 +1416,24 @@ def check_active_escorts():
                             cursor=cursor
                         )
                         conn.commit()
+                        try:
+                            from services.notify import notify
+                            notify(
+                                event_type='escort_missed_checkin',
+                                user_id=user_id,
+                                alert_id=new_aid,
+                                context={
+                                    'user_name': user_name,
+                                    'destination': escort['dest_name'],
+                                    'lat': lat,
+                                    'lng': lng,
+                                    'escort_id': escort_id,
+                                    'alert_id': new_aid
+                                },
+                                event_key=f"escort:{escort_id}:missed_checkin"
+                            )
+                        except Exception as e_err:
+                            app_logger.warning(f"[NOTIFY ESCORT MISSED CHECKIN ERROR] {e_err}")
                     continue
 
             # ─── Condition (b2): Contact Ping Check-in Timeout (> 60s overdue) ───────
@@ -1493,6 +1528,24 @@ def check_active_escorts():
                             cursor=cursor
                         )
                         conn.commit()
+                        try:
+                            from services.notify import notify
+                            notify(
+                                event_type='escort_no_signal',
+                                user_id=user_id,
+                                alert_id=new_aid,
+                                context={
+                                    'user_name': user_name,
+                                    'destination': escort['dest_name'],
+                                    'lat': lat,
+                                    'lng': lng,
+                                    'escort_id': escort_id,
+                                    'alert_id': new_aid
+                                },
+                                event_key=f"escort:{escort_id}:no_signal"
+                            )
+                        except Exception as e_err:
+                            app_logger.warning(f"[NOTIFY ESCORT NO SIGNAL ERROR] {e_err}")
                     continue
 
             elif seconds_since_update >= 300 and not active_alert_row:
@@ -1555,6 +1608,24 @@ def check_active_escorts():
                             cursor=cursor
                         )
                         conn.commit()
+                        try:
+                            from services.notify import notify
+                            notify(
+                                event_type='escort_late_arrival',
+                                user_id=user_id,
+                                alert_id=new_aid,
+                                context={
+                                    'user_name': user_name,
+                                    'destination': escort['dest_name'],
+                                    'lat': lat,
+                                    'lng': lng,
+                                    'escort_id': escort_id,
+                                    'alert_id': new_aid
+                                },
+                                event_key=f"escort:{escort_id}:late_arrival"
+                            )
+                        except Exception as e_err:
+                            app_logger.warning(f"[NOTIFY ESCORT LATE ARRIVAL ERROR] {e_err}")
                     continue
 
     except Exception as e:

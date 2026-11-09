@@ -599,6 +599,79 @@ def init_db():
         );
     ''')
 
+    # 17. Share Location sessions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            duration_minutes INTEGER,
+            until_stopped INTEGER DEFAULT 0,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'ended', 'expired')),
+            last_lat REAL,
+            last_lng REAL,
+            last_update_at TIMESTAMP,
+            ended_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 18. Share Location contact tokens table (1 unique tracking token per contact)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS share_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            share_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (share_id) REFERENCES shares(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 19. Ride Safety sessions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            vehicle_type TEXT NOT NULL,
+            vehicle_number TEXT,
+            driver_name TEXT,
+            driver_phone TEXT,
+            app_used TEXT,
+            pickup TEXT,
+            destination TEXT,
+            expected_minutes INTEGER,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expected_end_at TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'ended')),
+            last_lat REAL,
+            last_lng REAL,
+            last_update_at TIMESTAMP,
+            ended_at TIMESTAMP,
+            late_notified INTEGER DEFAULT 0,
+            alert_created INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ''')
+
+    # 20. Ride Safety contact tokens table (1 unique tracking token per contact)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ride_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ride_id INTEGER NOT NULL,
+            contact_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ride_id) REFERENCES rides(id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        );
+    ''')
+
+
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
@@ -636,6 +709,15 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_event_contact_channel ON notifications(event_key, contact_id, channel);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notif_settings_user ON notification_settings(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_optout_token ON contacts(optout_token);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_shares_user ON shares(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_shares_status ON shares(status);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_share_contacts_share ON share_contacts(share_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_share_contacts_token ON share_contacts(token);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_rides_user ON rides(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_rides_status ON rides(status);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ride_contacts_ride ON ride_contacts(ride_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ride_contacts_token ON ride_contacts(token);')
+
 
     conn.commit()
     conn.close()

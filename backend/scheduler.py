@@ -272,13 +272,159 @@ def cleanup_old_incident_events():
         return 0
 
 
+def check_expired_shares():
+    """
+    Find active shares that have expired (until_stopped = 0 and expires_at <= now),
+    mark them as 'expired', ended_at = CURRENT_TIMESTAMP, and dispatch 'share_ended'.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT s.id, s.user_id, u.name AS user_name
+            FROM shares s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.status = 'active'
+              AND s.until_stopped = 0
+              AND s.expires_at IS NOT NULL
+              AND s.expires_at <= datetime('now');
+        ''')
+        expired_rows = cursor.fetchall()
+        for r in expired_rows:
+            sid = r['id']
+            uid = r['user_id']
+            uname = r['user_name'] or 'SafeHer User'
+            cursor.execute("UPDATE shares SET status = 'expired', ended_at = CURRENT_TIMESTAMP WHERE id = ?;", (sid,))
+            cursor.execute("SELECT contact_id FROM share_contacts WHERE share_id = ?;", (sid,))
+            c_ids = [cr['contact_id'] for cr in cursor.fetchall()]
+            conn.commit()
+
+            try:
+                from services.notify import notify
+                notify(
+                    event_type='share_ended',
+                    user_id=uid,
+                    context={'user_name': uname, 'share_id': sid},
+                    contact_ids=c_ids,
+                    event_key=f"share:{sid}:ended"
+                )
+            except Exception as notif_err:
+                print(f"[Scheduler Expire Share Notify Error] {notif_err}")
+
+        conn.commit()
+        conn.close()
+        return len(expired_rows)
+    except Exception as e:
+        print(f"[Scheduler Expire Shares Error] {e}")
+        return 0
+
+
+def check_late_rides():
+    """
+    Monitor active rides:
+    (1) If 10 minutes past expected_end_at and late_notified = 0:
+        Send 'ride_late' notification and set late_notified = 1.
+    (2) If 20 minutes past expected_end_at and alert_created = 0:
+        Create a normal alert with reason 'late_arrival' and set alert_created = 1.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT r.id, r.user_id, r.expected_end_at, r.late_notified, r.alert_created,
+                   r.destination, r.vehicle_type, r.vehicle_number, r.last_lat, r.last_lng,
+                   u.name AS user_name
+            FROM rides r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.status = 'active' AND r.expected_end_at IS NOT NULL;
+        ''')
+        rides = cursor.fetchall()
+        now_utc = datetime.now(timezone.utc) if hasattr(datetime, 'now') else datetime.utcnow()
+
+        for r in rides:
+            rid = r['id']
+            uid = r['user_id']
+            uname = r['user_name'] or 'SafeHer User'
+            end_str = r['expected_end_at']
+            try:
+                end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00')) if 'T' in end_str else datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S")
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timedelta(hours=0))
+                now_cmp = datetime.now(end_dt.tzinfo)
+            except Exception:
+                continue
+
+            sec_past = (now_cmp - end_dt).total_seconds()
+
+            # (1) 10 minutes past expected end -> send ride_late
+            if sec_past >= 600 and not r['late_notified']:
+                cursor.execute("UPDATE rides SET late_notified = 1 WHERE id = ?;", (rid,))
+                cursor.execute("SELECT contact_id FROM ride_contacts WHERE ride_id = ?;", (rid,))
+                c_ids = [cr['contact_id'] for cr in cursor.fetchall()]
+                conn.commit()
+
+                try:
+                    from services.notify import notify
+                    notify(
+                        event_type='ride_late',
+                        user_id=uid,
+                        context={
+                            'user_name': uname,
+                            'destination': r['destination'],
+                            'vehicle_type': r['vehicle_type'],
+                            'vehicle_number': r['vehicle_number'],
+                            'ride_id': rid
+                        },
+                        contact_ids=c_ids,
+                        event_key=f"ride:{rid}:late"
+                    )
+                except Exception as notif_err:
+                    print(f"[Scheduler Late Ride Notify Error] {notif_err}")
+
+            # (2) 20 minutes past expected end -> create normal alert with late_arrival
+            if sec_past >= 1200 and not r['alert_created']:
+                cursor.execute("UPDATE rides SET alert_created = 1 WHERE id = ?;", (rid,))
+                conn.commit()
+
+                lat = r['last_lat'] or 12.9716
+                lng = r['last_lng'] or 77.5946
+
+                try:
+                    from routes.alerts import create_alert_internal
+                    create_alert_internal(
+                        user_id=uid,
+                        user_name=uname,
+                        mode='normal',
+                        lat=lat,
+                        lng=lng,
+                        reason='late_arrival',
+                        note=f"Automated Ride Alert: Overdue by 20 minutes past expected arrival at {r['destination']}",
+                        bypass_rate_limit=True,
+                        cursor=cursor,
+                        conn=conn
+                    )
+                    conn.commit()
+                except Exception as alert_err:
+                    print(f"[Scheduler Late Ride Alert Error] {alert_err}")
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Scheduler Check Late Rides Error] {e}")
+
+
 def run_tick():
     """
-    Periodic tick executed every 10 seconds to flush queued notifications from the outbox.
+    Periodic tick executed every 10 seconds:
+    - Ends expired location shares and dispatches share_ended
+    - Monitors late rides (ride_late at +10 min, normal alert at +20 min)
+    - Flushes queued notifications from the outbox
     Returns:
         number of notifications processed.
     """
     try:
+        check_expired_shares()
+        check_late_rides()
         from services.notify import process_outbox
         return process_outbox(limit=25)
     except Exception as e:

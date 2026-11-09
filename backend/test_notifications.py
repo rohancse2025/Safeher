@@ -341,5 +341,160 @@ class NotificationSystemTests(unittest.TestCase):
         self.assertEqual(data['active_email_contacts'], 1)
 
 
+    # ─── 9. Comprehensive Event Types & Queue Tests ───────────
+    @patch('services.notify.process_outbox')
+    def test_all_event_types_queue_correct_contacts(self, mock_outbox):
+        """
+        Verify each required event type queues the eligible contact (99001)
+        and skips opted_out (99002), no email (99003), and bounced (99004).
+        """
+        event_types = [
+            'alert_created',
+            'alert_uneasy',
+            'alert_escalated',
+            'alert_ended',
+            'volunteer_coming',
+            'escort_started',
+            'escort_arrived',
+            'escort_off_route',
+            'escort_missed_checkin',
+            'escort_no_signal',
+            'escort_late_arrival',
+            'escort_ended',
+            'timer_expired',
+            'share_started',
+            'share_ended',
+            'ride_started',
+            'ride_ended',
+            'ride_late',
+            'contact_added'
+        ]
+
+        for et in event_types:
+            key = f"evt_{et}_test_001"
+            created_ids = notify(
+                event_type=et,
+                user_id=99999,
+                context={
+                    'user_name': 'Priya Sharma',
+                    'destination': 'MG Road Metro',
+                    'lat': 12.9716,
+                    'lng': 77.5946
+                },
+                event_key=key
+            )
+            # 4 contacts: 1 queued, 3 skipped
+            self.assertEqual(len(created_ids), 4, f"Event {et} did not process all 4 contacts")
+
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT contact_id, status, last_error FROM notifications WHERE event_key = ? ORDER BY contact_id ASC;", (key,))
+            rows = cursor.fetchall()
+            conn.close()
+
+            status_map = {r['contact_id']: r['status'] for r in rows}
+            self.assertEqual(status_map.get(99001), 'queued', f"Event {et}: eligible contact 99001 must be queued")
+            self.assertEqual(status_map.get(99002), 'skipped', f"Event {et}: opted out contact 99002 must be skipped")
+            self.assertEqual(status_map.get(99003), 'skipped', f"Event {et}: no-email contact 99003 must be skipped")
+            self.assertEqual(status_map.get(99004), 'skipped', f"Event {et}: bounced contact 99004 must be skipped")
+
+    # ─── 10. Duress PIN Security Test ─────────────────────────
+    def test_duress_pin_never_sends_notifications(self):
+        """
+        Verify ending an alert with a duress PIN marks duress=1, keeps alert active,
+        and does NOT send any notification or log alert_ended.
+        """
+        conn = get_db()
+        cursor = conn.cursor()
+        from werkzeug.security import generate_password_hash
+        cursor.execute("UPDATE users SET pin_hash = ?, duress_pin_hash = ? WHERE id = 99999;",
+                       (generate_password_hash('1234'), generate_password_hash('9999')))
+        
+        cursor.execute('''
+            INSERT INTO alerts (user_id, mode, status, lat, lng, share_token)
+            VALUES (99999, 'emergency', 'active', 12.9716, 77.5946, 'duress_test_token_999');
+        ''')
+        alert_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        token = jwt.encode({'user_id': 99999, 'phone': '919876543210'}, app.config['SECRET_KEY'], algorithm='HS256')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        # End with duress PIN '9999'
+        resp = self.client.post(f'/api/alerts/{alert_id}/end', headers=headers, json={'pin': '9999'})
+        self.assertEqual(resp.status_code, 200)
+
+        # Check alert state: must remain 'active' and duress=1
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, duress FROM alerts WHERE id = ?;", (alert_id,))
+        a_row = cursor.fetchone()
+        self.assertEqual(a_row['status'], 'active')
+        self.assertEqual(a_row['duress'], 1)
+
+        # Check notifications: NO notification for this alert end must be queued
+        cursor.execute("SELECT COUNT(*) AS cnt FROM notifications WHERE event_key = ?;", (f"alert:{alert_id}:ended",))
+        cnt = cursor.fetchone()['cnt']
+        conn.close()
+        self.assertEqual(cnt, 0, "Duress PIN must NEVER queue an alert_ended notification")
+
+    # ─── 11. Shares & Rides Routes Test ───────────────────────
+    @patch('services.notify.process_outbox')
+    def test_shares_and_rides_endpoints(self, mock_outbox):
+        """Test POST /api/shares and POST /api/rides with public tracking tokens."""
+        token = jwt.encode({'user_id': 99999, 'phone': '919876543210'}, app.config['SECRET_KEY'], algorithm='HS256')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        # 1. Start share
+        s_resp = self.client.post('/api/shares', headers=headers, json={
+            'duration_minutes': 45,
+            'contact_ids': [99001],
+            'lat': 12.9716,
+            'lng': 77.5946
+        })
+        self.assertEqual(s_resp.status_code, 201)
+        s_data = s_resp.get_json()['data']
+        share_id = s_data['id']
+        share_tok = s_data['tokens'][0]['token']
+
+        # Public tracking for share token
+        track_resp = self.client.get(f'/api/track/{share_tok}')
+        self.assertEqual(track_resp.status_code, 200)
+        track_data = track_resp.get_json()['data']
+        self.assertEqual(track_data['type'], 'share')
+        self.assertEqual(track_data['status'], 'active')
+
+        # Stop share
+        stop_resp = self.client.post(f'/api/shares/{share_id}/stop', headers=headers)
+        self.assertEqual(stop_resp.status_code, 200)
+
+        # 2. Start ride
+        r_resp = self.client.post('/api/rides', headers=headers, json={
+            'vehicle_type': 'Auto',
+            'vehicle_number': 'KA-01-EE-5555',
+            'driver_name': 'Ramesh',
+            'destination': 'Indiranagar',
+            'expected_minutes': 25,
+            'contact_ids': [99001]
+        })
+        self.assertEqual(r_resp.status_code, 201)
+        r_data = r_resp.get_json()['data']
+        ride_id = r_data['id']
+        ride_tok = r_data['tokens'][0]['token']
+
+        # Public tracking for ride token
+        r_track_resp = self.client.get(f'/api/track/{ride_tok}')
+        self.assertEqual(r_track_resp.status_code, 200)
+        r_track_data = r_track_resp.get_json()['data']
+        self.assertEqual(r_track_data['type'], 'ride')
+        self.assertEqual(r_track_data['status'], 'active')
+        self.assertEqual(r_track_data['vehicle_number'], 'KA-01-EE-5555')
+
+        # End ride
+        end_r_resp = self.client.post(f'/api/rides/{ride_id}/end', headers=headers)
+        self.assertEqual(end_r_resp.status_code, 200)
+
+
 if __name__ == '__main__':
     unittest.main()

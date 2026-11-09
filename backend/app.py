@@ -22,6 +22,8 @@ from routes.push import push_bp
 from routes.evidence import evidence_bp
 from routes.escorts import escorts_bp, start_escort_monitor
 from routes.notifications import notifications_bp
+from routes.shares import shares_bp
+from routes.rides import rides_bp
 from scheduler import start_scheduler
 
 # 1. Load configuration from .env
@@ -79,6 +81,8 @@ def create_app():
     app.register_blueprint(evidence_bp)
     app.register_blueprint(escorts_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(shares_bp)
+    app.register_blueprint(rides_bp)
 
     # 5. Start background thread checking for expired running timers & evidence scheduler
     if os.getenv('TESTING') != 'true' and not os.getenv('DISABLE_SCHEDULER'):

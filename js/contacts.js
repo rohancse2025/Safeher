@@ -76,6 +76,8 @@ SafeHer.contacts = (function() {
 
   function openModal(editId) {
     clearErrs();
+    var warnEl = document.getElementById('warn-contact-email');
+    if (warnEl) warnEl.style.display = 'none';
     var modal = document.getElementById('contact-modal');
     var titleEl = document.getElementById('contact-modal-title');
     var idInput = document.getElementById('contact-edit-id');
@@ -152,6 +154,12 @@ SafeHer.contacts = (function() {
     }
 
     if (!ok) return;
+
+    if (!email) {
+      var warnEl = document.getElementById('warn-contact-email');
+      if (warnEl) warnEl.style.display = 'block';
+      SafeHer.toast('Saved. Notice: Without an email, automated email alerts will be skipped for this contact.');
+    }
 
     if (editId) {
       // PUT /api/contacts/:id

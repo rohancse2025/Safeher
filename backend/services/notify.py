@@ -20,7 +20,11 @@ MAX_ATTEMPTS = 5
 # SOS events that can NEVER be turned off
 SOS_EVENT_TYPES = {
     'sos', 'emergency', 'silent', 'uneasy', 'sos_safe',
-    'alert_resolved', 'safe', 'timer_expired', 'escort_alert'
+    'alert_resolved', 'safe', 'timer_expired', 'escort_alert',
+    'alert_created', 'alert_uneasy', 'alert_escalated', 'alert_ended',
+    'normal', 'escalated', 'volunteer_coming',
+    'escort_off_route', 'escort_missed_checkin', 'escort_no_signal',
+    'escort_late_arrival', 'ride_late'
 }
 
 
@@ -188,6 +192,33 @@ def notify(event_type, user_id, context=None, contact_ids=None, alert_id=None, e
             c_context = dict(context)
             c_context['contact_name'] = c['name']
             c_context['optout_url'] = optout_url
+
+            # Automatically resolve personalized tracking token for live tracking
+            frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+            c_track_token = None
+            if alert_id:
+                cursor.execute('SELECT token FROM alert_contacts WHERE alert_id = ? AND contact_id = ?;', (alert_id, c_id))
+                ac_row = cursor.fetchone()
+                if ac_row:
+                    c_track_token = ac_row['token']
+            elif context.get('escort_id'):
+                cursor.execute('SELECT token FROM escort_contacts WHERE escort_id = ? AND contact_id = ?;', (context['escort_id'], c_id))
+                ec_row = cursor.fetchone()
+                if ec_row:
+                    c_track_token = ec_row['token']
+            elif context.get('share_id'):
+                cursor.execute('SELECT token FROM share_contacts WHERE share_id = ? AND contact_id = ?;', (context['share_id'], c_id))
+                sc_row = cursor.fetchone()
+                if sc_row:
+                    c_track_token = sc_row['token']
+            elif context.get('ride_id'):
+                cursor.execute('SELECT token FROM ride_contacts WHERE ride_id = ? AND contact_id = ?;', (context['ride_id'], c_id))
+                rc_row = cursor.fetchone()
+                if rc_row:
+                    c_track_token = rc_row['token']
+
+            if c_track_token:
+                c_context['track_url'] = f"{frontend_url}/track.html?t={c_track_token}"
 
             # Render template
             subject, body_text, body_html = render_template(event_type, c_context)

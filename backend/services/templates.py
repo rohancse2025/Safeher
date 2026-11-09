@@ -18,16 +18,18 @@ def format_ist_time(dt=None):
         dt = get_ist_now()
     elif isinstance(dt, str):
         try:
-            # Parse ISO or standard string
             parsed = datetime.datetime.fromisoformat(dt.replace('Z', '+00:00'))
             if parsed.tzinfo is None:
                 dt = parsed.replace(tzinfo=datetime.timezone.utc).astimezone(IST_TZ)
             else:
                 dt = parsed.astimezone(IST_TZ)
         except Exception:
-            dt = get_ist_now()
+            try:
+                parsed = datetime.datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+                dt = parsed.replace(tzinfo=datetime.timezone.utc).astimezone(IST_TZ)
+            except Exception:
+                dt = get_ist_now()
 
-    # Format like '9:42 PM IST' or '9:42 PM IST, 9 Nov 2026'
     time_part = dt.strftime("%I:%M %p").lstrip('0')
     date_part = dt.strftime("%d %b %Y")
     return f"{time_part} IST, {date_part}"
@@ -65,6 +67,8 @@ def build_base_html(subject, preview_text, content_html, optout_url=None, user_n
     .btn-secondary {{ background-color: #F3F4F6; color: #374151 !important; border: 1px solid #D1D5DB; margin-left: 8px; }}
     .notice {{ background-color: #FEF2F2; border-left: 4px solid #DC2626; padding: 12px 14px; font-size: 13px; color: #991B1B; margin: 18px 0; border-radius: 0 6px 6px 0; }}
     .notice-safe {{ background-color: #F0FDF4; border-left: 4px solid #16A34A; padding: 12px 14px; font-size: 13px; color: #166534; margin: 18px 0; border-radius: 0 6px 6px 0; }}
+    .notice-info {{ background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 12px 14px; font-size: 13px; color: #1E40AF; margin: 18px 0; border-radius: 0 6px 6px 0; }}
+    .notice-warning {{ background-color: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 14px; font-size: 13px; color: #92400E; margin: 18px 0; border-radius: 0 6px 6px 0; }}
   </style>
 </head>
 <body>
@@ -87,16 +91,6 @@ def build_base_html(subject, preview_text, content_html, optout_url=None, user_n
 def render_template(event_type, context):
     """
     Renders (subject, body_text, body_html) for a given event_type.
-    Context keys:
-      - user_name: str
-      - time_str: str (optional, defaults to now in IST)
-      - lat, lng: float (optional)
-      - track_url: str (optional)
-      - destination: str (optional)
-      - vehicle_type, vehicle_number, app_used: str (optional)
-      - minutes: int (optional)
-      - optout_url: str (optional)
-      - note, reason: str (optional)
     """
     user_name = context.get('user_name') or 'A SafeHer user'
     time_str = context.get('time_str') or format_ist_time()
@@ -104,6 +98,8 @@ def render_template(event_type, context):
     lng = context.get('lng')
     track_url = context.get('track_url') or 'https://rohancse2025.github.io/Safeher/track.html'
     optout_url = context.get('optout_url')
+    mode = (context.get('mode') or 'normal').strip().lower()
+    dest = context.get('destination') or 'Destination'
 
     map_url = None
     if lat is not None and lng is not None:
@@ -113,7 +109,6 @@ def render_template(event_type, context):
         except (ValueError, TypeError):
             map_url = None
 
-    # Helper text blocks
     def make_links_text():
         lines = []
         if map_url:
@@ -139,13 +134,14 @@ def render_template(event_type, context):
 
     call_112_text = "If you cannot reach her, call 112."
     call_112_html = '<div class="notice"><strong>Emergency Helpline:</strong> If you cannot reach her, call 112.</div>'
+    time_short = time_str.split(' IST')[0]
 
-    # 1. SOS Alert
-    if event_type in ('sos', 'emergency', 'silent', 'uneasy'):
-        time_short = time_str.split(' IST')[0]
+    norm_event = str(event_type).strip().lower()
+
+    # 1. Alert Created (normal, silent, emergency, or generic alert_created / sos)
+    if norm_event in ('alert_created', 'sos', 'emergency', 'silent', 'normal'):
         subject = f"SafeHer: {user_name} needs help (SOS at {time_short})"
         preview = f"{user_name} has triggered an urgent safety alert on SafeHer."
-        
         body_text = (
             f"SafeHer Safety Alert\n\n"
             f"{user_name} has triggered an emergency SOS alert.\n"
@@ -154,7 +150,6 @@ def render_template(event_type, context):
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -163,30 +158,81 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">{user_name} needs help</h2>
               <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} has triggered an emergency SOS alert at {time_str}.</p>
-              
               <div class="card">
                 <div style="font-size: 13px; color: #6B7280; margin-bottom: 4px;">Alert Time</div>
                 <div style="font-weight: 600; color: #111827;">{time_str}</div>
               </div>
-
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 2. SOS Safe / Resolved
-    elif event_type in ('sos_safe', 'alert_resolved', 'safe'):
-        subject = f"SafeHer: {user_name} is safe (SOS resolved)"
-        preview = f"{user_name} has marked herself safe."
-
+    # 2. Alert Uneasy (Quiet Check-in)
+    elif norm_event in ('alert_uneasy', 'uneasy'):
+        subject = f"SafeHer: {user_name} is feeling unsafe ({time_short})"
+        preview = f"{user_name} activated Uneasy Mode and requested monitoring."
         body_text = (
-            f"SafeHer Safety Update\n\n"
-            f"{user_name} has resolved the emergency alert and marked herself safe.\n"
+            f"SafeHer Safety Notice – Uneasy Check-in\n\n"
+            f"{user_name} is in an uncomfortable or uneasy situation and requested safety monitoring.\n"
             f"Time: {time_str}\n\n"
-            f"No further action is required."
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
             f"{make_optout_text()}"
         )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">{user_name} requested safety check-in</h2>
+              <div class="notice-warning">
+                <strong>Uneasy Mode:</strong> {user_name} is feeling unsafe and requested monitoring at {time_str}.
+              </div>
+              <p style="margin: 12px 0 0 0; color: #4B5563;">Please keep your phone handy and check her location below.</p>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
 
+    # 3. Alert Escalated
+    elif norm_event in ('alert_escalated', 'escalated'):
+        subject = f"SafeHer: {user_name} alert escalated (Emergency at {time_short})"
+        preview = f"{user_name}'s safety status escalated to an Emergency SOS."
+        body_text = (
+            f"SafeHer Safety Alert – Escalated\n\n"
+            f"{user_name}'s safety alert has been escalated to an Emergency SOS.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Alert Escalated to Emergency</h2>
+              <div class="notice">
+                <strong>Immediate Attention:</strong> {user_name}'s situation has escalated to an Emergency SOS at {time_str}.
+              </div>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 4. Alert Ended / Safe
+    elif norm_event in ('alert_ended', 'sos_safe', 'alert_resolved', 'safe'):
+        subject = f"SafeHer: {user_name} is safe (Alert ended)"
+        preview = f"{user_name} has marked herself safe."
+        body_text = (
+            f"SafeHer Safety Update\n\n"
+            f"{user_name} has confirmed she is safe and the alert has ended.\n"
+            f"Time: {time_str}\n\n"
+            f"No further emergency action is required."
+            f"{make_optout_text()}"
+        )
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -195,18 +241,45 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">{user_name} is safe</h2>
               <div class="notice-safe">
-                <strong>Status Update:</strong> {user_name} has resolved the emergency alert at {time_str} and checked in safely.
+                <strong>Status Update:</strong> {user_name} confirmed she is safe at {time_str}.
               </div>
-              <p style="margin: 12px 0 0 0; color: #4B5563;">No further action is required on your part.</p>
+              <p style="margin: 12px 0 0 0; color: #4B5563;">The safety alert has ended. No further action is required.</p>
             """
         )
 
-    # 3. Escort Journey Start
-    elif event_type == 'escort_start':
-        dest = context.get('destination') or 'Destination'
+    # 5. Volunteer Coming
+    elif norm_event in ('volunteer_coming', 'volunteer_responding'):
+        vol_name = context.get('volunteer_name') or 'A verified community volunteer'
+        subject = f"SafeHer: Verified volunteer responding to {user_name}'s alert"
+        preview = f"{vol_name} has confirmed they are on their way to assist {user_name}."
+        body_text = (
+            f"SafeHer Volunteer Response Update\n\n"
+            f"{vol_name} has confirmed they are on their way to assist {user_name}.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Volunteer On The Way</h2>
+              <div class="notice-info">
+                <strong>Community Responder:</strong> {vol_name} has confirmed response to {user_name}'s alert at {time_str}.
+              </div>
+              <p style="margin: 12px 0 0 0; color: #4B5563;">They are proceeding towards {user_name}'s location.</p>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 6. Escort Started
+    elif norm_event in ('escort_started', 'escort_start'):
         subject = f"SafeHer: {user_name} started a journey to {dest}"
         preview = f"{user_name} is using Escort Mode for journey monitoring."
-
         body_text = (
             f"SafeHer Journey Monitoring\n\n"
             f"{user_name} has started an escorted journey to {dest}.\n"
@@ -215,7 +288,6 @@ def render_template(event_type, context):
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -224,33 +296,28 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Journey Monitoring Started</h2>
               <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} has started a monitored journey to <strong>{dest}</strong>.</p>
-              
               <div class="card">
                 <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Destination</div>
                 <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">{dest}</div>
                 <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Started At</div>
                 <div style="font-weight: 600; color: #111827;">{time_str}</div>
               </div>
-
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 4. Escort Arrived Safely
-    elif event_type == 'escort_safe':
-        dest = context.get('destination') or 'Destination'
+    # 7. Escort Arrived Safely
+    elif norm_event in ('escort_arrived', 'escort_safe'):
         subject = f"SafeHer: {user_name} arrived safely at {dest}"
-        preview = f"{user_name} has safely arrived at her destination."
-
+        preview = f"{user_name} safely reached {dest}."
         body_text = (
             f"SafeHer Journey Update\n\n"
             f"{user_name} has arrived safely at {dest}.\n"
             f"Time: {time_str}\n\n"
-            f"The journey monitoring session has concluded safely."
+            f"Journey monitoring has concluded safely."
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -259,179 +326,153 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Arrived Safely</h2>
               <div class="notice-safe">
-                <strong>Arrival Confirmed:</strong> {user_name} safely reached <strong>{dest}</strong> at {time_str}.
+                <strong>Arrival Confirmed:</strong> {user_name} reached <strong>{dest}</strong> safely at {time_str}.
               </div>
-              <p style="margin: 12px 0 0 0; color: #4B5563;">Journey monitoring has ended safely.</p>
+              <p style="margin: 12px 0 0 0; color: #4B5563;">Journey monitoring has concluded safely.</p>
             """
         )
 
-    # 5. Escort Route / Check-in Alert
-    elif event_type == 'escort_alert':
-        reason = context.get('reason') or 'Route deviation or missed check-in'
-        subject = f"SafeHer: {user_name} journey alert ({reason})"
-        preview = f"Alert during {user_name}'s journey: {reason}."
-
+    # 8. Escort Off Route
+    elif norm_event in ('escort_off_route', 'route_deviation'):
+        subject = f"SafeHer: {user_name} moved off route ({dest})"
+        preview = f"SafeHer detected {user_name} has moved away from the planned route to {dest}."
         body_text = (
-            f"SafeHer Journey Alert\n\n"
-            f"{user_name}'s journey has triggered an alert: {reason}.\n"
+            f"SafeHer Journey Alert – Off Route\n\n"
+            f"{user_name} has deviated from the planned route towards {dest}.\n"
             f"Time: {time_str}\n\n"
             f"{make_links_text()}\n\n"
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
             user_name=user_name,
             optout_url=optout_url,
             content_html=f"""
-              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Journey Safety Alert</h2>
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Off-Route Alert</h2>
               <div class="notice">
-                <strong>Trigger:</strong> {reason} at {time_str}.
+                <strong>Route Deviation:</strong> {user_name} has moved off the planned route towards <strong>{dest}</strong> at {time_str}.
               </div>
-              
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 6. Live Location Sharing Start
-    elif event_type == 'share_start':
-        duration_str = context.get('duration_str') or '1 hour'
-        subject = f"SafeHer: {user_name} shared live location ({duration_str})"
-        preview = f"{user_name} is sharing her real-time location with you."
-
+    # 9. Escort Missed Check-in
+    elif norm_event in ('escort_missed_checkin', 'missed_checkin'):
+        subject = f"SafeHer: {user_name} missed scheduled check-in"
+        preview = f"{user_name} did not answer a scheduled safety check-in."
         body_text = (
-            f"SafeHer Live Location Sharing\n\n"
-            f"{user_name} has started sharing her live location with you for {duration_str}.\n"
+            f"SafeHer Journey Alert – Missed Check-in\n\n"
+            f"{user_name} did not answer a scheduled safety check-in while traveling to {dest}.\n"
             f"Time: {time_str}\n\n"
             f"{make_links_text()}\n\n"
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
             user_name=user_name,
             optout_url=optout_url,
             content_html=f"""
-              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Live Location Shared</h2>
-              <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} is sharing her live location with you for {duration_str}.</p>
-              
-              <div class="card">
-                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Duration</div>
-                <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">{duration_str}</div>
-                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Shared At</div>
-                <div style="font-weight: 600; color: #111827;">{time_str}</div>
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Missed Safety Check-in</h2>
+              <div class="notice">
+                <strong>Attention:</strong> {user_name} did not confirm her scheduled check-in at {time_str}.
               </div>
-
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 7. Live Location Sharing Stop
-    elif event_type == 'share_stop':
-        subject = f"SafeHer: {user_name} stopped sharing location"
-        preview = f"{user_name} has ended live location sharing."
-
+    # 10. Escort No Signal
+    elif norm_event in ('escort_no_signal', 'no_signal'):
+        subject = f"SafeHer: No signal from {user_name}'s device"
+        preview = f"SafeHer has not received GPS updates from {user_name}'s phone."
         body_text = (
-            f"SafeHer Location Sharing Ended\n\n"
-            f"{user_name} has stopped sharing her live location.\n"
+            f"SafeHer Journey Alert – No Signal\n\n"
+            f"SafeHer has not received location updates from {user_name}'s device for an extended period.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Device Signal Lost</h2>
+              <div class="notice-warning">
+                <strong>No Location Updates:</strong> No GPS signal received from {user_name}'s device as of {time_str}.
+              </div>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 11. Escort Late Arrival
+    elif norm_event in ('escort_late_arrival', 'late_arrival'):
+        subject = f"SafeHer: {user_name} overdue at destination"
+        preview = f"{user_name} has not arrived at {dest} by expected arrival time."
+        body_text = (
+            f"SafeHer Journey Alert – Late Arrival\n\n"
+            f"{user_name} has not confirmed arrival at {dest} and is past expected arrival time.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Journey Overdue</h2>
+              <div class="notice">
+                <strong>Late Arrival:</strong> {user_name} has not checked in at <strong>{dest}</strong> past the scheduled arrival time ({time_str}).
+              </div>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 12. Escort Ended
+    elif norm_event in ('escort_ended', 'escort_end'):
+        subject = f"SafeHer: {user_name} ended journey escort"
+        preview = f"{user_name} has ended journey monitoring."
+        body_text = (
+            f"SafeHer Journey Update\n\n"
+            f"{user_name} has concluded her journey monitoring session.\n"
             f"Time: {time_str}\n"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
             user_name=user_name,
             optout_url=optout_url,
             content_html=f"""
-              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Location Sharing Ended</h2>
-              <p style="margin: 0 0 12px 0; color: #4B5563;">{user_name} has concluded her live location sharing session at {time_str}.</p>
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Journey Escort Ended</h2>
+              <p style="margin: 0 0 12px 0; color: #4B5563;">{user_name} ended the journey monitoring session at {time_str}.</p>
             """
         )
 
-    # 8. Safety Timer Start
-    elif event_type == 'timer_start':
-        minutes = context.get('minutes') or 15
-        subject = f"SafeHer: {user_name} set a {minutes}-min safety timer"
-        preview = f"{user_name} has activated a safety countdown timer."
-
-        body_text = (
-            f"SafeHer Safety Timer\n\n"
-            f"{user_name} has set a {minutes}-minute safety timer.\n"
-            f"Started: {time_str}\n"
-            f"If she does not disarm the timer within {minutes} minutes, SafeHer will automatically alert you with her location.\n\n"
-            f"{call_112_text}"
-            f"{make_optout_text()}"
-        )
-
-        body_html = build_base_html(
-            subject=subject,
-            preview_text=preview,
-            user_name=user_name,
-            optout_url=optout_url,
-            content_html=f"""
-              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Safety Timer Activated</h2>
-              <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} has started a <strong>{minutes}-minute</strong> safety timer.</p>
-              
-              <div class="card">
-                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Duration</div>
-                <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">{minutes} minutes</div>
-                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Started At</div>
-                <div style="font-weight: 600; color: #111827;">{time_str}</div>
-              </div>
-
-              <p style="font-size: 13px; color: #4B5563;">SafeHer will automatically dispatch an emergency alert with her coordinates if she does not check in before the timer expires.</p>
-              {call_112_html}
-            """
-        )
-
-    # 9. Safety Timer Safe / Disarmed
-    elif event_type == 'timer_safe':
-        subject = f"SafeHer: {user_name} checked in safely (Timer stopped)"
-        preview = f"{user_name} disarmed her safety timer."
-
-        body_text = (
-            f"SafeHer Safety Timer Disarmed\n\n"
-            f"{user_name} has safely checked in and stopped her safety timer.\n"
-            f"Time: {time_str}\n\n"
-            f"No action is required."
-            f"{make_optout_text()}"
-        )
-
-        body_html = build_base_html(
-            subject=subject,
-            preview_text=preview,
-            user_name=user_name,
-            optout_url=optout_url,
-            content_html=f"""
-              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Safety Timer Disarmed</h2>
-              <div class="notice-safe">
-                <strong>Check-in Confirmed:</strong> {user_name} safely disarmed her safety timer at {time_str}.
-              </div>
-              <p style="margin: 12px 0 0 0; color: #4B5563;">No further action is required.</p>
-            """
-        )
-
-    # 10. Safety Timer Expired
-    elif event_type == 'timer_expired':
+    # 13. Safety Timer Expired
+    elif norm_event in ('timer_expired', 'timer_alert'):
         subject = f"SafeHer: {user_name} timer expired without check-in"
-        preview = f"{user_name}'s safety timer expired without a safe check-in."
-
+        preview = f"{user_name}'s safety timer expired without a confirmation check-in."
         body_text = (
             f"SafeHer Safety Alert – Timer Expired\n\n"
-            f"{user_name}'s safety timer has expired without a check-in.\n"
+            f"{user_name}'s safety timer has expired without a safe check-in.\n"
             f"Time: {time_str}\n\n"
             f"{make_links_text()}\n\n"
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -440,25 +481,120 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Safety Timer Expired</h2>
               <div class="notice">
-                <strong>Attention:</strong> {user_name}'s safety timer expired without a confirmation check-in at {time_str}.
+                <strong>Attention:</strong> {user_name}'s countdown timer reached zero without a check-in at {time_str}.
               </div>
-              
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 11. Monitored Ride Start
-    elif event_type == 'ride_start':
+    # 13b. Safety Timer Start
+    elif norm_event == 'timer_start':
+        minutes = context.get('minutes') or 15
+        subject = f"SafeHer: {user_name} set a {minutes}-min safety timer"
+        preview = f"{user_name} activated a {minutes}-min safety timer."
+        body_text = (
+            f"SafeHer Safety Timer\n\n"
+            f"{user_name} set a {minutes}-minute safety timer at {time_str}.\n"
+            f"If she does not check in before expiration, SafeHer will automatically alert you.\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Safety Timer Started</h2>
+              <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} set a <strong>{minutes}-minute</strong> safety timer at {time_str}.</p>
+              {call_112_html}
+            """
+        )
+
+    # 13c. Safety Timer Safe
+    elif norm_event == 'timer_safe':
+        subject = f"SafeHer: {user_name} checked in safely (Timer stopped)"
+        preview = f"{user_name} disarmed her safety timer."
+        body_text = (
+            f"SafeHer Safety Timer Disarmed\n\n"
+            f"{user_name} safely checked in and stopped her safety timer at {time_str}.\n"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Safety Timer Disarmed</h2>
+              <div class="notice-safe">
+                <strong>Check-in Confirmed:</strong> {user_name} safely disarmed her timer at {time_str}.
+              </div>
+            """
+        )
+
+    # 14. Live Location Sharing Start
+    elif norm_event in ('share_started', 'share_start'):
+        duration_str = context.get('duration_str') or '1 hour'
+        subject = f"SafeHer: {user_name} shared live location ({duration_str})"
+        preview = f"{user_name} is sharing real-time location with you."
+        body_text = (
+            f"SafeHer Live Location Sharing\n\n"
+            f"{user_name} has started sharing her live location with you for {duration_str}.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Live Location Shared</h2>
+              <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} is sharing her live location with you for {duration_str}.</p>
+              <div class="card">
+                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Duration</div>
+                <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">{duration_str}</div>
+                <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Shared At</div>
+                <div style="font-weight: 600; color: #111827;">{time_str}</div>
+              </div>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 15. Live Location Sharing Stop
+    elif norm_event in ('share_ended', 'share_stop'):
+        subject = f"SafeHer: {user_name} stopped sharing location"
+        preview = f"{user_name} ended live location sharing."
+        body_text = (
+            f"SafeHer Location Sharing Ended\n\n"
+            f"{user_name} has stopped sharing her live location.\n"
+            f"Time: {time_str}\n"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Location Sharing Ended</h2>
+              <p style="margin: 0 0 12px 0; color: #4B5563;">{user_name} concluded live location sharing at {time_str}.</p>
+            """
+        )
+
+    # 16. Ride Safety Started
+    elif norm_event in ('ride_started', 'ride_start'):
         v_type = context.get('vehicle_type') or 'Cab'
         v_num = context.get('vehicle_number') or ''
         vehicle_desc = f"{v_type} {v_num}".strip()
-        dest = context.get('destination') or ''
-        dest_desc = f" to {dest}" if dest else ""
-
+        dest_desc = f" to {dest}" if dest and dest != 'Destination' else ""
         subject = f"SafeHer: {user_name} started a ride ({vehicle_desc})"
-        preview = f"{user_name} has boarded a ride{dest_desc} and started safety monitoring."
-
+        preview = f"{user_name} boarded a ride{dest_desc} and started safety monitoring."
         body_text = (
             f"SafeHer Monitored Ride\n\n"
             f"{user_name} has started a monitored ride{dest_desc}.\n"
@@ -468,7 +604,6 @@ def render_template(event_type, context):
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -477,26 +612,22 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Monitored Ride Started</h2>
               <p style="margin: 0 0 16px 0; color: #4B5563;">{user_name} has boarded a ride{dest_desc}.</p>
-              
               <div class="card">
                 <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Vehicle</div>
                 <div style="font-weight: 600; color: #111827; margin-bottom: 8px;">{vehicle_desc}</div>
                 <div style="font-size: 13px; color: #6B7280; margin-bottom: 2px;">Started At</div>
                 <div style="font-weight: 600; color: #111827;">{time_str}</div>
               </div>
-
               {make_links_html()}
               {call_112_html}
             """
         )
 
-    # 12. Monitored Ride Safe
-    elif event_type == 'ride_safe':
-        dest = context.get('destination') or ''
-        dest_desc = f" at {dest}" if dest else ""
+    # 17. Ride Safety Ended
+    elif norm_event in ('ride_ended', 'ride_safe'):
+        dest_desc = f" at {dest}" if dest and dest != 'Destination' else ""
         subject = f"SafeHer: {user_name} reached destination safely"
         preview = f"{user_name} completed her ride safely."
-
         body_text = (
             f"SafeHer Ride Complete\n\n"
             f"{user_name} has completed her ride safely{dest_desc}.\n"
@@ -504,7 +635,6 @@ def render_template(event_type, context):
             f"Ride monitoring has concluded safely."
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -513,17 +643,43 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Ride Completed Safely</h2>
               <div class="notice-safe">
-                <strong>Status:</strong> {user_name} reached her destination safely at {time_str}.
+                <strong>Status:</strong> {user_name} reached destination safely at {time_str}.
               </div>
               <p style="margin: 12px 0 0 0; color: #4B5563;">Ride monitoring has ended safely.</p>
             """
         )
 
-    # 13. Welcome / Consent Notice
-    elif event_type == 'welcome':
+    # 18. Ride Late
+    elif norm_event in ('ride_late', 'ride_overdue'):
+        subject = f"SafeHer: {user_name}'s ride is overdue"
+        preview = f"{user_name}'s ride is past expected arrival time."
+        body_text = (
+            f"SafeHer Ride Alert – Overdue\n\n"
+            f"{user_name}'s ride is past expected arrival time and has not checked in as completed.\n"
+            f"Time: {time_str}\n\n"
+            f"{make_links_text()}\n\n"
+            f"{call_112_text}"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Ride Overdue Alert</h2>
+              <div class="notice">
+                <strong>Attention:</strong> {user_name}'s ride is past the expected arrival time at {time_str}.
+              </div>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
+    # 19. Contact Added / Welcome
+    elif norm_event in ('contact_added', 'welcome'):
         subject = f"SafeHer: {user_name} added you as a trusted safety contact"
         preview = f"{user_name} added you as an emergency contact on SafeHer."
-
         body_text = (
             f"SafeHer Safety Notice\n\n"
             f"{user_name} added you as a trusted contact for SafeHer alerts.\n\n"
@@ -531,7 +687,6 @@ def render_template(event_type, context):
             f"If you did not expect this or do not wish to receive alerts, you can opt out anytime here:\n"
             f"{optout_url or 'https://rohancse2025.github.io/Safeher'}\n"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
@@ -540,13 +695,11 @@ def render_template(event_type, context):
             content_html=f"""
               <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Trusted Safety Contact Confirmation</h2>
               <p style="margin: 0 0 14px 0; color: #374151;"><strong>{user_name}</strong> has added you as a trusted emergency contact on SafeHer.</p>
-              
               <div class="card">
                 <p style="margin: 0; font-size: 13px; color: #4B5563; line-height: 1.5;">
                   As an emergency contact, you will receive automated notifications with map coordinates and a live tracking link whenever {user_name} triggers an SOS or uses journey escort features.
                 </p>
               </div>
-
               <p style="font-size: 13px; color: #6B7280; margin: 16px 0 0 0;">
                 If you did not agree to this or prefer not to receive alerts, you can opt out anytime below.
               </p>
@@ -558,7 +711,6 @@ def render_template(event_type, context):
         subject = f"SafeHer: Notification from {user_name}"
         preview = f"Notification from SafeHer for {user_name}."
         note = context.get('note') or 'Safety alert notification'
-
         body_text = (
             f"SafeHer Notification\n\n"
             f"{user_name}: {note}\n"
@@ -567,7 +719,6 @@ def render_template(event_type, context):
             f"{call_112_text}"
             f"{make_optout_text()}"
         )
-
         body_html = build_base_html(
             subject=subject,
             preview_text=preview,
