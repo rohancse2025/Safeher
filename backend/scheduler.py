@@ -4,7 +4,7 @@ import time
 import shutil
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from db import get_db
 
 logger = logging.getLogger('safeher')
@@ -413,11 +413,157 @@ def check_late_rides():
         print(f"[Scheduler Check Late Rides Error] {e}")
 
 
+def check_alert_reminders():
+    """
+    Periodic check for active alerts (SOS, Uneasy, Escort, Timer, Ride):
+    Sends reminder emails at 3 minutes and 10 minutes to the same contacts
+    if no contact has responded through the tracking page.
+    Event keys: alert:<id>:reminder1 and alert:<id>:reminder2.
+    Stops as soon as any contact responds or the alert ends.
+    Keeps sending to silent-mode alerts ended with the duress PIN (status='active', duress=1).
+    Respects user setting 'alert_reminders' (default on).
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # 1. Query all active alerts
+        cursor.execute('''
+            SELECT a.id, a.user_id, a.mode, a.status, a.started_at, a.lat, a.lng,
+                   a.share_token, a.duress, u.name as user_name
+            FROM alerts a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.status = 'active';
+        ''')
+        active_alerts = cursor.fetchall()
+        if not active_alerts:
+            conn.close()
+            return 0
+
+        from services.notify import notify, format_ist_time
+
+        reminders_queued = 0
+
+        for a in active_alerts:
+            alert_id = a['id']
+            user_id = a['user_id']
+            user_name = a['user_name'] or 'SafeHer User'
+
+            # 2. Stop as soon as any contact responds through tracking page
+            cursor.execute("SELECT COUNT(*) AS count FROM contact_responses WHERE alert_id = ?;", (alert_id,))
+            resp_row = cursor.fetchone()
+            if resp_row and resp_row['count'] > 0:
+                continue
+
+            # 3. Check if user turned off reminder emails in notification_settings
+            cursor.execute('''
+                SELECT enabled FROM notification_settings
+                WHERE user_id = ? AND event_type IN ('alert_reminders', 'alert_reminder');
+            ''', (user_id,))
+            setting_row = cursor.fetchone()
+            if setting_row and not bool(setting_row['enabled']):
+                continue
+
+            # 4. Calculate elapsed seconds since alert started
+            started_at_str = a['started_at']
+            if not started_at_str:
+                continue
+
+            elapsed_sec = 0.0
+            try:
+                cursor.execute("SELECT (julianday('now') - julianday(?)) * 86400 AS elapsed;", (started_at_str,))
+                row_elapsed = cursor.fetchone()
+                if row_elapsed and row_elapsed['elapsed'] is not None:
+                    elapsed_sec = float(row_elapsed['elapsed'])
+            except Exception:
+                pass
+
+            if elapsed_sec <= 0.0:
+                try:
+                    now_utc = datetime.now(timezone.utc)
+                    clean = started_at_str.replace('Z', '+00:00')
+                    if '+' in clean:
+                        parsed = datetime.fromisoformat(clean)
+                    else:
+                        parsed = datetime.strptime(clean[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    elapsed_sec = (now_utc - parsed).total_seconds()
+                except Exception:
+                    elapsed_sec = 0.0
+
+            # Determine alert time in IST (e.g. "9:42 PM")
+            alert_time_ist = format_ist_time(started_at_str)
+            if " IST" in alert_time_ist:
+                time_part = alert_time_ist.split(" IST")[0]
+            else:
+                time_part = alert_time_ist
+
+            # Get contacts for this alert (from alert_contacts)
+            cursor.execute("SELECT contact_id FROM alert_contacts WHERE alert_id = ?;", (alert_id,))
+            ac_rows = cursor.fetchall()
+            alert_contacts = [r['contact_id'] for r in ac_rows] if ac_rows else None
+
+            context = {
+                'user_name': user_name,
+                'alert_time_ist': time_part,
+                'time_str': format_ist_time(),
+                'lat': a['lat'] or 12.9716,
+                'lng': a['lng'] or 77.5946
+            }
+
+            # 5. Check Reminder 1 at 3 minutes (>= 180 seconds)
+            if elapsed_sec >= 180:
+                event_key_1 = f"alert:{alert_id}:reminder1"
+                cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key = ?;", (event_key_1,))
+                notif_check = cursor.fetchone()
+                if not notif_check or notif_check['count'] == 0:
+                    try:
+                        notify(
+                            event_type="alert_reminder",
+                            user_id=user_id,
+                            context=context,
+                            contact_ids=alert_contacts,
+                            alert_id=alert_id,
+                            event_key=event_key_1
+                        )
+                        reminders_queued += 1
+                        logger.info(f"[Scheduler] Alert #{alert_id} 3-minute reminder queued (key={event_key_1})")
+                    except Exception as e:
+                        logger.warning(f"[Scheduler Reminder 1 Error] {e}")
+
+            # 6. Check Reminder 2 at 10 minutes (>= 600 seconds)
+            if elapsed_sec >= 600:
+                event_key_2 = f"alert:{alert_id}:reminder2"
+                cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key = ?;", (event_key_2,))
+                notif_check = cursor.fetchone()
+                if not notif_check or notif_check['count'] == 0:
+                    try:
+                        notify(
+                            event_type="alert_reminder",
+                            user_id=user_id,
+                            context=context,
+                            contact_ids=alert_contacts,
+                            alert_id=alert_id,
+                            event_key=event_key_2
+                        )
+                        reminders_queued += 1
+                        logger.info(f"[Scheduler] Alert #{alert_id} 10-minute reminder queued (key={event_key_2})")
+                    except Exception as e:
+                        logger.warning(f"[Scheduler Reminder 2 Error] {e}")
+
+        conn.commit()
+        conn.close()
+        return reminders_queued
+    except Exception as e:
+        logger.error(f"[Scheduler check_alert_reminders Error] {e}")
+        return 0
+
+
 def run_tick():
     """
     Periodic tick executed every 10 seconds:
     - Ends expired location shares and dispatches share_ended
     - Monitors late rides (ride_late at +10 min, normal alert at +20 min)
+    - Checks 3-minute and 10-minute active alert reminder emails
     - Flushes queued notifications from the outbox
     Returns:
         number of notifications processed.
@@ -425,6 +571,7 @@ def run_tick():
     try:
         check_expired_shares()
         check_late_rides()
+        check_alert_reminders()
         from services.notify import process_outbox
         return process_outbox(limit=25)
     except Exception as e:

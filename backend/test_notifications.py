@@ -496,5 +496,116 @@ class NotificationSystemTests(unittest.TestCase):
         self.assertEqual(end_r_resp.status_code, 200)
 
 
+    # ─── 13. Alert Reminders at 3m & 10m Tests ──────────────────
+    @patch('services.notify.process_outbox')
+    def test_alert_reminders_timing_cancellation_and_duress(self, mock_outbox):
+        """
+        Verify reminder emails:
+        - 3-min reminder sent after 180s
+        - 10-min reminder sent after 600s
+        - stopped as soon as contact responds
+        - stopped when alert ends
+        - continues as normal for duress PIN alerts (status='active', duress=1)
+        - no duplicates (idempotent)
+        - respects 'alert_reminders' disabled setting
+        """
+        from scheduler import check_alert_reminders
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # (A) Create active alert from 4 minutes ago (240s ago)
+        cursor.execute("""
+            INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token, duress)
+            VALUES (99999, 'normal', 'active', 'test_sos', 12.9716, 77.5946, datetime('now', '-240 seconds'), 'tok_rem_001', 0);
+        """)
+        alert_id_1 = cursor.lastrowid
+        cursor.execute("INSERT INTO alert_contacts (alert_id, contact_id, token) VALUES (?, 99001, 'tok_c_001');", (alert_id_1,))
+        conn.commit()
+
+        # Run scheduler tick
+        queued = check_alert_reminders()
+        self.assertGreaterEqual(queued, 1)
+
+        # Verify reminder1 was created with key alert:<id>:reminder1
+        cursor.execute("SELECT event_key, status, subject FROM notifications WHERE event_key = ?;", (f"alert:{alert_id_1}:reminder1",))
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row['event_key'], f"alert:{alert_id_1}:reminder1")
+        self.assertIn("Reminder", row['subject'])
+
+        # Run again immediately -> no duplicates!
+        queued_dup = check_alert_reminders()
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key = ?;", (f"alert:{alert_id_1}:reminder1",))
+        self.assertEqual(cursor.fetchone()['count'], 1)
+
+        # (B) Advance alert to 12 minutes ago -> reminder2 queued
+        cursor.execute("UPDATE alerts SET started_at = datetime('now', '-720 seconds') WHERE id = ?;", (alert_id_1,))
+        conn.commit()
+        queued_2 = check_alert_reminders()
+        self.assertGreaterEqual(queued_2, 1)
+        cursor.execute("SELECT event_key FROM notifications WHERE event_key = ?;", (f"alert:{alert_id_1}:reminder2",))
+        self.assertIsNotNone(cursor.fetchone())
+
+        # (C) Stopping on contact response:
+        # Create alert 2 from 5 minutes ago, but contact responds
+        cursor.execute("""
+            INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token, duress)
+            VALUES (99999, 'normal', 'active', 'test_sos', 12.9716, 77.5946, datetime('now', '-300 seconds'), 'tok_rem_002', 0);
+        """)
+        alert_id_2 = cursor.lastrowid
+        cursor.execute("INSERT INTO alert_contacts (alert_id, contact_id, token) VALUES (?, 99001, 'tok_c_002');", (alert_id_2,))
+        cursor.execute("INSERT INTO contact_responses (alert_id, contact_id, status) VALUES (?, 99001, 'on_the_way');", (alert_id_2,))
+        conn.commit()
+
+        check_alert_reminders()
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key LIKE ?;", (f"alert:{alert_id_2}:%",))
+        self.assertEqual(cursor.fetchone()['count'], 0, "No reminder should be sent after contact responds")
+
+        # (D) Stopping when alert ends:
+        cursor.execute("""
+            INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token, duress)
+            VALUES (99999, 'normal', 'ended', 'test_sos', 12.9716, 77.5946, datetime('now', '-300 seconds'), 'tok_rem_003', 0);
+        """)
+        alert_id_3 = cursor.lastrowid
+        cursor.execute("INSERT INTO alert_contacts (alert_id, contact_id, token) VALUES (?, 99001, 'tok_c_003');", (alert_id_3,))
+        conn.commit()
+
+        check_alert_reminders()
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key LIKE ?;", (f"alert:{alert_id_3}:%",))
+        self.assertEqual(cursor.fetchone()['count'], 0, "No reminder should be sent when alert has ended")
+
+        # (E) Silent-mode ended with Duress PIN: status remains 'active', duress=1
+        # Reminders MUST continue to send as normal!
+        cursor.execute("""
+            INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token, duress)
+            VALUES (99999, 'silent', 'active', 'duress_test', 12.9716, 77.5946, datetime('now', '-300 seconds'), 'tok_rem_004', 1);
+        """)
+        alert_id_4 = cursor.lastrowid
+        cursor.execute("INSERT INTO alert_contacts (alert_id, contact_id, token) VALUES (?, 99001, 'tok_c_004');", (alert_id_4,))
+        conn.commit()
+
+        check_alert_reminders()
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key = ?;", (f"alert:{alert_id_4}:reminder1",))
+        self.assertEqual(cursor.fetchone()['count'], 1, "Duress PIN alert stays active and keeps sending reminders as normal")
+
+        # (F) Respects disabled setting
+        cursor.execute("""
+            INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token, duress)
+            VALUES (99999, 'normal', 'active', 'disabled_setting_test', 12.9716, 77.5946, datetime('now', '-300 seconds'), 'tok_rem_005', 0);
+        """)
+        alert_id_5 = cursor.lastrowid
+        cursor.execute("INSERT INTO alert_contacts (alert_id, contact_id, token) VALUES (?, 99001, 'tok_c_005');", (alert_id_5,))
+        # Turn off reminder emails for user 99999
+        cursor.execute("INSERT OR REPLACE INTO notification_settings (user_id, event_type, enabled) VALUES (99999, 'alert_reminders', 0);")
+        conn.commit()
+
+        check_alert_reminders()
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE event_key LIKE ?;", (f"alert:{alert_id_5}:%",))
+        self.assertEqual(cursor.fetchone()['count'], 0, "No reminder when alert_reminders setting is disabled")
+
+        conn.close()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -129,6 +129,27 @@ SafeHer.shareLocation = (function() {
   }
 
   // ─── Render Active Sharing View ───────────────────────────
+  function updateLiveLinkDisplay(session) {
+    var urlEl = document.getElementById('share-live-link-url');
+    if (!urlEl) return;
+    var trackUrl = (session && session.trackUrl) ? session.trackUrl : (window.location.origin + '/track.html');
+    urlEl.textContent = trackUrl;
+  }
+
+  function copyLiveLink() {
+    var session = getActiveSession();
+    var trackUrl = (session && session.trackUrl) ? session.trackUrl : (window.location.origin + '/track.html');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(trackUrl).then(function() {
+        SafeHer.toast('Tracking link copied to clipboard!');
+      }).catch(function() {
+        window.prompt('Copy tracking link:', trackUrl);
+      });
+    } else {
+      window.prompt('Copy tracking link:', trackUrl);
+    }
+  }
+
   function renderActiveView(session) {
     var activeView = document.getElementById('share-active-view');
     var setupView = document.getElementById('share-setup-view');
@@ -137,6 +158,7 @@ SafeHer.shareLocation = (function() {
 
     updateActiveTimeDisplay(session);
     updateCoordsDisplay(session.lat, session.lng);
+    updateLiveLinkDisplay(session);
     renderActiveContactsList(session);
     initMap(session.lat, session.lng);
   }
@@ -311,6 +333,9 @@ SafeHer.shareLocation = (function() {
               markerInstance.setLatLng([currentLat, currentLng]);
               mapInstance.panTo([currentLat, currentLng]);
             }
+            if (session.shareId && SafeHer.api && SafeHer.api.updateSharePosition) {
+              SafeHer.api.updateSharePosition(session.shareId, currentLat, currentLng);
+            }
           }
         },
         function() {
@@ -355,6 +380,15 @@ SafeHer.shareLocation = (function() {
         ? new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : 'until you stop';
 
+      var untilStopped = (selectedDuration === 'stop');
+      var durationMins = 60;
+      if (selectedDuration === '15m') durationMins = 15;
+      else if (selectedDuration === '1h') durationMins = 60;
+      else if (selectedDuration === '4h') durationMins = 240;
+      else if (selectedDuration === '8h') durationMins = 480;
+      else if (selectedDuration === 'all_day') durationMins = 1440;
+      if (untilStopped) durationMins = null;
+
       var session = {
         active: true,
         startTime: Date.now(),
@@ -364,7 +398,10 @@ SafeHer.shareLocation = (function() {
         contactIds: selectedContactIds,
         lat: currentLat,
         lng: currentLng,
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        shareId: null,
+        trackUrl: window.location.origin + '/track.html',
+        isOffline: !navigator.onLine
       };
 
       saveActiveSession(session);
@@ -372,32 +409,41 @@ SafeHer.shareLocation = (function() {
       renderActiveView(session);
       startTrackingLoop();
 
-      var allContacts = SafeHer.storage.get('contacts') || [];
-      var chosenContacts = allContacts.filter(function(c) {
-        return selectedContactIds.indexOf(c.id) !== -1;
-      });
-      if (chosenContacts.length === 0) chosenContacts = allContacts;
-
-      var durationMins = 60;
-      if (selectedDuration === '15m') durationMins = 15;
-      else if (selectedDuration === '1h') durationMins = 60;
-      else if (selectedDuration === '8h') durationMins = 480;
-      else if (selectedDuration === 'all_day') durationMins = 1440;
+      var sharePayload = {
+        contact_ids: selectedContactIds,
+        duration_minutes: durationMins,
+        until_stopped: untilStopped,
+        lat: currentLat,
+        lng: currentLng
+      };
 
       if (SafeHer.api && SafeHer.api.shareLocation) {
-        SafeHer.api.shareLocation({
-          lat: currentLat,
-          lng: currentLng,
-          duration_minutes: durationMins,
-          duration_str: selectedDuration,
-          contacts: chosenContacts
-        }, function(err, result) {
-          if (!err && result) {
-            session.shareToken = result.share_token;
-            session.trackUrl = result.track_url;
+        SafeHer.api.shareLocation(sharePayload, function(err, result) {
+          if (err || !result) {
+            console.warn('[ShareLocation] Backend share failed, enqueued offline:', err);
+            if (SafeHer.offlineQueue) {
+              SafeHer.offlineQueue.enqueue({
+                url: '/api/shares',
+                method: 'POST',
+                body: sharePayload
+              });
+            }
+            session.isOffline = true;
             saveActiveSession(session);
-            if (SafeHer.toast) SafeHer.toast('⚡ Location alerts sent via WhatsApp & Email!');
+            renderActiveContactsList(session);
+            return;
           }
+
+          var shareData = result.data || result;
+          session.shareId = shareData.id || null;
+          if (shareData.tokens && shareData.tokens.length > 0) {
+            session.shareToken = shareData.tokens[0].token;
+            session.trackUrl = shareData.tokens[0].track_url;
+          }
+          session.isOffline = false;
+          saveActiveSession(session);
+          updateLiveLinkDisplay(session);
+          renderActiveContactsList(session);
         });
       }
 
@@ -423,8 +469,11 @@ SafeHer.shareLocation = (function() {
   // ─── Stop Sharing Action ──────────────────────────────────
   function stopSharing(isTimeout) {
     var activeSession = getActiveSession();
-    if (activeSession && activeSession.shareToken && SafeHer.api && SafeHer.api.stopShareLocation) {
-      SafeHer.api.stopShareLocation({ share_token: activeSession.shareToken });
+    if (activeSession && activeSession.shareId && SafeHer.api && SafeHer.api.stopShareLocation) {
+      SafeHer.api.stopShareLocation({ share_id: activeSession.shareId });
+    }
+    if (SafeHer.deliveryTracker) {
+      SafeHer.deliveryTracker.stopAll();
     }
     clearInterval(positionInterval);
     clearInterval(countdownInterval);
@@ -576,6 +625,7 @@ SafeHer.shareLocation = (function() {
     startSharing: startSharing,
     stopSharing: stopSharing,
     shareViaWebShare: shareViaWebShare,
+    copyLiveLink: copyLiveLink,
     updateHomeBanner: updateHomeBanner,
     getActiveSession: getActiveSession
   };

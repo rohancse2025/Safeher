@@ -827,7 +827,23 @@
               <span class="material-symbols-rounded" style="font-size: 16px;">share</span>Share Link
             </button>
           </div>
-          <div id="share-active-contacts-list" class="share-active-contacts-list"></div>
+          <!-- Live Link Box -->
+        <div id="share-live-link-box" class="settings-card" style="margin-bottom: 14px; background: #FFF5F7; border: 1.5px solid #FCD4DE;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 18px;">link</span>
+              <span style="font-size: 12px; font-weight: 700; color: #1F2937;">Live Tracking Link</span>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="SafeHer.shareLocation.copyLiveLink()" style="padding: 4px 10px; font-size: 11px;">
+              <span class="material-symbols-rounded" style="font-size: 14px;">content_copy</span>Copy Link
+            </button>
+          </div>
+          <div id="share-live-link-url" style="font-size: 11px; color: #4B5563; word-break: break-all; font-family: monospace; background: #FFFFFF; padding: 6px 10px; border-radius: 6px; border: 1px solid #E5E7EB;">
+            https://rohancse2025.github.io/Safeher/track.html
+          </div>
+        </div>
+
+        <div id="share-active-contacts-list" class="share-active-contacts-list"></div>
         </div>
       </div>
 
@@ -2222,6 +2238,8 @@
               <span class="material-symbols-rounded">check</span>I’m safe
             </button>
           </div>
+
+          <div id="timer-delivery-status" style="margin-top: 16px; text-align: left;"></div>
         </div>
 
         <p class="prototype-note" style="margin-top: 14px;">Note: Background timer tracking across closed tabs or locked phones requires a backend.</p>
@@ -3271,6 +3289,7 @@
           Your close contacts have been sent your live location and tracking link.
         </p>
         <div id="uneasy-track-link-preview" style="background: #F9FAFB; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 14px; font-size: 11px;"></div>
+        <div id="uneasy-delivery-status" style="margin-top: 14px; text-align: left;"></div>
         <button type="button" class="btn btn-primary btn-crimson" onclick="SafeHer.sos.closeUneasySheet()" style="width: 100%;">Done</button>
       </div>
     </div>
@@ -3458,32 +3477,32 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=49"></script>
-<script src="./js/storage.js?v=49"></script>
-<script src="./js/api.js?v=49"></script>
-<script src="./js/i18n.js?v=49"></script>
-<script src="./js/helpdata.js?v=49"></script>
-<script src="./js/help_rights.js?v=49"></script>
-<script src="./js/app.js?v=49"></script>
-<script src="./js/onboarding.js?v=49"></script>
-<script src="./js/auth.js?v=49"></script>
-<script src="./js/pin.js?v=49"></script>
-<script src="./js/home.js?v=49"></script>
-<script src="./js/contacts.js?v=49"></script>
-<script src="./js/tips.js?v=49"></script>
-<script src="./js/profile.js?v=49"></script>
-<script src="./js/sos.js?v=49"></script>
-<script src="./js/map.js?v=49"></script>
-<script src="./js/share_location.js?v=49"></script>
-<script src="./js/places.js?v=49"></script>
-<script src="./js/ride.js?v=49"></script>
-<script src="./js/volunteer.js?v=49"></script>
-<script src="./js/volunteer-apply.js?v=1"></script>
-<script src="./js/timer.js?v=49"></script>
-<script src="./js/fakecall.js?v=49"></script>
-<script src="./js/evidence.js?v=49"></script>
-<script src="./js/vault.js?v=49"></script>
-<script src="./js/escort.js?v=49"></script>
-<script src="./js/notifications.js?v=49"></script>
+<script src="./js/config.js?v=50"></script>
+<script src="./js/storage.js?v=50"></script>
+<script src="./js/api.js?v=50"></script>
+<script src="./js/i18n.js?v=50"></script>
+<script src="./js/helpdata.js?v=50"></script>
+<script src="./js/help_rights.js?v=50"></script>
+<script src="./js/app.js?v=50"></script>
+<script src="./js/onboarding.js?v=50"></script>
+<script src="./js/auth.js?v=50"></script>
+<script src="./js/pin.js?v=50"></script>
+<script src="./js/home.js?v=50"></script>
+<script src="./js/contacts.js?v=50"></script>
+<script src="./js/tips.js?v=50"></script>
+<script src="./js/profile.js?v=50"></script>
+<script src="./js/sos.js?v=50"></script>
+<script src="./js/map.js?v=50"></script>
+<script src="./js/share_location.js?v=50"></script>
+<script src="./js/places.js?v=50"></script>
+<script src="./js/ride.js?v=50"></script>
+<script src="./js/volunteer.js?v=50"></script>
+<script src="./js/volunteer-apply.js?v=50"></script>
+<script src="./js/timer.js?v=50"></script>
+<script src="./js/fakecall.js?v=50"></script>
+<script src="./js/evidence.js?v=50"></script>
+<script src="./js/vault.js?v=50"></script>
+<script src="./js/escort.js?v=50"></script>
+<script src="./js/notifications.js?v=50"></script>
 </body>
 </html>

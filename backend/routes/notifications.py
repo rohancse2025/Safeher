@@ -42,26 +42,40 @@ def get_notifications():
     conn = get_db()
     cursor = conn.cursor()
 
+    event_key_prefix = request.args.get('event_key_prefix')
+    event_key = request.args.get('event_key')
+    alert_id = request.args.get('alert_id')
+
+    query = '''
+        SELECT n.id, n.user_id, n.alert_id, n.event_type, n.event_key, n.contact_id, n.channel,
+               n.recipient_masked, n.subject, n.status, n.attempts, n.last_error,
+               n.next_attempt_at, n.created_at, n.sent_at, n.delivered_at, n.provider_message_id,
+               c.name AS contact_name
+        FROM notifications n
+        LEFT JOIN contacts c ON c.id = n.contact_id
+        WHERE 1=1
+    '''
+    params = []
     if user_id:
-        cursor.execute('''
-            SELECT id, user_id, alert_id, event_type, event_key, contact_id, channel,
-                   recipient_masked, subject, status, attempts, last_error,
-                   next_attempt_at, created_at, sent_at, delivered_at, provider_message_id
-            FROM notifications
-            WHERE user_id = ?
-            ORDER BY id DESC
-            LIMIT ?;
-        ''', (user_id, limit))
-    else:
-        # Reviewer or admin viewing system notifications
-        cursor.execute('''
-            SELECT id, user_id, alert_id, event_type, event_key, contact_id, channel,
-                   recipient_masked, subject, status, attempts, last_error,
-                   next_attempt_at, created_at, sent_at, delivered_at, provider_message_id
-            FROM notifications
-            ORDER BY id DESC
-            LIMIT ?;
-        ''', (limit,))
+        query += ' AND n.user_id = ?'
+        params.append(user_id)
+    if event_key_prefix:
+        query += ' AND n.event_key LIKE ?'
+        params.append(event_key_prefix + '%')
+    if event_key:
+        query += ' AND n.event_key = ?'
+        params.append(event_key)
+    if alert_id:
+        try:
+            query += ' AND n.alert_id = ?'
+            params.append(int(alert_id))
+        except Exception:
+            pass
+
+    query += ' ORDER BY n.id DESC LIMIT ?;'
+    params.append(limit)
+
+    cursor.execute(query, tuple(params))
 
     rows = cursor.fetchall()
     conn.close()
@@ -232,6 +246,8 @@ def get_notification_settings():
         "ride_ended": True,
         "ride_late": True,
         "contact_added": True,
+        "alert_reminders": True,
+        "alert_reminder": True,
         # Backward compatibility aliases
         "sos": True,
         "sos_safe": True,

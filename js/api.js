@@ -3133,49 +3133,46 @@ SafeHer.api = (function() {
     // ─── Share Location Endpoints ────────────────────────────
 
     shareLocation: function(data, callback) {
-
-      if (!useBackend()) {
-
-        if (callback) callback('Requires active connection', null);
-
-        return;
-
+      if (useBackend()) {
+        apiFetch('/api/shares', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        })
+        .then(function(res) {
+          if (callback) callback(null, res.data || res);
+        })
+        .catch(function(err) {
+          if (callback) callback(err.message || 'Location share error', null);
+        });
+      } else {
+        if (callback) callback(null, { ok: true, id: 'local_' + Date.now(), tokens: [] });
       }
-
-      apiFetch('/api/location/share', {
-
-        method: 'POST',
-
-        body: JSON.stringify(data)
-
-      })
-
-      .then(function(res) {
-
-        if (callback) callback(null, res.data || res);
-
-      })
-
-      .catch(function(err) {
-
-        if (callback) callback(err.message || 'Location share error', null);
-
-      });
-
     },
 
-
+    updateSharePosition: function(shareId, lat, lng, callback) {
+      if (!useBackend() || !shareId) return;
+      apiFetch('/api/shares/' + shareId + '/position', {
+        method: 'POST',
+        body: JSON.stringify({ lat: lat, lng: lng })
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message, null);
+      });
+    },
 
     stopShareLocation: function(data, callback) {
-
-      if (!useBackend()) return;
-
-      apiFetch('/api/location/stop-share', {
-
+      if (!useBackend()) {
+        if (callback) callback(null, { ok: true });
+        return;
+      }
+      var shareId = (data && data.share_id) ? data.share_id : (data && data.id ? data.id : null);
+      var endpoint = shareId ? ('/api/shares/' + shareId + '/stop') : '/api/shares/1/stop';
+      apiFetch(endpoint, {
         method: 'POST',
-
         body: JSON.stringify(data || {})
-
       })
 
       .then(function(res) {
@@ -3360,7 +3357,7 @@ SafeHer.api = (function() {
 
         startRideSafety: function(payload, callback) {
       if (useBackend()) {
-        apiFetch('/api/ride/start', {
+        apiFetch('/api/rides', {
           method: 'POST',
           body: JSON.stringify(payload)
         }).then(function(res) {
@@ -3369,15 +3366,17 @@ SafeHer.api = (function() {
           if (callback) callback(err.message, null);
         });
       } else {
-        if (callback) callback(null, { ok: true, share_token: 'local_' + Date.now() });
+        if (callback) callback(null, { ok: true, id: 'local_' + Date.now(), tokens: [] });
       }
     },
 
     endRideSafety: function(payload, callback) {
       if (useBackend()) {
-        apiFetch('/api/ride/end', {
+        var rideId = (payload && payload.ride_id) ? payload.ride_id : (payload && payload.id ? payload.id : null);
+        var endpoint = rideId ? ('/api/rides/' + rideId + '/end') : '/api/rides/1/end';
+        apiFetch(endpoint, {
           method: 'POST',
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload || {})
         }).then(function(res) {
           if (callback) callback(null, res.data || res);
         }).catch(function(err) {

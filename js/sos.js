@@ -482,6 +482,10 @@ SafeHer.sos = (function() {
       currentAlertId = null;
     }
 
+    if (SafeHer.deliveryTracker) {
+      SafeHer.deliveryTracker.stopAll();
+    }
+
     if (SafeHer.api && SafeHer.api.clearActiveSos) {
       SafeHer.api.clearActiveSos();
     }
@@ -637,34 +641,24 @@ SafeHer.sos = (function() {
     }
 
     var message = buildAlertMessage();
-    var encodedMessage = encodeURIComponent(message);
+    var active = (SafeHer.api && SafeHer.api.getActiveSos) ? SafeHer.api.getActiveSos() : null;
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || window.location.origin;
+    var token = (active && active.shareToken) ? active.shareToken : '';
+    var trackUrl = base.replace(/\/+$/, '') + '/track.html' + (token ? ('?t=' + token) : '');
+    var alertId = (active && active.id) ? active.id : (active && active.alertId ? active.alertId : currentAlertId);
 
-    var user = SafeHer.api.getUser();
-    var userName = user && user.name ? user.name : 'SafeHer User';
-
-    var html = '';
-    for (var i = 0; i < contacts.length; i++) {
-      var c = contacts[i];
-      var rawPhone = (c.phone || '').replace(/\D/g, '');
-      var initial = (c.name || '?').charAt(0).toUpperCase();
-
-      html += '<div class="sos-notified-item">' +
-        '<div class="sos-notified-left">' +
-          '<div class="sos-notified-avatar">' + escapeHtml(initial) + '</div>' +
-          '<div class="sos-notified-info">' +
-            '<span class="sos-notified-name" style="font-weight:600;">' + escapeHtml(c.name) + '</span>' +
-            (c.email ? '<span class="sos-notified-email" style="display:block;font-size:10px;color:#555;line-height:1.2;">' + escapeHtml(c.email) + '</span>' : '') +
-            (rawPhone ? '<span class="sos-notified-phone" style="display:block;font-size:10px;color:#777;line-height:1.2;">' + escapeHtml(rawPhone) + '</span>' : '') +
-          '</div>' +
-        '</div>' +
-        '<div class="sos-contact-btns">' +
-          (c.email ? '<span class="sos-badge-sent" title="Dispatched automatically via Gmail SMTP"><span class="material-symbols-rounded" style="font-size:13px;">mark_email_read</span>Email Sent</span>' : '') +
-          (rawPhone ? '<span class="sos-badge-sent" title="Dispatched automatically via WhatsApp API"><span class="material-symbols-rounded" style="font-size:13px;">chat</span>WhatsApp Sent</span>' : '') +
-        '</div>' +
-      '</div>';
+    if (SafeHer.deliveryTracker && SafeHer.deliveryTracker.mount) {
+      SafeHer.deliveryTracker.mount({
+        containerId: containerId || 'sos-notified-list',
+        contacts: contacts,
+        isEscortOrTimer: false,
+        isOffline: !navigator.onLine,
+        trackingUrl: trackUrl,
+        messageText: message,
+        eventKeyPrefix: alertId ? ('alert:' + alertId + ':') : 'alert:',
+        entityId: alertId
+      });
     }
-
-    listEl.innerHTML = html;
   }
 
   function resendAllServer() {
@@ -880,6 +874,10 @@ SafeHer.sos = (function() {
         });
       }
       currentAlertId = null;
+    }
+
+    if (SafeHer.deliveryTracker) {
+      SafeHer.deliveryTracker.stopAll();
     }
 
     if (SafeHer.api && SafeHer.api.clearActiveSos) {
@@ -1206,6 +1204,20 @@ SafeHer.sos = (function() {
           previewEl.innerHTML = '<div style="margin-bottom:6px;font-weight:600;color:var(--text-dark);">Live Tracking Link:</div>' +
             '<a href="' + trackingUrl + '" target="_blank" style="color:var(--crimson);word-break:break-all;font-size:12px;font-weight:600;display:block;margin-bottom:8px;">' + trackingUrl + '</a>' +
             '<button type="button" class="btn btn-secondary" onclick="navigator.clipboard.writeText(\'' + trackingUrl + '\');SafeHer.toast(\'Link copied!\');" style="font-size:11px;padding:3px 10px;min-height:28px;">Copy Link</button>';
+        }
+
+        var contacts = SafeHer.api.getContacts() || [];
+        if (SafeHer.deliveryTracker && SafeHer.deliveryTracker.mount) {
+          SafeHer.deliveryTracker.mount({
+            containerId: 'uneasy-delivery-status',
+            contacts: contacts,
+            isEscortOrTimer: false,
+            isOffline: !navigator.onLine,
+            trackingUrl: trackingUrl,
+            messageText: 'SafeHer Uneasy Check-in: ' + trackingUrl,
+            eventKeyPrefix: 'alert:' + alertId + ':',
+            entityId: alertId
+          });
         }
 
         SafeHer.toast('Check-in sent');

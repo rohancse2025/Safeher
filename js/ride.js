@@ -1112,44 +1112,49 @@ SafeHer.ride = (function() {
 
 
 
+    var ridePayload = {
+      vehicle_type: vehicleType,
+      vehicle_number: rawPlate,
+      driver_name: driverName,
+      driver_phone: driverPhone,
+      app_used: appUsed,
+      pickup: pickup,
+      destination: destination,
+      expected_minutes: travelMinutes,
+      lat: rideLat,
+      lng: rideLng,
+      contact_ids: selectedContacts.map(function(c) { return c.id; })
+    };
+
+    activeRide.isOffline = !navigator.onLine;
+
     if (SafeHer.api && SafeHer.api.startRideSafety) {
-
-      SafeHer.api.startRideSafety({
-
-        vehicle_type: vehicleType,
-
-        vehicle_number: rawPlate,
-
-        driver_name: driverName,
-
-        driver_phone: driverPhone,
-
-        app_used: appUsed,
-
-        pickup: pickup,
-
-        destination: destination,
-
-        travel_minutes: travelMinutes,
-
-        lat: rideLat,
-
-        lng: rideLng,
-
-        contacts: selectedContacts
-
-      }, function(err, res) {
-
-        if (!err && res && res.share_token) {
-
-          activeRide.shareToken = res.share_token;
-
+      SafeHer.api.startRideSafety(ridePayload, function(err, res) {
+        if (err || !res) {
+          console.warn('[Ride] Backend ride start failed, enqueued offline:', err);
+          if (SafeHer.offlineQueue) {
+            SafeHer.offlineQueue.enqueue({
+              url: '/api/rides',
+              method: 'POST',
+              body: ridePayload
+            });
+          }
+          activeRide.isOffline = true;
           try { localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide)); } catch(e) {}
-
+          renderActiveRideView();
+          return;
         }
 
+        var rideData = res.data || res;
+        activeRide.backendRideId = rideData.id || activeRide.id;
+        if (rideData.tokens && rideData.tokens.length > 0) {
+          activeRide.shareToken = rideData.tokens[0].token;
+          activeRide.trackUrl = rideData.tokens[0].track_url;
+        }
+        activeRide.isOffline = false;
+        try { localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide)); } catch(e) {}
+        renderActiveRideView();
       });
-
     }
 
 
@@ -1238,56 +1243,21 @@ SafeHer.ride = (function() {
 
 
 
-    // Render contacts with WhatsApp and SMS buttons
-
+    // Render contacts with real-time delivery status & WhatsApp/SMS fallback
     var contactsList = document.getElementById('ride-active-contacts-list');
-
     if (contactsList) {
-
-      var html = '';
-
-      var encodedMsg = encodeURIComponent(message);
-
-      (activeRide.contacts || []).forEach(function(c) {
-
-        var rawPhone = (c.phone || '').replace(/\D/g, '');
-
-        var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
-
-        var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMsg;
-
-        var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMsg;
-
-
-
-        html += '<div class="ride-contact-share-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#FAFAFA;border:1px solid #F3F4F6;border-radius:10px;margin-bottom:8px;">' +
-
-          '<div style="flex:1;min-width:0;">' +
-
-            '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(c.name) + '</div>' +
-
-            '<div style="font-size:11px;color:var(--text-gray);">' + escapeHtml(c.phone || c.email || '') + '</div>' +
-
-          '</div>' +
-
-          '<div style="display:flex;align-items:center;gap:6px;">' +
-
-            '<span style="background:#E8F5E9;color:#2E7D32;padding:4px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><span class="material-symbols-rounded" style="font-size:12px;">check_circle</span> Alerted</span>' +
-
-            '<a href="' + waUrl + '" target="_blank" rel="noopener" class="ride-share-btn wa" title="Open in WhatsApp" style="padding:4px 8px;font-size:11px;">' +
-
-              '<span>Chat</span>' +
-
-            '</a>' +
-
-          '</div>' +
-
-        '</div>';
-
-      });
-
-      contactsList.innerHTML = html;
-
+      var trackUrl = activeRide.trackUrl || (window.location.origin + '/track.html');
+      if (SafeHer.deliveryTracker && SafeHer.deliveryTracker.mount) {
+        SafeHer.deliveryTracker.mount({
+          containerId: 'ride-active-contacts-list',
+          contacts: activeRide.contacts || [],
+          isEscortOrTimer: false,
+          isOffline: !!activeRide.isOffline,
+          trackingUrl: trackUrl,
+          messageText: message,
+          eventKeyPrefix: activeRide.backendRideId ? ('ride:' + activeRide.backendRideId + ':') : 'ride:'
+        });
+      }
     }
 
   }
@@ -1456,11 +1426,15 @@ SafeHer.ride = (function() {
 
     if (SafeHer.api && SafeHer.api.endRideSafety) {
       SafeHer.api.endRideSafety({
+        ride_id: activeRide.backendRideId || activeRide.id,
         destination: completedRecord.destination,
         vehicle_number: completedRecord.vehicleNumber,
         share_token: activeRide.shareToken || completedRecord.id
       });
       if (SafeHer.toast) SafeHer.toast('Safe arrival notification sent to contacts via WhatsApp & Email!');
+    }
+    if (SafeHer.deliveryTracker) {
+      SafeHer.deliveryTracker.stopAll();
     }
 
     var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};

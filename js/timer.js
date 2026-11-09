@@ -144,6 +144,27 @@ SafeHer.timer = (function() {
       expiryInfoEl.textContent = 'SOS activates at ' + expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    var allContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    var timerContacts = allContacts;
+    if (currentTimer.contactId && currentTimer.contactId !== 'all') {
+      timerContacts = allContacts.filter(function(c) {
+        return String(c.id) === String(currentTimer.contactId);
+      });
+      if (timerContacts.length === 0) timerContacts = allContacts;
+    }
+
+    var statusEl = document.getElementById('timer-delivery-status');
+    if (statusEl && SafeHer.deliveryTracker && SafeHer.deliveryTracker.mount) {
+      SafeHer.deliveryTracker.mount({
+        containerId: 'timer-delivery-status',
+        contacts: timerContacts,
+        isEscortOrTimer: true,
+        isOffline: !navigator.onLine,
+        messageText: 'SafeHer Safe Timer is active. SOS will trigger automatically if not stopped safely.',
+        eventKeyPrefix: 'timer:'
+      });
+    }
+
     function tick() {
       if (!currentTimer) {
         clearInterval(timerInterval);
@@ -203,6 +224,10 @@ SafeHer.timer = (function() {
   function performCancel() {
     clearInterval(timerInterval);
     timerInterval = null;
+
+    if (SafeHer.deliveryTracker) {
+      SafeHer.deliveryTracker.stopAll();
+    }
 
     if (SafeHer.api && SafeHer.api.clearSafeTimer) {
       SafeHer.api.clearSafeTimer();

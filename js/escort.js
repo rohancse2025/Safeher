@@ -2197,163 +2197,50 @@ SafeHer.escort = (function() {
 
 
   function renderActiveShareList(escortData) {
-
     var container = document.getElementById('escort-active-share-list');
-
     if (!container) return;
 
-
-
     var tokens = escortData.tokens || {};
-
     var shareLinks = escortData.share_links || {};
-
     var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
-
     var userName = (user && user.name) ? user.name : 'I';
-
     var dest = escortData.dest_name || 'destination';
 
-
-
     var etaStr = 'soon';
-
     if (escortData.expected_end) {
-
       var endDt = parseDateUtc(escortData.expected_end);
-
       if (endDt) {
-
         etaStr = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
       }
-
     }
 
-
-
     SafeHer.api.getContacts(function(err, contacts) {
-
       contacts = contacts || [];
-
-      var contactMap = {};
-
-      contacts.forEach(function(c) { contactMap[String(c.id)] = c; });
-
-
-
-      var tokenEntries = Object.keys(tokens);
-
-      if (tokenEntries.length === 0) {
-
-        var msgText = userName + ' started a journey to ' + dest + ', expected by ' + etaStr + '. SafeHer Escort Mode active.';
-
-        var encodedMsg = encodeURIComponent(msgText);
-
-        var waUrl = 'https://wa.me/?text=' + encodedMsg;
-
-        var smsUrl = 'sms:?body=' + encodedMsg;
-
-        container.innerHTML = 
-
-          '<div style="padding:4px 0;">' +
-
-            '<p style="font-size:11px;color:var(--text-gray);margin:0 0 6px 0;">Share your journey status with anyone:</p>' +
-
-            '<div style="display:flex;gap:6px;">' +
-
-              '<a href="' + waUrl + '" target="_blank" rel="noopener" class="escort-share-btn wa" style="padding:6px 12px;text-decoration:none;">' +
-
-                '<span>Share via WhatsApp</span>' +
-
-              '</a>' +
-
-              '<a href="' + smsUrl + '" class="escort-share-btn sms" style="padding:6px 12px;text-decoration:none;">' +
-
-                '<span>Share via SMS</span>' +
-
-              '</a>' +
-
-            '</div>' +
-
-          '</div>';
-
-        return;
-
+      var chosenContacts = contacts;
+      if (escortData.contact_ids && escortData.contact_ids.length > 0) {
+        chosenContacts = contacts.filter(function(c) {
+          return escortData.contact_ids.indexOf(c.id) !== -1;
+        });
+        if (chosenContacts.length === 0) chosenContacts = contacts;
       }
 
+      var firstToken = Object.values(tokens)[0] || '';
+      var primaryLink = Object.values(shareLinks)[0] || (window.location.origin + '/track.html?t=' + firstToken);
+      var msgText = userName + ' started a journey to ' + dest + ', expected by ' + etaStr + '. Track live here: ' + primaryLink;
 
-
-      var html = '';
-
-      tokenEntries.forEach(function(cid) {
-
-        var contact = contactMap[String(cid)] || { name: 'Trusted Contact', phone: '' };
-
-        var cToken = tokens[cid];
-
-        var link = shareLinks[cid] || (window.location.origin + '/track.html?t=' + cToken);
-
-
-
-        var msgText = userName + ' started a journey to ' + dest + ', expected by ' + etaStr + '. Track live here: ' + link;
-
-        var encodedMsg = encodeURIComponent(msgText);
-
-
-
-        var rawPhone = (contact.phone || '').replace(/\D/g, '');
-
-        var waPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
-
-        var waUrl = 'https://wa.me/' + waPhone + '?text=' + encodedMsg;
-
-        var smsUrl = 'sms:' + rawPhone + '?body=' + encodedMsg;
-
-
-
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #F3C2CE;">' +
-
-          '<div style="flex:1;min-width:0;">' +
-
-            '<div style="font-size:13px;font-weight:600;color:var(--text-dark);">' + escapeHtml(contact.name) + '</div>' +
-
-            '<div style="font-size:11px;color:var(--text-gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(contact.phone || 'Tracking enabled') + '</div>' +
-
-          '</div>' +
-
-          '<div style="display:flex;gap:6px;">' +
-
-            '<a href="' + waUrl + '" target="_blank" rel="noopener" class="escort-share-btn wa" title="Send WhatsApp message">' +
-
-              '<span>WhatsApp</span>' +
-
-            '</a>' +
-
-            '<a href="' + smsUrl + '" class="escort-share-btn sms" title="Send SMS">' +
-
-              '<span>SMS</span>' +
-
-            '</a>' +
-
-            '<button type="button" class="escort-share-btn copy" onclick="SafeHer.escort.copyLink(\'' + escapeHtml(link) + '\')" title="Copy tracking link">' +
-
-              '<span class="material-symbols-rounded" style="font-size:14px;">content_copy</span>' +
-
-            '</button>' +
-
-          '</div>' +
-
-        '</div>';
-
-      });
-
-
-
-      container.innerHTML = html;
-
+      if (SafeHer.deliveryTracker && SafeHer.deliveryTracker.mount) {
+        SafeHer.deliveryTracker.mount({
+          containerId: 'escort-active-share-list',
+          contacts: chosenContacts,
+          isEscortOrTimer: true,
+          isOffline: !!escortData.is_local_only,
+          trackingUrl: primaryLink,
+          messageText: msgText,
+          eventKeyPrefix: escortData.id ? ('escort:' + escortData.id + ':') : 'escort:',
+          entityId: escortData.id
+        });
+      }
     });
-
   }
 
 
@@ -3775,6 +3662,8 @@ SafeHer.escort = (function() {
       stopUiSecondTimer();
 
       releaseWakeLock();
+
+      if (SafeHer.deliveryTracker) SafeHer.deliveryTracker.stopAll();
 
       clearActiveEscortFromStorage();
 

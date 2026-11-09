@@ -676,6 +676,33 @@ def render_template(event_type, context):
             """
         )
 
+    # 20. Alert Reminder (at 3 min & 10 min)
+    elif norm_event in ('alert_reminder', 'reminder', 'alert_reminder_1', 'alert_reminder_2'):
+        alert_time_ist = context.get('alert_time_ist') or time_short
+        subject = f"SafeHer: Reminder - {user_name}'s alert is still active (from {alert_time_ist})"
+        preview = f"Reminder: {user_name}'s alert from {alert_time_ist} is still active."
+        body_text = (
+            f"Reminder: {user_name}'s alert from {alert_time_ist} is still active.\n\n"
+            f"Open her live location here:\n{track_url or map_url}\n\n"
+            f"If you cannot reach her, call 112.\n"
+            f"{make_optout_text()}"
+        )
+        body_html = build_base_html(
+            subject=subject,
+            preview_text=preview,
+            user_name=user_name,
+            optout_url=optout_url,
+            content_html=f"""
+              <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #111827; font-weight: 600;">Alert Still Active</h2>
+              <div class="notice">
+                <strong>Reminder:</strong> {user_name}'s alert from {alert_time_ist} is still active and waiting for a response.
+              </div>
+              <p style="margin: 14px 0 0 0; color: #374151; font-size: 13px;">Please check on her immediately using the live location below.</p>
+              {make_links_html()}
+              {call_112_html}
+            """
+        )
+
     # 19. Contact Added / Welcome
     elif norm_event in ('contact_added', 'welcome'):
         subject = f"SafeHer: {user_name} added you as a trusted safety contact"

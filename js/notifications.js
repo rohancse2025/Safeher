@@ -23,6 +23,8 @@ SafeHer.notifications = (function() {
     "ride_ended": "Ride Arrived Safely",
     "ride_late": "Ride Overdue Alert",
     "contact_added": "Welcome & Consent Email",
+    "alert_reminders": "Send reminder emails (at 3m & 10m)",
+    "alert_reminder": "Alert Reminder",
     // Aliases
     "sos": "Emergency SOS Alert",
     "sos_safe": "Alert Ended / Marked Safe",
@@ -239,7 +241,8 @@ SafeHer.notifications = (function() {
           "ride_started",
           "ride_ended",
           "ride_late",
-          "contact_added"
+          "contact_added",
+          "alert_reminders"
         ];
 
         var html = '';
@@ -474,3 +477,405 @@ SafeHer.notifications = (function() {
     stopPolling: stopPolling
   };
 })();
+
+
+// ─────────────────────────────────────────────────────────────
+// SafeHer.offlineQueue – Resilient Offline Request Dispatcher
+// ─────────────────────────────────────────────────────────────
+SafeHer.offlineQueue = (function() {
+  var STORAGE_KEY = 'safeher_offline_queue';
+
+  function getQueue() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+
+  function enqueue(req) {
+    var queue = getQueue();
+    queue.push({
+      id: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      endpoint: req.endpoint,
+      method: req.method || 'POST',
+      payload: req.payload || {},
+      description: req.description || 'Request',
+      timestamp: Date.now()
+    });
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
+    } catch(e) {}
+  }
+
+  function flush() {
+    if (!navigator.onLine) return;
+    var queue = getQueue();
+    if (!queue || queue.length === 0) return;
+
+    var base = (window.SafeHer && SafeHer.api && SafeHer.api.BASE_URL) || 'https://safeher-dwkj.onrender.com';
+    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : null;
+
+    var remaining = [];
+    var pChain = Promise.resolve();
+
+    queue.forEach(function(item) {
+      pChain = pChain.then(function() {
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        return fetch(base + item.endpoint, {
+          method: item.method,
+          headers: headers,
+          body: JSON.stringify(item.payload)
+        }).then(function(res) {
+          if (res.ok) {
+            if (SafeHer.toast) SafeHer.toast('✓ Dispatched queued ' + item.description);
+          } else {
+            remaining.push(item);
+          }
+        }).catch(function() {
+          remaining.push(item);
+        });
+      });
+    });
+
+    pChain.then(function() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+      } catch(e) {}
+    });
+  }
+
+  window.addEventListener('online', flush);
+
+  return {
+    enqueue: enqueue,
+    flush: flush,
+    getQueue: getQueue
+  };
+})();
+
+
+// ─────────────────────────────────────────────────────────────
+// SafeHer.deliveryTracker – Real-time Delivery Status Component
+// ─────────────────────────────────────────────────────────────
+SafeHer.deliveryTracker = (function() {
+  var activeTrackers = {}; // containerId -> tracker state
+
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getBaseUrl() {
+    return (window.SafeHer && SafeHer.api && SafeHer.api.BASE_URL) || 'https://safeher-dwkj.onrender.com';
+  }
+
+  function getAuthHeaders() {
+    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : null;
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return headers;
+  }
+
+  function mount(options) {
+    var containerId = options.containerId;
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (activeTrackers[containerId] && activeTrackers[containerId].timer) {
+      clearInterval(activeTrackers[containerId].timer);
+      delete activeTrackers[containerId];
+    }
+
+    var contacts = options.contacts || (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    var isEscortOrTimer = !!options.isEscortOrTimer;
+    var isOffline = !!options.isOffline;
+    var trackingUrl = options.trackingUrl || window.location.origin;
+    var messageText = options.messageText || ('Emergency alert: ' + trackingUrl);
+    var eventKeyPrefix = options.eventKeyPrefix || '';
+    var entityId = options.entityId || null;
+
+    var contactNames = contacts.map(function(c) { return c.name ? c.name.split(' ')[0] : 'Contact'; }).join(', ');
+    if (!contactNames) contactNames = 'your contacts';
+
+    var hasAnyEmail = contacts.some(function(c) {
+      return !!(c.email && c.email.trim());
+    });
+
+    var state = {
+      containerId: containerId,
+      contacts: contacts,
+      contactNames: contactNames,
+      hasAnyEmail: hasAnyEmail,
+      isEscortOrTimer: isEscortOrTimer,
+      isOffline: isOffline,
+      trackingUrl: trackingUrl,
+      messageText: messageText,
+      eventKeyPrefix: eventKeyPrefix,
+      entityId: entityId,
+      pollCount: 0,
+      maxPolls: 24, // 24 * 2.5s = 60s
+      statusMap: {},
+      confirmedSentCount: 0
+    };
+
+    activeTrackers[containerId] = state;
+    render(state);
+
+    if (!isOffline && hasAnyEmail) {
+      startPolling(state);
+    }
+  }
+
+  function render(state) {
+    var container = document.getElementById(state.containerId);
+    if (!container) return;
+
+    var html = '';
+
+    // (A) Offline Banner (Rule 7)
+    if (state.isOffline) {
+      html += '<div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">' +
+        '<span class="material-symbols-rounded" style="color:#D97706;font-size:20px;flex-shrink:0;">cloud_off</span>' +
+        '<div style="font-size:12px;color:#92400E;font-weight:600;">' +
+          'Will send when connected' +
+        '</div>' +
+      '</div>';
+    }
+
+    // (B) Red Box if NO contact has an email (Rule 5)
+    if (!state.hasAnyEmail && state.contacts.length > 0) {
+      html += '<div style="background:#FEF2F2;border:1.5px solid #F87171;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;">' +
+        '<span class="material-symbols-rounded" style="color:#DC2626;font-size:20px;flex-shrink:0;">error</span>' +
+        '<div style="font-size:12px;color:#991B1B;line-height:1.4;">' +
+          '<strong>No one can be emailed.</strong> Add an email to a contact, or use the buttons below.' +
+        '</div>' +
+      '</div>';
+    }
+
+    // (C) Consistent Status Card (Rule 4)
+    var titleHtml = '';
+    var isPollingActive = state.pollCount < state.maxPolls && !state.isOffline;
+
+    if (state.confirmedSentCount > 0) {
+      titleHtml = '<span class="material-symbols-rounded" style="color:#16A34A;font-size:18px;">check_circle</span> ' +
+        '<span style="color:#166534;">Email sent to ' + escapeHtml(state.contactNames) + '</span>';
+    } else if (state.isEscortOrTimer) {
+      titleHtml = '<span class="material-symbols-rounded" style="color:#4B5563;font-size:18px;">schedule_send</span> ' +
+        '<span style="color:#374151;">Alert emails queued for ' + escapeHtml(state.contactNames) + '</span>';
+    } else {
+      // NEVER show "Alert sent" or "Notified" until backend confirms at least one sent!
+      titleHtml = '<span class="material-symbols-rounded" style="color:#D97706;font-size:18px;">hourglass_top</span> ' +
+        '<span style="color:#92400E;">Sending...</span>';
+    }
+
+    html += '<div style="background:#FFFFFF;border:1.5px solid #E5E7EB;border-radius:12px;padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid #F3F4F6;padding-bottom:8px;">';
+    html += '<div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">' + titleHtml + '</div>';
+
+    if (isPollingActive) {
+      html += '<span style="font-size:10px;font-weight:600;color:#6B7280;background:#F3F4F6;padding:2px 6px;border-radius:10px;display:flex;align-items:center;gap:3px;">' +
+        '<span class="material-symbols-rounded" style="font-size:12px;">sync</span> live' +
+      '</span>';
+    }
+    html += '</div>';
+
+    // Contacts list
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    for (var i = 0; i < state.contacts.length; i++) {
+      var c = state.contacts[i];
+      var cName = c.name || 'Contact';
+      var cEmail = (c.email || '').trim();
+      var info = state.statusMap[c.id] || null;
+
+      var statusText = '';
+      var statusColor = '#6B7280';
+      var statusBg = '#F3F4F6';
+      var statusIcon = 'schedule';
+
+      if (!cEmail) {
+        statusText = 'No email saved for ' + cName;
+        statusColor = '#92400E';
+        statusBg = '#FEF3C7';
+        statusIcon = 'mail_lock';
+      } else if (!info) {
+        statusText = 'Sending to ' + cName + '...';
+        statusColor = '#5B21B6';
+        statusBg = '#EDE9FE';
+        statusIcon = 'hourglass_top';
+      } else {
+        var rawStatus = (info.status || '').toLowerCase();
+        if (rawStatus === 'sent') {
+          statusText = 'Email sent to ' + cName;
+          statusColor = '#166534';
+          statusBg = '#DCFCE7';
+          statusIcon = 'check_circle';
+        } else if (rawStatus === 'delivered') {
+          statusText = 'Email delivered to ' + cName;
+          statusColor = '#1E40AF';
+          statusBg = '#DBEAFE';
+          statusIcon = 'mark_email_read';
+        } else if (rawStatus === 'failed' || rawStatus === 'bounced') {
+          var errReason = info.last_error ? (' (' + info.last_error + ')') : '';
+          statusText = 'Email failed' + errReason;
+          statusColor = '#991B1B';
+          statusBg = '#FEE2E2';
+          statusIcon = 'error';
+        } else if (rawStatus === 'skipped') {
+          statusText = 'No email saved for ' + cName;
+          statusColor = '#92400E';
+          statusBg = '#FEF3C7';
+          statusIcon = 'mail_lock';
+        } else {
+          statusText = 'Sending to ' + cName + '...';
+          statusColor = '#5B21B6';
+          statusBg = '#EDE9FE';
+          statusIcon = 'hourglass_top';
+        }
+      }
+
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">';
+      html += '<div style="display:flex;align-items:center;gap:8px;min-width:0;">';
+      html += '<div style="width:26px;height:26px;border-radius:50%;background:#FFF0F3;color:var(--crimson);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+        escapeHtml((cName.charAt(0) || '?').toUpperCase()) +
+      '</div>';
+      html += '<div style="font-size:12px;font-weight:600;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(cName) + '</div>';
+      html += '</div>';
+
+      html += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:' + statusColor + ';background:' + statusBg + ';padding:3px 8px;border-radius:12px;flex-shrink:0;">' +
+        '<span class="material-symbols-rounded" style="font-size:13px;">' + statusIcon + '</span>' +
+        escapeHtml(statusText) +
+      '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // (D) Manual WhatsApp & SMS Fallback Buttons with exact text (Rule 6)
+    var encMsg = encodeURIComponent(state.messageText);
+    var firstPhone = '';
+    for (var j = 0; j < state.contacts.length; j++) {
+      if (state.contacts[j].phone) {
+        firstPhone = state.contacts[j].phone.replace(/\D/g, '');
+        break;
+      }
+    }
+    var waPhone = firstPhone ? (firstPhone.length === 10 ? ('91' + firstPhone) : firstPhone) : '';
+    var waUrl = waPhone ? ('https://wa.me/' + waPhone + '?text=' + encMsg) : ('https://wa.me/?text=' + encMsg);
+    var smsUrl = firstPhone ? ('sms:' + firstPhone + '?body=' + encMsg) : ('sms:?body=' + encMsg);
+
+    html += '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 14px;margin-bottom:12px;">';
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:8px;letter-spacing:0.5px;">Manual Fallback</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+
+    html += '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;background:#FFFFFF;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;">' +
+      '<span class="material-symbols-rounded" style="color:#25D366;font-size:22px;flex-shrink:0;">chat</span>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:12px;font-weight:700;color:#1F2937;">Send WhatsApp Message</div>' +
+        '<div style="font-size:11px;color:#6B7280;">Opens WhatsApp with the message ready. Tap Send</div>' +
+      '</div>' +
+      '<span class="material-symbols-rounded" style="color:#9CA3AF;font-size:18px;">open_in_new</span>' +
+    '</a>';
+
+    html += '<a href="' + escapeHtml(smsUrl) + '" class="btn btn-secondary" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;background:#FFFFFF;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;">' +
+      '<span class="material-symbols-rounded" style="color:#2563EB;font-size:22px;flex-shrink:0;">sms</span>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:12px;font-weight:700;color:#1F2937;">Send SMS Alert</div>' +
+        '<div style="font-size:11px;color:#6B7280;">Opens SMS with the message ready. Tap Send</div>' +
+      '</div>' +
+      '<span class="material-symbols-rounded" style="color:#9CA3AF;font-size:18px;">open_in_new</span>' +
+    '</a>';
+
+    html += '</div>';
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+
+  function startPolling(state) {
+    if (state.timer) clearInterval(state.timer);
+
+    function poll() {
+      if (!document.getElementById(state.containerId)) {
+        clearInterval(state.timer);
+        return;
+      }
+
+      state.pollCount++;
+      if (state.pollCount > state.maxPolls) {
+        clearInterval(state.timer);
+        render(state);
+        return;
+      }
+
+      var base = getBaseUrl();
+      var headers = getAuthHeaders();
+      var q = '?limit=30';
+      if (state.eventKeyPrefix) {
+        q += '&event_key_prefix=' + encodeURIComponent(state.eventKeyPrefix);
+      }
+      if (state.entityId && (state.containerId.indexOf('sos') !== -1 || state.containerId.indexOf('uneasy') !== -1)) {
+        q += '&alert_id=' + encodeURIComponent(state.entityId);
+      }
+
+      fetch(base + '/api/notifications' + q, { headers: headers })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          var items = (res && res.data) ? res.data : [];
+          var sentCount = 0;
+
+          items.forEach(function(item) {
+            if (item.contact_id) {
+              state.statusMap[item.contact_id] = {
+                status: (item.status || '').toLowerCase(),
+                last_error: item.last_error
+              };
+              if (item.status === 'sent' || item.status === 'delivered') {
+                sentCount++;
+              }
+            }
+          });
+
+          state.confirmedSentCount = sentCount;
+          render(state);
+
+          var allTerminal = state.contacts.every(function(c) {
+            if (!c.email) return true;
+            var st = state.statusMap[c.id] ? state.statusMap[c.id].status : '';
+            return st === 'sent' || st === 'delivered' || st === 'failed' || st === 'bounced' || st === 'skipped';
+          });
+          if (allTerminal && sentCount > 0) {
+            clearInterval(state.timer);
+          }
+        })
+        .catch(function() {});
+    }
+
+    setTimeout(poll, 1000);
+    state.timer = setInterval(poll, 2500);
+  }
+
+  function stopAll() {
+    Object.keys(activeTrackers).forEach(function(k) {
+      if (activeTrackers[k].timer) {
+        clearInterval(activeTrackers[k].timer);
+      }
+    });
+    activeTrackers = {};
+  }
+
+  return {
+    mount: mount,
+    stopAll: stopAll
+  };
+})();
+
+SafeHer.delivery = SafeHer.deliveryTracker;
