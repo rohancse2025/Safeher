@@ -153,35 +153,17 @@ SafeHer.sos = (function() {
 
     var modeStr = (currentMode || 'emergency').toUpperCase();
 
-    var msg = '🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨
-
-' +
-      '*' + userName + '* has triggered an urgent SOS alert!
-
-' +
-      '⚠️ *Mode*: ' + modeStr + '
-' +
-      '🕒 *Time*: ' + timeStr + '
-' +
-      '📍 *Google Maps Location*:
-' + mapsUrl + '
-
-' +
-      '🔴 *Live Tracking Map*:
-' + trackUrl + '
-
-' +
-      '⚡ *Quick 1-Tap Response (No app needed):*
-' +
-      '🏃 On my way: ' + trackUrl + '&action=on_my_way
-' +
-      '📞 Called her: ' + trackUrl + '&action=called
-' +
-      '🚓 Alerted Police: ' + trackUrl + '&action=police_alerted
-' +
-      '✅ Safe with me: ' + trackUrl + '&action=safe_with_me
-
-' +
+    var msg = '🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨\n\n' +
+      '*' + userName + '* has triggered an urgent SOS alert!\n\n' +
+      '⚠️ *Mode*: ' + modeStr + '\n' +
+      '🕒 *Time*: ' + timeStr + '\n' +
+      '📍 *Google Maps Location*:\n' + mapsUrl + '\n\n' +
+      '🔴 *Live Tracking Map*:\n' + trackUrl + '\n\n' +
+      '⚡ *Quick 1-Tap Response (No app needed):*\n' +
+      '🏃 On my way: ' + trackUrl + '&action=on_my_way\n' +
+      '📞 Called her: ' + trackUrl + '&action=called\n' +
+      '🚓 Alerted Police: ' + trackUrl + '&action=police_alerted\n' +
+      '✅ Safe with me: ' + trackUrl + '&action=safe_with_me\n\n' +
       'Please contact ' + userName + ' immediately or call Police (112).';
 
     return msg;
