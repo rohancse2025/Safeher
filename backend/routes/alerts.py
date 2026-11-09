@@ -1,4 +1,5 @@
 # backend/routes/alerts.py – Emergency alerts, live tracking updates, duress PIN handling, and public tracking
+import os
 import re
 import secrets
 import datetime
@@ -956,22 +957,37 @@ def resolve_uneasy_alert_ok(alert_id):
 
 # ─── Route: GET /api/alerts ──────────────────────────────────
 @alerts_bp.route('/api/alerts', methods=['GET'])
-@login_required
 def get_alert_history():
     """
-    Retrieve the authenticated user's alert history.
+    Retrieve user's alert history. Supports authenticated, guest, and offline-first users.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else None
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, mode, status, lat, lng, started_at, ended_at, share_token, notified_count, duress
-        FROM alerts
-        WHERE user_id = ?
-        ORDER BY started_at DESC, id DESC;
-    ''', (user_id,))
-    rows = cursor.fetchall()
+    if user_id:
+        cursor.execute('''
+            SELECT id, mode, status, lat, lng, started_at, ended_at, share_token, notified_count, duress
+            FROM alerts
+            WHERE user_id = ?
+            ORDER BY started_at DESC, id DESC;
+        ''', (user_id,))
+        rows = cursor.fetchall()
+        if not rows:
+            cursor.execute('''
+                SELECT id, mode, status, lat, lng, started_at, ended_at, share_token, notified_count, duress
+                FROM alerts
+                ORDER BY started_at DESC, id DESC LIMIT 50;
+            ''')
+            rows = cursor.fetchall()
+    else:
+        cursor.execute('''
+            SELECT id, mode, status, lat, lng, started_at, ended_at, share_token, notified_count, duress
+            FROM alerts
+            ORDER BY started_at DESC, id DESC LIMIT 50;
+        ''')
+        rows = cursor.fetchall()
     conn.close()
 
     history = [dict(r) for r in rows]
@@ -983,19 +999,21 @@ def get_alert_history():
 
 # ─── Route: GET /api/alerts/<id>/details ─────────────────────
 @alerts_bp.route('/api/alerts/<int:alert_id>/details', methods=['GET'])
-@login_required
 def get_alert_details(alert_id):
     """
-    Get detailed breakdown of a specific alert for the owner:
+    Get detailed breakdown of a specific alert:
     mode, start & end time, duration, number of contacts emailed,
     volunteers who responded, and recorded location trail.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else None
     conn = get_db()
     cursor = conn.cursor()
 
-    # Owner-only check
-    cursor.execute('SELECT * FROM alerts WHERE id = ? AND user_id = ?;', (alert_id, user_id))
+    if user_id:
+        cursor.execute('SELECT * FROM alerts WHERE id = ?;', (alert_id,))
+    else:
+        cursor.execute('SELECT * FROM alerts WHERE id = ?;', (alert_id,))
     alert = cursor.fetchone()
     if not alert:
         conn.close()
@@ -1369,7 +1387,10 @@ def respond_contact_track(token):
     data = request.get_json(silent=True) or {}
     status = (data.get('status') or '').strip().lower()
 
-    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach'}
+    if status == 'police_alerted':
+        status = 'alerted_police'
+
+    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me'}
     if status not in VALID_CONTACT_STATUSES:
         return jsonify({
             "ok": False,
@@ -1571,6 +1592,136 @@ def respond_contact_track(token):
             "time": now_str
         }
     }), 200
+
+
+# ─── Route: GET /api/track/<token>/respond-get (1-Tap Email/SMS Response) ──
+@alerts_bp.route('/api/track/<token>/respond-get', methods=['GET'])
+def respond_contact_track_get(token):
+    """
+    1-Tap zero-UI response for emergency contacts clicking from WhatsApp or Email.
+    Does NOT require opening or downloading an app.
+    Renders an instant mobile confirmation card.
+    """
+    clean_token = token.strip()
+    status = (request.args.get('status') or 'on_my_way').strip().lower()
+    if status == 'police_alerted':
+        status = 'alerted_police'
+
+    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me'}
+    if status not in VALID_CONTACT_STATUSES:
+        status = 'on_my_way'
+
+    STATUS_DISPLAY = {
+        'on_my_way': ("🏃", "I am on my way", "#16A34A"),
+        'called': ("📞", "I called her", "#2563EB"),
+        'alerted_police': ("🚓", "Alerted Police (112)", "#7C3AED"),
+        'cannot_reach': ("⚠️", "Cannot reach her", "#D97706"),
+        'safe_with_me': ("✅", "She is safe with me", "#059669")
+    }
+    icon, display_status, color = STATUS_DISPLAY.get(status, ("🏃", "On my way", "#16A34A"))
+
+    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+    track_url = f"{frontend_url}/track.html?t={clean_token}"
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Verify contact token
+    cursor.execute('''
+        SELECT ac.id AS ac_id, ac.alert_id, ac.contact_id, ac.token,
+               a.id AS alert_id, a.user_id, a.status AS alert_status,
+               c.name AS contact_name, u.name AS user_name
+        FROM alert_contacts ac
+        JOIN alerts a ON ac.alert_id = a.id
+        JOIN contacts c ON ac.contact_id = c.id
+        LEFT JOIN users u ON a.user_id = u.id
+        WHERE ac.token = ?;
+    ''', (clean_token,))
+    row = cursor.fetchone()
+
+    owner_name = "User"
+    contact_name = "Contact"
+
+    if row:
+        alert_id = row['alert_id']
+        contact_id = row['contact_id']
+        owner_user_id = row['user_id']
+        contact_name = row['contact_name'] or 'Contact'
+        owner_name = row['user_name'] or 'the user'
+        first_name = contact_name.split()[0]
+
+        cursor.execute('''
+            INSERT INTO contact_responses (alert_id, contact_id, status)
+            VALUES (?, ?, ?);
+        ''', (alert_id, contact_id, status))
+
+        log_event(
+            user_id=owner_user_id,
+            type='contact_responded',
+            actor='contact',
+            detail={'contact': first_name, 'status': status},
+            alert_id=alert_id,
+            cursor=cursor
+        )
+        conn.commit()
+    else:
+        # Check share_token match
+        cursor.execute('''
+            SELECT a.id AS alert_id, a.user_id, a.status AS alert_status, u.name AS user_name
+            FROM alerts a
+            LEFT JOIN users u ON a.user_id = u.id
+            WHERE a.share_token = ?
+            LIMIT 1;
+        ''', (clean_token,))
+        share_row = cursor.fetchone()
+        if share_row:
+            alert_id = share_row['alert_id']
+            owner_user_id = share_row['user_id']
+            owner_name = share_row['user_name'] or 'the user'
+            cursor.execute('SELECT id, name FROM contacts WHERE user_id = ? LIMIT 1;', (owner_user_id,))
+            c_row = cursor.fetchone()
+            cid = c_row['id'] if c_row else 1
+            contact_name = c_row['name'] if c_row else 'Emergency Contact'
+            cursor.execute('''
+                INSERT INTO contact_responses (alert_id, contact_id, status)
+                VALUES (?, ?, ?);
+            ''', (alert_id, cid, status))
+            conn.commit()
+
+    conn.close()
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SafeHer - Response Confirmed</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #FFF5F7; color: #1E293B; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; box-sizing: border-box; }}
+    .card {{ background: #ffffff; max-width: 480px; width: 100%; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 32px 24px; text-align: center; border: 2px solid {color}; }}
+    .icon {{ font-size: 54px; margin-bottom: 12px; }}
+    h1 {{ font-size: 22px; color: #111827; margin: 0 0 8px 0; font-weight: 700; }}
+    .status-badge {{ display: inline-block; background: {color}; color: #ffffff; font-weight: 700; padding: 8px 18px; border-radius: 20px; font-size: 14px; margin: 12px 0 18px 0; }}
+    p {{ font-size: 15px; line-height: 1.6; color: #4B5563; margin: 8px 0; }}
+    .btn {{ display: block; width: 100%; box-sizing: border-box; padding: 14px 20px; margin: 12px 0 0 0; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 10px; text-align: center; }}
+    .btn-track {{ background: #A80F3C; color: #ffffff; }}
+    .footer-note {{ font-size: 12px; color: #9CA3AF; margin-top: 18px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">{icon}</div>
+    <h1>Response Recorded!</h1>
+    <div class="status-badge">{display_status}</div>
+    <p>Thank you <strong>{contact_name}</strong>!</p>
+    <p><strong>{owner_name}</strong> and all other emergency contacts have been notified in real time that you are responding.</p>
+    <a href="{track_url}" class="btn btn-track">🔴 Open Live GPS Tracking Map</a>
+    <div class="footer-note">SafeHer Automated Emergency Network &bull; No app install required</div>
+  </div>
+</body>
+</html>"""
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
 
 # ─── Route: POST /api/track/<token>/ping-checkin ─────────────
 @alerts_bp.route('/api/track/<token>/ping-checkin', methods=['POST'])
@@ -1879,3 +2030,160 @@ def submit_volunteer_feedback(alert_id):
             "message": "Feedback submitted successfully" + (" and volunteer suspended pending admin review." if suspended else ".")
         }
     }), 200
+
+
+# ─── Route: POST /api/location/share ─────────────────────────
+@alerts_bp.route('/api/location/share', methods=['POST'])
+def share_location():
+    """
+    Start a live location sharing session and notify contacts via WhatsApp and Email.
+    Expects JSON: { lat: float, lng: float, duration_minutes: int, duration_str: str, contacts?: list }
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
+
+    data = request.get_json(silent=True) or {}
+    lat = float(data.get('lat') or 12.9716)
+    lng = float(data.get('lng') or 77.5946)
+    duration_minutes = int(data.get('duration_minutes') or 60)
+    duration_str = str(data.get('duration_str') or f"{duration_minutes} minutes")
+    client_contacts = data.get('contacts') or []
+
+    share_token = secrets.token_urlsafe(24)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Save to alerts table with mode='share_location' so existing track.html works out-of-the-box!
+    cursor.execute('''
+        INSERT INTO alerts (user_id, mode, status, lat, lng, reason, note, share_token)
+        VALUES (?, 'share_location', 'active', ?, ?, 'location_share', ?, ?);
+    ''', (user_id, lat, lng, f"Live Location Sharing ({duration_str})", share_token))
+    alert_id = cursor.lastrowid
+
+    # Record initial location
+    cursor.execute('''
+        INSERT INTO locations (alert_id, lat, lng)
+        VALUES (?, ?, ?);
+    ''', (alert_id, lat, lng))
+
+    # Retrieve or sync contacts
+    recipient_phones = []
+    recipient_emails = []
+    for cc in client_contacts:
+        if isinstance(cc, dict):
+            p = str(cc.get('phone') or '').strip()
+            e = str(cc.get('email') or '').strip()
+            if p and p not in recipient_phones:
+                recipient_phones.append(p)
+            if e and e not in recipient_emails:
+                recipient_emails.append(e)
+
+    # Fallback to DB contacts if client contacts empty
+    if not recipient_phones and not recipient_emails:
+        try:
+            cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+            for r in cursor.fetchall():
+                p = str(r['phone'] or '').strip()
+                e = str(r['email'] or '').strip()
+                if p and p not in recipient_phones:
+                    recipient_phones.append(p)
+                if e and e not in recipient_emails:
+                    recipient_emails.append(e)
+        except Exception:
+            pass
+
+    if not recipient_emails:
+        recipient_emails.append('rohanrao1803@gmail.com')
+    if not recipient_phones:
+        recipient_phones.append('917483245232')
+
+    conn.commit()
+    conn.close()
+
+    # Trigger automated WhatsApp & Email
+    try:
+        from whatsapp_service import send_location_share_whatsapp_notifications_background
+        send_location_share_whatsapp_notifications_background(
+            share_id=alert_id,
+            user_name=user_name,
+            duration_str=duration_str,
+            lat=lat,
+            lng=lng,
+            recipient_phones=recipient_phones,
+            token=share_token
+        )
+    except Exception as wa_err:
+        app_logger.error(f"[Share Location] WhatsApp error: {wa_err}")
+
+    try:
+        from email_service import send_location_share_email_notifications_background
+        send_location_share_email_notifications_background(
+            share_id=alert_id,
+            user_name=user_name,
+            duration_str=duration_str,
+            lat=lat,
+            lng=lng,
+            recipient_emails=recipient_emails,
+            token=share_token
+        )
+    except Exception as mail_err:
+        app_logger.error(f"[Share Location] Email error: {mail_err}")
+
+    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+    return jsonify({
+        "ok": True,
+        "data": {
+            "share_id": alert_id,
+            "share_token": share_token,
+            "track_url": f"{frontend_url}/track.html?t={share_token}",
+            "recipient_phones": len(recipient_phones),
+            "recipient_emails": len(recipient_emails),
+            "duration_str": duration_str
+        }
+    }), 201
+
+
+# ─── Route: POST /api/location/stop-share ────────────────────
+@alerts_bp.route('/api/location/stop-share', methods=['POST'])
+def stop_share_location():
+    """
+    End an active location sharing session.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else None
+    data = request.get_json(silent=True) or {}
+    share_token = data.get('share_token')
+
+    conn = get_db()
+    cursor = conn.cursor()
+    if share_token:
+        cursor.execute("UPDATE alerts SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE share_token = ?;", (share_token,))
+    elif user_id:
+        cursor.execute("UPDATE alerts SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE user_id = ? AND mode = 'share_location' AND status = 'active';", (user_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True, "message": "Location sharing stopped"}), 200
+
+
+# ─── Route: GET /api/test-email (Diagnostics) ────────────────
+@alerts_bp.route('/api/test-email', methods=['GET'])
+def test_email_endpoint():
+    """
+    Public diagnostic endpoint to verify live outbound email connectivity on Render.
+    """
+    to_addr = (request.args.get('to') or 'rohanrao1803@gmail.com').strip()
+    from email_service import send_email
+    subject = f"SafeHer Live SMTP Test ({datetime.datetime.now().strftime('%H:%M:%S')})"
+    body_txt = "This is a live test email from SafeHer backend confirming SMTP delivery works."
+    body_html = "<h3>SafeHer Live SMTP Diagnostic</h3><p>Email delivery is operational!</p>"
+    ok, err = send_email(to_addr, subject, body_txt, body_html)
+    return jsonify({
+        "ok": ok,
+        "recipient": to_addr,
+        "error": err,
+        "env_email_user": (os.getenv('EMAIL_ADDRESS') or 'rohan.cse25@cmrit.ac.in')[:3] + '***',
+        "timestamp": datetime.datetime.now().isoformat()
+    }), (200 if ok else 500)

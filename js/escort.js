@@ -367,6 +367,7 @@ SafeHer.escort = (function() {
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
+        maxNativeZoom: 18,
         subdomains: ['0', '1', '2', '3']
       }).addTo(setupMap);
 
@@ -1021,13 +1022,15 @@ SafeHer.escort = (function() {
 
     var payload = {
       destination: currentDest.name,
+      dest_name: currentDest.name,
       dest_lat: currentDest.lat,
       dest_lng: currentDest.lng,
       route: routePayload,
       expected_minutes: expectedMinutes,
       checkin_interval: selectedCheckin === 'off' ? null : parseInt(selectedCheckin, 10),
       deviation_distance: selectedDeviation,
-      contact_ids: checkedIds
+      contact_ids: checkedIds,
+      contacts: SafeHer.storage.get('contacts') || []
     };
 
     SafeHer.api.createEscort(payload, function(err, result) {
@@ -1209,6 +1212,7 @@ SafeHer.escort = (function() {
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
+        maxNativeZoom: 18,
         subdomains: ['0', '1', '2', '3']
       }).addTo(activeMap);
     }

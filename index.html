@@ -2687,11 +2687,26 @@
           </div>
           <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
         </div>
+
+        <!-- Emergency & Alert History Launcher Tile -->
+        <div class="settings-tile" onclick="SafeHer.router.go('history')" style="margin-top: 10px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius-tile); padding: 12px 14px; background: #ffffff; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">history</span>
+            <div>
+              <p style="font-size: 13px; font-weight: 600; color: var(--text-dark); margin: 0;">Emergency &amp; Alert History</p>
+              <p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0 0;">View past SOS alerts, Escort journeys, and activity logs</p>
+            </div>
+          </div>
+          <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
+        </div>
       </div>
 
       <!-- Alert History -->
       <div class="settings-section">
-        <p class="settings-section-title">Alert History</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <p class="settings-section-title" style="margin-bottom: 0;">Recent Alert History</p>
+          <button type="button" class="btn-text-link" onclick="SafeHer.router.go('history')" style="font-size: 12px; color: var(--crimson); font-weight: 600; cursor: pointer;">View Full &rarr;</button>
+        </div>
         <div id="profile-alert-history" class="alert-history-list"></div>
       </div>
 

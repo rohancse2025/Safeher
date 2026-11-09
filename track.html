@@ -611,6 +611,7 @@
 
           L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
             maxZoom: 20,
+            maxNativeZoom: 18,
             subdomains: ['0', '1', '2', '3']
           }).addTo(mapInstance);
 
@@ -837,6 +838,7 @@
 
           L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
             maxZoom: 20,
+            maxNativeZoom: 18,
             subdomains: ['0', '1', '2', '3']
           }).addTo(mapInstance);
 
@@ -1024,6 +1026,18 @@
       if (!token) {
         showError('No tracking token provided in the URL. Please tap the tracking link from the alert message.');
         return;
+      }
+
+      // Check if URL has ?action= from 1-tap WhatsApp or SMS link
+      try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var autoAction = urlParams.get('action');
+        if (autoAction) {
+          if (autoAction === 'police_alerted') autoAction = 'alerted_police';
+          respondContact(autoAction);
+        }
+      } catch (e) {
+        console.warn('Auto action error:', e);
       }
 
       // Initial fetch

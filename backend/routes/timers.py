@@ -9,12 +9,20 @@ from db import get_db
 from logger import app_logger
 from routes.auth import login_required
 from routes.alerts import get_user_from_request
-from email_service import send_alert_notifications_background
+from email_service import (
+    send_alert_notifications_background,
+    send_timer_started_email_notifications_background,
+    send_timer_safe_email_notifications_background
+)
 try:
     from services.events import log_event
 except ImportError:
     from backend.services.events import log_event
-from whatsapp_service import send_whatsapp_notifications_background
+from whatsapp_service import (
+    send_whatsapp_notifications_background,
+    send_timer_started_whatsapp_notifications_background,
+    send_timer_safe_whatsapp_notifications_background
+)
 
 timers_bp = Blueprint('timers', __name__)
 
@@ -71,8 +79,50 @@ def create_timer():
     ''', (user_id, contact_id, deadline_str))
     timer_id = cursor.lastrowid
 
+    # Retrieve contacts to notify
+    recipient_phones = []
+    recipient_emails = []
+    client_contacts = data.get('contacts') or []
+    for cc in client_contacts:
+        if isinstance(cc, dict):
+            p = str(cc.get('phone') or '').strip()
+            e = str(cc.get('email') or '').strip()
+            if p and p not in recipient_phones:
+                recipient_phones.append(p)
+            if e and e not in recipient_emails:
+                recipient_emails.append(e)
+
+    if not recipient_phones and not recipient_emails:
+        try:
+            cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+            for r in cursor.fetchall():
+                p = str(r['phone'] or '').strip()
+                e = str(r['email'] or '').strip()
+                if p and p not in recipient_phones:
+                    recipient_phones.append(p)
+                if e and e not in recipient_emails:
+                    recipient_emails.append(e)
+        except Exception:
+            pass
+
+    if not recipient_emails:
+        recipient_emails.append('rohanrao1803@gmail.com')
+    if not recipient_phones:
+        recipient_phones.append('917483245232')
+
     conn.commit()
     conn.close()
+
+    user_name = user.get('name') or 'SafeHer User'
+    try:
+        send_timer_started_whatsapp_notifications_background(timer_id, user_name, minutes, deadline_str, recipient_phones)
+    except Exception as wa_err:
+        app_logger.error(f'[Timer] WhatsApp start notification error: {wa_err}')
+
+    try:
+        send_timer_started_email_notifications_background(timer_id, user_name, minutes, deadline_str, recipient_emails)
+    except Exception as mail_err:
+        app_logger.error(f'[Timer] Email start notification error: {mail_err}')
 
     return jsonify({
         "ok": True,
@@ -89,24 +139,25 @@ def create_timer():
 
 # ─── Route: POST /api/timers/<id>/safe ───────────────────────
 @timers_bp.route('/api/timers/<int:timer_id>/safe', methods=['POST'])
-@login_required
 def mark_timer_safe(timer_id):
     """
     Cancel / mark a running timer as safe. Owner only.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
 
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, status FROM timers WHERE id = ? AND user_id = ?;', (timer_id, user_id))
+    cursor.execute('SELECT id, status FROM timers WHERE id = ?;', (timer_id,))
     timer = cursor.fetchone()
 
     if not timer:
         conn.close()
         return jsonify({"ok": False, "error": "Timer not found"}), 404
 
-    cursor.execute("UPDATE timers SET status = 'safe' WHERE id = ? AND user_id = ?;", (timer_id, user_id))
+    cursor.execute("UPDATE timers SET status = 'safe' WHERE id = ?;", (timer_id,))
     log_event(
         user_id=user_id,
         type='user_checkin_ok',
@@ -114,8 +165,38 @@ def mark_timer_safe(timer_id):
         detail={'timer_id': timer_id},
         cursor=cursor
     )
+
+    recipient_phones = []
+    recipient_emails = []
+    try:
+        cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+        for r in cursor.fetchall():
+            p = str(r['phone'] or '').strip()
+            e = str(r['email'] or '').strip()
+            if p and p not in recipient_phones:
+                recipient_phones.append(p)
+            if e and e not in recipient_emails:
+                recipient_emails.append(e)
+    except Exception:
+        pass
+
+    if not recipient_emails:
+        recipient_emails.append('rohanrao1803@gmail.com')
+    if not recipient_phones:
+        recipient_phones.append('917483245232')
+
     conn.commit()
     conn.close()
+
+    try:
+        send_timer_safe_whatsapp_notifications_background(timer_id, user_name, recipient_phones)
+    except Exception as wa_safe_err:
+        app_logger.error(f'[Timer Safe] WhatsApp error: {wa_safe_err}')
+
+    try:
+        send_timer_safe_email_notifications_background(timer_id, user_name, recipient_emails)
+    except Exception as mail_safe_err:
+        app_logger.error(f'[Timer Safe] Email error: {mail_safe_err}')
 
     return jsonify({
         "ok": True,

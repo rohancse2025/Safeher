@@ -591,6 +591,7 @@ SafeHer.sos = (function() {
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
+        maxNativeZoom: 18,
         subdomains: ['0', '1', '2', '3']
       }).addTo(mapInstance);
 

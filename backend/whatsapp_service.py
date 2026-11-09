@@ -168,22 +168,26 @@ def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at
         track_link = f"{frontend_url}/track.html?t={share_token}"
         maps_link = f"https://www.google.com/maps?q={lat},{lng}"
 
-        message = (
-            f"🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨\n\n"
-            f"*{user_name}* has triggered an urgent SOS alert!\n\n"
-            f"⚠️ *Mode*: {mode.upper()}\n"
-            f"🕒 *Time*: {started_at_str}\n"
-            f"📍 *Google Maps Location*:\n{maps_link}\n\n"
-            f"🔴 *Live Tracking Link*:\n{track_link}\n\n"
-            f"Please contact {user_name} immediately or call Police (112)."
-        )
-
         for phone in recipient_phones:
             tok = share_token
             if contact_tokens and isinstance(contact_tokens, dict):
                 tok = contact_tokens.get(phone) or share_token
             per_track_link = f"{frontend_url}/track.html?t={tok}"
-            per_message = message.replace(track_link, per_track_link)
+
+            per_message = (
+                f"🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨\n\n"
+                f"*{user_name}* has triggered an urgent SOS alert!\n\n"
+                f"⚠️ *Mode*: {mode.upper()}\n"
+                f"🕒 *Time*: {started_at_str}\n"
+                f"📍 *Google Maps Location*:\n{maps_link}\n\n"
+                f"🔴 *Live Tracking Map*:\n{per_track_link}\n\n"
+                f"⚡ *Quick 1-Tap Response (No app needed):*\n"
+                f"🏃 On my way: {per_track_link}&action=on_my_way\n"
+                f"📞 Called her: {per_track_link}&action=called\n"
+                f"🚓 Alerted Police: {per_track_link}&action=police_alerted\n"
+                f"✅ Safe with me: {per_track_link}&action=safe_with_me\n\n"
+                f"Please contact {user_name} immediately or call Police (112)."
+            )
             masked = mask_phone(phone)
             success, err_msg = send_whatsapp(phone, per_message)
             if success:
@@ -272,5 +276,85 @@ def send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, 
                 app_logger.info(f"[ESCORT ARRIVED WHATSAPP SENT] escort_id={escort_id}, to={masked}")
             else:
                 app_logger.error(f"[ESCORT ARRIVED WHATSAPP FAILED] escort_id={escort_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_timer_started_whatsapp_notifications_background(timer_id, user_name, minutes, deadline_str, recipient_phones):
+    """
+    Send WhatsApp notification to contacts when user starts a Safe Timer.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        message = (
+            f"⏱️ *SafeHer Safety Timer Activated* ⏱️\n\n"
+            f"*{user_name}* has started a *{minutes}-minute* safety timer.\n\n"
+            f"🕒 *Check-in Deadline*: {deadline_str}\n"
+            f"🛡️ *Status*: Actively Monitored\n\n"
+            f"If {user_name} does not check in or enter her safety PIN before {deadline_str}, "
+            f"an urgent SOS alert will be triggered automatically to all emergency contacts with live GPS coordinates."
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[TIMER START WHATSAPP SENT] timer_id={timer_id}, to={masked}")
+            else:
+                app_logger.error(f"[TIMER START WHATSAPP FAILED] timer_id={timer_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_timer_safe_whatsapp_notifications_background(timer_id, user_name, recipient_phones):
+    """
+    Send WhatsApp notification to contacts when user safely cancels/disarms the timer.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        message = (
+            f"✅ *SAFE CHECK-IN - SafeHer* ✅\n\n"
+            f"*{user_name}* has arrived safely and checked in with her PIN.\n\n"
+            f"The safety timer is now disarmed. All clear!"
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[TIMER SAFE WHATSAPP SENT] timer_id={timer_id}, to={masked}")
+            else:
+                app_logger.error(f"[TIMER SAFE WHATSAPP FAILED] timer_id={timer_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_location_share_whatsapp_notifications_background(share_id, user_name, duration_str, lat, lng, recipient_phones, token=None):
+    """
+    Send WhatsApp notification to contacts when user starts Live Location Sharing.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        track_url = f"{frontend_url}/track.html?t={token}" if token else f"{frontend_url}/track.html"
+        maps_url = f"https://www.google.com/maps?q={lat},{lng}"
+        message = (
+            f"📍 *SafeHer Live Location Shared* 📍\n\n"
+            f"*{user_name}* is sharing her live real-time GPS location with you ({duration_str}).\n\n"
+            f"🔴 *Live Tracking Map*:\n{track_url}\n\n"
+            f"📍 *Google Maps Location*:\n{maps_url}\n\n"
+            f"Follow her movement live in your browser."
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[SHARE LOCATION WHATSAPP SENT] share_id={share_id}, to={masked}")
+            else:
+                app_logger.error(f"[SHARE LOCATION WHATSAPP FAILED] share_id={share_id}, to={masked}, error={err_msg}")
 
     threading.Thread(target=worker, daemon=True).start()

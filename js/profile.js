@@ -213,8 +213,8 @@ SafeHer.profile = (function() {
       var html = '';
       for (var i = 0; i < alerts.length; i++) {
         var a = alerts[i];
-        var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : (a.mode === 'timer' ? 'Timer' : 'Normal'));
-        var modeClass = a.mode === 'emergency' ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : 'alert-mode-normal');
+        var modeLabel = a.mode === 'emergency' ? 'Emergency' : (a.mode === 'silent' ? 'Silent' : (a.mode === 'timer' ? 'Timer' : (a.mode === 'share_location' ? 'Location' : (a.mode === 'escort' ? 'Escort' : 'Normal'))));
+        var modeClass = (a.mode === 'emergency' || a.mode === 'escort') ? 'alert-mode-emergency' : (a.mode === 'silent' ? 'alert-mode-silent' : 'alert-mode-normal');
         var statusLabel = a.status === 'active' ? 'Active' : 'Resolved';
         var statusClass = a.status === 'active' ? 'alert-status-active' : 'alert-status-resolved';
 
@@ -448,6 +448,7 @@ SafeHer.profile = (function() {
 
     L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
       maxZoom: 20,
+      maxNativeZoom: 18,
       subdomains: ['0', '1', '2', '3']
     }).addTo(detailsMapInstance);
 

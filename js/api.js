@@ -832,7 +832,7 @@ SafeHer.api = (function() {
         return (a.userId || 'guest') === userId;
       });
 
-      if (useBackend() && getToken()) {
+      if (useBackend()) {
         apiFetch('/api/alerts', { method: 'GET' })
           .then(function(json) {
             var serverAlerts = (json.data || []).map(function(a) {
@@ -850,8 +850,15 @@ SafeHer.api = (function() {
                 duress: a.duress
               };
             });
-            SafeHer.storage.set('alerts', serverAlerts);
-            if (callback) callback(null, serverAlerts);
+            var combined = [].concat(serverAlerts);
+            localList.forEach(function(la) {
+              if (!combined.some(function(sa) { return sa.id === la.id || (sa.timestamp && Math.abs(sa.timestamp - la.timestamp) < 2000); })) {
+                combined.push(la);
+              }
+            });
+            combined.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+            SafeHer.storage.set('alerts', combined);
+            if (callback) callback(null, combined);
           })
           .catch(function(err) {
             if (callback) callback(err.message, localList);
@@ -1225,13 +1232,20 @@ SafeHer.api = (function() {
 
       if (useBackend()) {
         var currentUser = this.getUser() || {};
+        var allContacts = SafeHer.storage.get('contacts') || [];
+        var chosenContacts = (data.contactId && data.contactId !== 'all')
+          ? allContacts.filter(function(c) { return String(c.id) === String(data.contactId); })
+          : allContacts;
+        if (chosenContacts.length === 0) chosenContacts = allContacts;
+
         apiFetch('/api/timers', {
           method: 'POST',
           body: JSON.stringify({
             minutes: data.minutes || (data.totalSeconds ? (data.totalSeconds / 60) : 5),
-            contact_id: data.contactId || null,
+            contact_id: (data.contactId && data.contactId !== 'all') ? parseInt(data.contactId, 10) : null,
             user_id: currentUser.id,
-            phone: currentUser.phone
+            phone: currentUser.phone,
+            contacts: chosenContacts
           })
         }).then(function(json) {
           if (json.data && json.data.id) {
@@ -1253,7 +1267,7 @@ SafeHer.api = (function() {
       var backendId = current ? current.backendTimerId : null;
       SafeHer.storage.remove('safe_timer');
 
-      if (useBackend() && getToken() && backendId) {
+      if (useBackend() && backendId) {
         apiFetch('/api/timers/' + backendId + '/safe', { method: 'POST' })
           .then(function(json) {
             if (callback) callback(null, json.data);
@@ -1543,6 +1557,38 @@ SafeHer.api = (function() {
       })
       .catch(function(err) {
         if (callback) callback(err.message || 'End escort error', null);
+      });
+    },
+
+    // ─── Share Location Endpoints ────────────────────────────
+    shareLocation: function(data, callback) {
+      if (!useBackend()) {
+        if (callback) callback('Requires active connection', null);
+        return;
+      }
+      apiFetch('/api/location/share', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Location share error', null);
+      });
+    },
+
+    stopShareLocation: function(data, callback) {
+      if (!useBackend()) return;
+      apiFetch('/api/location/stop-share', {
+        method: 'POST',
+        body: JSON.stringify(data || {})
+      })
+      .then(function(res) {
+        if (callback) callback(null, res.data || res);
+      })
+      .catch(function(err) {
+        if (callback) callback(err.message || 'Stop location share error', null);
       });
     },
 

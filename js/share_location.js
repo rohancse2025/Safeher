@@ -245,6 +245,7 @@ SafeHer.shareLocation = (function() {
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
+        maxNativeZoom: 18,
         subdomains: ['0', '1', '2', '3']
       }).addTo(mapInstance);
 
@@ -369,6 +370,35 @@ SafeHer.shareLocation = (function() {
       renderActiveView(session);
       startTrackingLoop();
 
+      var allContacts = SafeHer.storage.get('contacts') || [];
+      var chosenContacts = allContacts.filter(function(c) {
+        return selectedContactIds.indexOf(c.id) !== -1;
+      });
+      if (chosenContacts.length === 0) chosenContacts = allContacts;
+
+      var durationMins = 60;
+      if (selectedDuration === '15m') durationMins = 15;
+      else if (selectedDuration === '1h') durationMins = 60;
+      else if (selectedDuration === '8h') durationMins = 480;
+      else if (selectedDuration === 'all_day') durationMins = 1440;
+
+      if (SafeHer.api && SafeHer.api.shareLocation) {
+        SafeHer.api.shareLocation({
+          lat: currentLat,
+          lng: currentLng,
+          duration_minutes: durationMins,
+          duration_str: selectedDuration,
+          contacts: chosenContacts
+        }, function(err, result) {
+          if (!err && result) {
+            session.shareToken = result.share_token;
+            session.trackUrl = result.track_url;
+            saveActiveSession(session);
+            if (SafeHer.toast) SafeHer.toast('⚡ Location alerts sent via WhatsApp & Email!');
+          }
+        });
+      }
+
       SafeHer.toast('Location sharing active');
     }
 
@@ -390,6 +420,10 @@ SafeHer.shareLocation = (function() {
 
   // ─── Stop Sharing Action ──────────────────────────────────
   function stopSharing(isTimeout) {
+    var activeSession = getActiveSession();
+    if (activeSession && activeSession.shareToken && SafeHer.api && SafeHer.api.stopShareLocation) {
+      SafeHer.api.stopShareLocation({ share_token: activeSession.shareToken });
+    }
     clearInterval(positionInterval);
     clearInterval(countdownInterval);
     positionInterval = null;

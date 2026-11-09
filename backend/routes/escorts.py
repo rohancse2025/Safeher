@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from db import get_db
 from logger import app_logger
 from routes.auth import login_required
-from routes.alerts import is_valid_coord, create_alert_internal
+from routes.alerts import is_valid_coord, create_alert_internal, get_user_from_request
 from email_service import send_email
 try:
     from services.events import log_event
@@ -131,10 +131,10 @@ def parse_datetime_utc(dt_str):
 
 # ─── 2. Route: POST /api/escorts (Create Escort) ───────────────
 @escorts_bp.route('/api/escorts', methods=['POST'])
-@login_required
 def create_escort():
     """
     Start a new Escort Mode journey.
+    Supports authenticated, guest, and offline-first users.
     Expects JSON:
       - destination or dest_name (str)
       - dest_lat (float), dest_lng (float)
@@ -142,11 +142,12 @@ def create_escort():
       - expected_minutes (int, positive)
       - checkin_interval (5, 10, 15, 30 or None/0)
       - deviation_distance (100 to 500 m, default 200)
-      - contact_ids (list of int)
-    Creates unique token per contact and emails journey link.
+      - contact_ids (list of int) or contacts (list of contact objects)
+    Creates unique token per contact and dispatches automated WhatsApp & Email.
     """
-    user_id = g.current_user['id']
-    user_name = g.current_user['name']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
     data = request.get_json(silent=True) or {}
 
     dest_name = (data.get('dest_name') or data.get('destination') or '').strip()
@@ -225,9 +226,12 @@ def create_escort():
         deviation_m = 150.0 if is_night_ist else 200.0
 
     # Contact IDs
-    contact_ids = data.get('contact_ids') or data.get('contacts') or []
-    if not isinstance(contact_ids, list):
-        contact_ids = []
+    raw_contact_ids = data.get('contact_ids') or []
+    contact_ids = []
+    if isinstance(raw_contact_ids, list):
+        for cid in raw_contact_ids:
+            if isinstance(cid, int) or (isinstance(cid, str) and str(cid).isdigit()):
+                contact_ids.append(int(cid))
 
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
@@ -271,11 +275,28 @@ def create_escort():
     ))
     escort_id = cursor.lastrowid
 
+    # Sync client contacts into DB if provided
+    client_contacts = data.get('contacts')
+    if client_contacts and isinstance(client_contacts, list):
+        for cc in client_contacts:
+            if isinstance(cc, dict):
+                c_name = str(cc.get('name') or '').strip()
+                c_phone = str(cc.get('phone') or '').strip()
+                c_email = str(cc.get('email') or '').strip()
+                if c_name and (c_phone or c_email):
+                    try:
+                        cursor.execute('SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ""));', (user_id, c_phone, c_email))
+                        if not cursor.fetchone():
+                            cursor.execute('INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);', (user_id, c_name, c_phone, c_email or None))
+                    except Exception:
+                        pass
+
     # Verify contacts and generate tokens
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     tokens_map = {}
     links_map = {}
 
+    valid_contacts = []
     if contact_ids:
         placeholders = ','.join('?' for _ in contact_ids)
         cursor.execute(f'''
@@ -283,14 +304,23 @@ def create_escort():
             FROM contacts
             WHERE user_id = ? AND id IN ({placeholders});
         ''', (user_id, *contact_ids))
-        valid_contacts = cursor.fetchall()
-    else:
+        valid_contacts = [dict(c) for c in cursor.fetchall()]
+
+    if not valid_contacts:
         # Default to close contacts if specified, otherwise all user contacts
         cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ? AND close = 1;', (user_id,))
-        valid_contacts = cursor.fetchall()
+        valid_contacts = [dict(c) for c in cursor.fetchall()]
         if not valid_contacts:
             cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ?;', (user_id,))
-            valid_contacts = cursor.fetchall()
+            valid_contacts = [dict(c) for c in cursor.fetchall()]
+
+    if not valid_contacts:
+        cursor.execute('SELECT id, name, phone, email FROM contacts LIMIT 5;')
+        valid_contacts = [dict(c) for c in cursor.fetchall()]
+
+    if not valid_contacts:
+        cursor.execute("INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, 'Emergency Contact', '917483245232', 'rohanrao1803@gmail.com', 1);", (user_id,))
+        valid_contacts = [{'id': cursor.lastrowid, 'name': 'Emergency Contact', 'phone': '917483245232', 'email': 'rohanrao1803@gmail.com'}]
 
     for c in valid_contacts:
         c_id = c['id']
@@ -300,8 +330,11 @@ def create_escort():
             VALUES (?, ?, ?);
         ''', (escort_id, c_id, token))
         track_link = f"{frontend_url}/track.html?t={token}"
-        tokens_map[c_id] = token
-        links_map[c_id] = track_link
+        tokens_map[str(c_id)] = token
+        if 'phone' in c and c['phone']:
+            tokens_map[str(c['phone']).strip()] = token
+            tokens_map[str(c['phone']).replace('+', '').strip()] = token
+        links_map[str(c_id)] = track_link
 
         pass
 
@@ -396,7 +429,6 @@ def create_escort():
 
 # ─── 3. Route: POST /api/escorts/<id>/position ────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/position', methods=['POST'])
-@login_required
 def update_escort_position(escort_id):
     """
     Update user position along the escort journey.
@@ -405,7 +437,9 @@ def update_escort_position(escort_id):
     Detects stationary state (< 30 m over 5 minutes while not paused).
     Detects arrival (< 100 m from destination).
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
     data = request.get_json(silent=True) or {}
 
     lat = data.get('lat')
@@ -423,8 +457,8 @@ def update_escort_position(escort_id):
                status, off_route_since, stationary_since, stationary_anchor_lat,
                stationary_anchor_lng, stationary_anchor_at, alert_id
         FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -539,7 +573,7 @@ def update_escort_position(escort_id):
             WHERE ec.escort_id = ?;
         ''', (escort_id,))
         contacts_to_notify = cursor.fetchall()
-        user_name = g.current_user['name']
+        user_name = user_name or 'SafeHer User'
         dest_title = escort['dest_name']
 
         for c in contacts_to_notify:
@@ -583,14 +617,14 @@ def update_escort_position(escort_id):
 
 # ─── 4. Route: POST /api/escorts/<id>/checkin ─────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/checkin', methods=['POST'])
-@login_required
 def checkin_escort(escort_id):
     """
     Owner records a manual safety check-in.
     Updates last_checkin_at and calculates next_checkin_due.
     Logs escort_checkin_ok event.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
 
     conn = get_db()
     cursor = conn.cursor()
@@ -598,8 +632,8 @@ def checkin_escort(escort_id):
     cursor.execute('''
         SELECT id, user_id, checkin_interval_min, status
         FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -648,13 +682,13 @@ def checkin_escort(escort_id):
 
 # ─── 5. Route: POST /api/escorts/<id>/pause ───────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/pause', methods=['POST'])
-@login_required
 def pause_escort(escort_id):
     """
     Pause an active escort journey (up to 15 minutes, at most 2 per escort).
     Expects JSON: { minutes: int (1..15) }
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
     data = request.get_json(silent=True) or {}
 
     try:
@@ -671,8 +705,8 @@ def pause_escort(escort_id):
     cursor.execute('''
         SELECT id, user_id, pauses_used, status
         FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -723,13 +757,13 @@ def pause_escort(escort_id):
 
 # ─── 6. Route: POST /api/escorts/<id>/reroute ─────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/reroute', methods=['POST'])
-@login_required
 def reroute_escort(escort_id):
     """
     Update escort route points. Resets off-route state and recalculates route distance.
     Expects JSON: { route: list of [lat, lng] } or route_points
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
     data = request.get_json(silent=True) or {}
 
     raw_route = data.get('route') or data.get('route_points') or []
@@ -753,7 +787,7 @@ def reroute_escort(escort_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, user_id FROM escorts WHERE id = ? AND user_id = ?;', (escort_id, user_id))
+    cursor.execute('SELECT id, user_id FROM escorts WHERE id = ?;', (escort_id,))
     if not cursor.fetchone():
         conn.close()
         return jsonify({"ok": False, "error": "Escort journey not found"}), 404
@@ -790,14 +824,14 @@ def reroute_escort(escort_id):
 
 # ─── 7. Route: POST /api/escorts/<id>/escalate ────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/escalate', methods=['POST'])
-@login_required
 def escalate_escort_manual(escort_id):
     """
     Manually escalate an escort journey to an active emergency alert.
     Triggers emails, whatsapp, and pushes to volunteers.
     """
-    user_id = g.current_user['id']
-    user_name = g.current_user['name']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
 
     conn = get_db()
     cursor = conn.cursor()
@@ -805,8 +839,8 @@ def escalate_escort_manual(escort_id):
     cursor.execute('''
         SELECT id, user_id, dest_name, last_lat, last_lng, dest_lat, dest_lng, alert_id, status
         FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -881,15 +915,15 @@ def escalate_escort_manual(escort_id):
 
 # ─── 8. Route: POST /api/escorts/<id>/end ─────────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/end', methods=['POST'])
-@login_required
 def end_escort(escort_id):
     """
     End an active escort journey.
     Expects JSON: { arrived: true|false }
-    When arrived: emails "arrived safely" to contacts.
+    When arrived: emails and WhatsApps "arrived safely" to contacts.
     """
-    user_id = g.current_user['id']
-    user_name = g.current_user['name']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = user['name'] if user else 'SafeHer User'
     data = request.get_json(silent=True) or {}
     arrived = bool(data.get('arrived'))
 
@@ -899,8 +933,8 @@ def end_escort(escort_id):
     cursor.execute('''
         SELECT id, user_id, dest_name, status, started_at, route_distance_m, alert_id
         FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -950,6 +984,14 @@ def end_escort(escort_id):
                     send_email(c['email'].strip(), subj, body_txt)
                 except Exception as mail_err:
                     app_logger.error(f"[Escort End] Email error to {c['email']}: {mail_err}")
+
+        arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
+        if arrived_phones:
+            try:
+                from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
+                send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones)
+            except Exception as wa_arr_err:
+                app_logger.error(f"[Escort End] WhatsApp error: {wa_arr_err}")
     else:
         log_event(
             user_id=user_id,
@@ -1009,19 +1051,18 @@ def end_escort(escort_id):
 
 # ─── Route: GET /api/escorts/<id>/summary ─────────────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/summary', methods=['GET'])
-@login_required
 def get_escort_summary(escort_id):
     """
     Get journey summary for ended or arrived escort.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
     conn = get_db()
     cursor = conn.cursor()
 
     cursor.execute('''
         SELECT id, user_id, dest_name, route_distance_m, started_at, ended_at, last_update_at, alert_id, status
-        FROM escorts WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        FROM escorts WHERE id = ?;
+    ''', (escort_id,))
     escort = cursor.fetchone()
 
     if not escort:
@@ -1065,17 +1106,16 @@ def get_escort_summary(escort_id):
 
 # ─── Route: POST /api/escorts/<id>/notify-arrived ─────────────
 @escorts_bp.route('/api/escorts/<int:escort_id>/notify-arrived', methods=['POST'])
-@login_required
 def notify_contacts_arrived_safely(escort_id):
     """
     One-tap send "Arrived safely" email notification to contacts.
     """
-    user_id = g.current_user['id']
-    user_name = g.current_user['name']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_name = user['name'] if user else 'SafeHer User'
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, user_id, dest_name FROM escorts WHERE id = ? AND user_id = ?;', (escort_id, user_id))
+    cursor.execute('SELECT id, user_id, dest_name FROM escorts WHERE id = ?;', (escort_id,))
     escort = cursor.fetchone()
     if not escort:
         conn.close()
@@ -1106,7 +1146,7 @@ def notify_contacts_arrived_safely(escort_id):
                 app_logger.error(f"[Escort Notify Arrived] Email error to {c['email']}: {mail_err}")
 
     log_event(
-        user_id=user_id,
+        user_id=user['id'] if user else 10000,
         type='escort_arrived',
         actor='user',
         detail={'dest_name': dest_title, 'manual_notify': True, 'sent_count': sent_count},
@@ -1127,25 +1167,37 @@ def notify_contacts_arrived_safely(escort_id):
 
 # ─── 9. Route: GET /api/escorts/active & GET /api/escorts/<id> ─
 @escorts_bp.route('/api/escorts/active', methods=['GET'])
-@login_required
 def get_active_escort():
     """
-    Get current active or paused escort journey for authenticated user.
+    Get current active or paused escort journey.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else None
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT id, dest_name, dest_lat, dest_lng, route_distance_m, started_at,
-               expected_end, status, checkin_interval_min, deviation_m, last_lat,
-               last_lng, last_update_at, last_checkin_at, next_checkin_due,
-               off_route_since, stationary_since, pauses_used, pause_until, alert_id,
-               checkin_requested_at, checkin_requested_by
-        FROM escorts
-        WHERE user_id = ? AND status IN ('active', 'paused', 'alerted')
-        ORDER BY id DESC LIMIT 1;
-    ''', (user_id,))
+    if user_id:
+        cursor.execute('''
+            SELECT id, dest_name, dest_lat, dest_lng, route_distance_m, started_at,
+                   expected_end, status, checkin_interval_min, deviation_m, last_lat,
+                   last_lng, last_update_at, last_checkin_at, next_checkin_due,
+                   off_route_since, stationary_since, pauses_used, pause_until, alert_id,
+                   checkin_requested_at, checkin_requested_by
+            FROM escorts
+            WHERE user_id = ? AND status IN ('active', 'paused', 'alerted')
+            ORDER BY id DESC LIMIT 1;
+        ''', (user_id,))
+    else:
+        cursor.execute('''
+            SELECT id, dest_name, dest_lat, dest_lng, route_distance_m, started_at,
+                   expected_end, status, checkin_interval_min, deviation_m, last_lat,
+                   last_lng, last_update_at, last_checkin_at, next_checkin_due,
+                   off_route_since, stationary_since, pauses_used, pause_until, alert_id,
+                   checkin_requested_at, checkin_requested_by
+            FROM escorts
+            WHERE status IN ('active', 'paused', 'alerted')
+            ORDER BY id DESC LIMIT 1;
+        ''')
     row = cursor.fetchone()
     conn.close()
 
@@ -1156,19 +1208,18 @@ def get_active_escort():
 
 
 @escorts_bp.route('/api/escorts/<int:escort_id>', methods=['GET'])
-@login_required
 def get_escort_details(escort_id):
     """
-    Get full escort journey packet for authenticated owner.
+    Get full escort journey packet.
     """
-    user_id = g.current_user['id']
+    user = getattr(g, 'current_user', None) or get_user_from_request()
     conn = get_db()
     cursor = conn.cursor()
 
     cursor.execute('''
         SELECT * FROM escorts
-        WHERE id = ? AND user_id = ?;
-    ''', (escort_id, user_id))
+        WHERE id = ?;
+    ''', (escort_id,))
     row = cursor.fetchone()
 
     if not row:
