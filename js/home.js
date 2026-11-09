@@ -68,7 +68,7 @@ SafeHer.home = (function() {
         // Nominatim reverse geocoding (OpenStreetMap)
         // Backend endpoint: GET /api/location/reverse?lat=&lon=
         fetch(
-          'https://nominatim.openstreetmap.org/reverse?format=json&lat=' +
+          'https://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=' +
           lat + '&lon=' + lon + '&zoom=10'
         )
           .then(function(r) { return r.json(); })

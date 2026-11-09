@@ -124,6 +124,23 @@ def create_timer():
     except Exception as mail_err:
         app_logger.error(f'[Timer] Email start notification error: {mail_err}')
 
+    try:
+        from services.notify import notify
+        notify(
+            event_type='timer_start',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'minutes': int(minutes),
+                'deadline': deadline_str,
+                'timer_id': timer_id
+            },
+            contact_ids=[contact_id] if contact_id else None,
+            event_key=f"timer_start_{timer_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY TIMER_START ERROR] {notify_err}")
+
     return jsonify({
         "ok": True,
         "data": {
@@ -197,6 +214,20 @@ def mark_timer_safe(timer_id):
         send_timer_safe_email_notifications_background(timer_id, user_name, recipient_emails)
     except Exception as mail_safe_err:
         app_logger.error(f'[Timer Safe] Email error: {mail_safe_err}')
+
+    try:
+        from services.notify import notify
+        notify(
+            event_type='timer_safe',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'timer_id': timer_id
+            },
+            event_key=f"timer_safe_{timer_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY TIMER_SAFE ERROR] {notify_err}")
 
     return jsonify({
         "ok": True,
@@ -406,6 +437,26 @@ def _check_expired_timers_inner(conn):
             notify_user_timer_expired(user_id=user_id, timer_id=timer_id)
         except Exception as push_err:
             pass
+
+        try:
+            from services.notify import notify
+            frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+            notify(
+                event_type='timer_expired',
+                user_id=user_id,
+                context={
+                    'user_name': user_name,
+                    'timer_id': timer_id,
+                    'alert_id': alert_id,
+                    'lat': last_lat,
+                    'lng': last_lng,
+                    'track_url': f"{frontend_url}/track.html?t={share_token}"
+                },
+                alert_id=alert_id,
+                event_key=f"timer_expired_{timer_id}"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY TIMER_EXPIRED ERROR] {notify_err}")
 
         print(f"[TimerMonitor] Expired timer {timer_id} escalated to SOS Alert {alert_id} for user {user_id}")
 

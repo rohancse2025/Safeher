@@ -1,6 +1,7 @@
 # backend/db.py – SQLite database connection and table schema creation
 import os
 import sqlite3
+import secrets
 from dotenv import load_dotenv
 
 # Load settings from .env file
@@ -64,7 +65,7 @@ def init_db():
         );
     ''')
 
-    # 2. Contacts table
+    # 2. Contacts table (with opted_out, email_status, optout_token)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS contacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,13 +75,27 @@ def init_db():
             email TEXT,
             relationship TEXT,
             close INTEGER DEFAULT 0,
+            opted_out INTEGER DEFAULT 0,
+            email_status TEXT DEFAULT 'unknown',
+            optout_token TEXT UNIQUE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''')
-    try:
+    cursor.execute("PRAGMA table_info(contacts);")
+    existing_contact_cols = {col['name'] for col in cursor.fetchall()}
+    if 'close' not in existing_contact_cols:
         cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
-    except Exception:
-        pass
+    if 'opted_out' not in existing_contact_cols:
+        cursor.execute("ALTER TABLE contacts ADD COLUMN opted_out INTEGER DEFAULT 0;")
+    if 'email_status' not in existing_contact_cols:
+        cursor.execute("ALTER TABLE contacts ADD COLUMN email_status TEXT DEFAULT 'unknown';")
+    if 'optout_token' not in existing_contact_cols:
+        cursor.execute("ALTER TABLE contacts ADD COLUMN optout_token TEXT;")
+    
+    # Ensure all contacts have an optout_token for 1-click unsubscribe links
+    cursor.execute("SELECT id FROM contacts WHERE optout_token IS NULL OR optout_token = '';")
+    for r in cursor.fetchall():
+        cursor.execute("UPDATE contacts SET optout_token = ? WHERE id = ?;", (secrets.token_urlsafe(24), r['id']))
 
     # 3. Alerts table
     cursor.execute('''
@@ -541,6 +556,49 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_pings_escort_contact ON escort_checkin_pings(escort_id, contact_id, created_at);')
 
+    # 15. Notifications table (Central notification outbox, status tracking, retry state, and provider message id)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            alert_id INTEGER,
+            event_type TEXT NOT NULL,
+            event_key TEXT NOT NULL,
+            contact_id INTEGER,
+            channel TEXT NOT NULL DEFAULT 'email',
+            recipient_masked TEXT NOT NULL,
+            recipient_email TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body_text TEXT NOT NULL,
+            body_html TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            next_attempt_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sent_at TIMESTAMP,
+            delivered_at TIMESTAMP,
+            provider_message_id TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE SET NULL,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+            UNIQUE (event_key, contact_id, channel)
+        );
+    ''')
+
+    # 16. Notification Settings table (user_id, event_type, enabled)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notification_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE (user_id, event_type)
+        );
+    ''')
+
     # Useful indexes for high performance lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);')
@@ -571,6 +629,13 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_escorts_status ON escorts(status);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_contacts_escort ON escort_contacts(escort_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_escort_contacts_token ON escort_contacts(token);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_next_attempt ON notifications(next_attempt_at);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_provider_msg ON notifications(provider_message_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_event_contact_channel ON notifications(event_key, contact_id, channel);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notif_settings_user ON notification_settings(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_optout_token ON contacts(optout_token);')
 
     conn.commit()
     conn.close()

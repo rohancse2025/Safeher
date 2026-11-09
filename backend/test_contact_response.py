@@ -128,6 +128,7 @@ class TestContactResponses(unittest.TestCase):
         conn = get_db()
         c = conn.cursor()
         c.execute("UPDATE alerts SET status = 'resolved' WHERE id = ?;", (alert_id,))
+        c.execute("DELETE FROM contact_responses WHERE alert_id = ?;", (alert_id,))
         conn.commit()
         conn.close()
 

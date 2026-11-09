@@ -353,6 +353,29 @@ def create_escort():
 
     app_logger.info(f"[ESCORT STARTED] escort_id={escort_id}, user_id={user_id}, dest={dest_name}")
 
+    try:
+        from services.notify import notify
+        first_token = tokens_map.get(str(valid_contacts[0]['id'])) if valid_contacts else ''
+        notify(
+            event_type='escort_start',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'dest_name': dest_name,
+                'expected_minutes': expected_minutes,
+                'dest_lat': dest_lat,
+                'dest_lng': dest_lng,
+                'start_lat': route_points[0][0] if route_points else dest_lat,
+                'start_lng': route_points[0][1] if route_points else dest_lng,
+                'track_url': f"{frontend_url}/track.html?t={first_token}" if first_token else f"{frontend_url}/track.html",
+                'escort_id': escort_id
+            },
+            contact_ids=[c['id'] for c in valid_contacts],
+            event_key=f"escort_start_{escort_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY ESCORT_START ERROR] {notify_err}")
+
     def send_escort_emails_bg(contact_list, u_name, d_name, exp_str, t_map):
         f_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         for c_item in contact_list:
@@ -992,6 +1015,21 @@ def end_escort(escort_id):
                 send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones)
             except Exception as wa_arr_err:
                 app_logger.error(f"[Escort End] WhatsApp error: {wa_arr_err}")
+
+        try:
+            from services.notify import notify
+            notify(
+                event_type='escort_safe',
+                user_id=user_id,
+                context={
+                    'user_name': user_name,
+                    'dest_name': escort['dest_name'],
+                    'escort_id': escort_id
+                },
+                event_key=f"escort_safe_{escort_id}"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY ESCORT_SAFE ERROR] {notify_err}")
     else:
         log_event(
             user_id=user_id,

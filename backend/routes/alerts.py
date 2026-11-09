@@ -347,6 +347,28 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
             contact_tokens=contact_tokens_email
         )
 
+    try:
+        from services.notify import notify
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        track_url = f"{frontend_url}/track.html?t={share_token}"
+        notify(
+            event_type='sos',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'mode': mode,
+                'lat': lat,
+                'lng': lng,
+                'alert_id': alert_id,
+                'track_url': track_url,
+                'note': note or ''
+            },
+            alert_id=alert_id,
+            event_key=f"sos_{alert_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY SOS ERROR] {notify_err}")
+
     # 5. Trigger background automated WhatsApp dispatch to contacts
     if recipient_phones:
         send_whatsapp_notifications_background(
@@ -755,6 +777,22 @@ def end_alert(alert_id):
                 send_safe_update_email_notifications_background(target_alert_id, uname, safe_now_str, safe_emails)
             except Exception as e:
                 app_logger.error(f"[Safe Update Email Error]: {e}")
+
+        try:
+            from services.notify import notify
+            notify(
+                event_type='sos_safe',
+                user_id=user_id,
+                context={
+                    'user_name': uname,
+                    'alert_id': target_alert_id,
+                    'time_str': safe_now_str
+                },
+                alert_id=target_alert_id,
+                event_key=f"sos_safe_{target_alert_id}"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY SOS_SAFE ERROR] {notify_err}")
 
         app_logger.info(f"[ALERT ENDED] alert_id={target_alert_id}, status=resolved")
         return jsonify({
@@ -1524,6 +1562,12 @@ def respond_contact_track(token):
             }), 404
 
     is_active = (row['alert_status'] == 'active')
+    if not is_active:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": "This safety alert is no longer active"
+        }), 400
 
     alert_id = row['alert_id']
     contact_id = row['contact_id']
@@ -2129,6 +2173,25 @@ def share_location():
     except Exception as mail_err:
         app_logger.error(f"[Share Location] Email error: {mail_err}")
 
+    try:
+        from services.notify import notify
+        frontend_url_n = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        notify(
+            event_type='share_start',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'duration_str': duration_str,
+                'lat': lat,
+                'lng': lng,
+                'track_url': f"{frontend_url_n}/track.html?t={share_token}"
+            },
+            alert_id=alert_id,
+            event_key=f"share_{alert_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY SHARE_START ERROR] {notify_err}")
+
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     return jsonify({
         "ok": True,
@@ -2162,6 +2225,21 @@ def stop_share_location():
         cursor.execute("UPDATE alerts SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE user_id = ? AND mode = 'share_location' AND status = 'active';", (user_id,))
     conn.commit()
     conn.close()
+
+    if user_id:
+        try:
+            from services.notify import notify
+            u_name = (user.get('name') if user else 'SafeHer User') or 'SafeHer User'
+            notify(
+                event_type='share_stop',
+                user_id=user_id,
+                context={
+                    'user_name': u_name
+                },
+                event_key=f"share_stop_{share_token or user_id}_{int(datetime.datetime.now().timestamp())}"
+            )
+        except Exception as notify_err:
+            app_logger.warning(f"[NOTIFY SHARE_STOP ERROR] {notify_err}")
 
     return jsonify({"ok": True, "message": "Location sharing stopped"}), 200
 
@@ -2287,6 +2365,29 @@ def start_ride_safety():
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     track_url = f"{frontend_url}/track.html?t={share_token}"
 
+    try:
+        from services.notify import notify
+        notify(
+            event_type='ride_start',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'vehicle_type': vehicle_type,
+                'vehicle_number': vehicle_number,
+                'app_used': app_used,
+                'pickup': pickup,
+                'destination': destination,
+                'travel_minutes': travel_minutes,
+                'lat': lat,
+                'lng': lng,
+                'track_url': track_url
+            },
+            alert_id=alert_id,
+            event_key=f"ride_{alert_id}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY RIDE_START ERROR] {notify_err}")
+
     return jsonify({
         "ok": True,
         "data": {
@@ -2356,6 +2457,21 @@ def end_ride_safety():
             vehicle_number=vehicle_number,
             recipient_emails=recipient_emails
         )
+
+    try:
+        from services.notify import notify
+        notify(
+            event_type='ride_safe',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'destination': destination,
+                'vehicle_number': vehicle_number
+            },
+            event_key=f"ride_safe_{share_token or user_id}_{int(datetime.datetime.now().timestamp())}"
+        )
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY RIDE_SAFE ERROR] {notify_err}")
 
     return jsonify({
         "ok": True,

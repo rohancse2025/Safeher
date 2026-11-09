@@ -272,10 +272,37 @@ def cleanup_old_incident_events():
         return 0
 
 
+def run_tick():
+    """
+    Periodic tick executed every 10 seconds to flush queued notifications from the outbox.
+    Returns:
+        number of notifications processed.
+    """
+    try:
+        from services.notify import process_outbox
+        return process_outbox(limit=25)
+    except Exception as e:
+        print(f"[Scheduler Tick Error] {e}")
+        return 0
+
+
 def start_scheduler():
     """
-    Starts background maintenance thread running hourly.
+    Starts background maintenance thread running hourly and outbox tick running every 10 seconds.
     """
+    def tick_loop():
+        # Defer 3s to let app bind cleanly
+        time.sleep(3)
+        while True:
+            try:
+                run_tick()
+            except Exception as e:
+                print(f"[Tick Loop Error] {e}")
+            time.sleep(10)
+
+    tick_thread = threading.Thread(target=tick_loop, daemon=True, name="OutboxTicker10s")
+    tick_thread.start()
+    print("[Scheduler] Notification outbox tick scheduler active (10s intervals)")
     def loop():
         # Defer startup DB operations by 5s to let Gunicorn bind immediately to port
         time.sleep(5)

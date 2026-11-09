@@ -1,12 +1,36 @@
 # backend/routes/contacts.py – Emergency contacts management (per-user CRUD)
 import re
+import secrets
 from flask import Blueprint, request, jsonify, g
 
 from db import get_db
 from routes.auth import login_required, is_valid_phone, is_valid_email
 from routes.alerts import get_user_from_request
+from services.notify import notify
 
 contacts_bp = Blueprint('contacts', __name__)
+
+
+def _format_contact_dict(r):
+    c = dict(r)
+    c['close'] = bool(c.get('close', 0))
+    c['opted_out'] = bool(c.get('opted_out', 0))
+    c['email_status'] = c.get('email_status') or 'unknown'
+    em = (c.get('email') or '').strip()
+    has_email = bool(em)
+    c['no_email'] = not has_email
+
+    if not has_email:
+        c['email_warning'] = "No email address; cannot receive automatic alerts"
+    elif c['opted_out']:
+        c['email_warning'] = "Contact opted out of email alerts"
+    elif c['email_status'] == 'bounced':
+        c['email_warning'] = "Previous email bounced; update address"
+    elif c['email_status'] == 'invalid':
+        c['email_warning'] = "Invalid email address format"
+    else:
+        c['email_warning'] = None
+    return c
 
 
 # ─── Route: GET /api/contacts ────────────────────────────────
@@ -24,29 +48,24 @@ def get_contacts():
     cursor = conn.cursor()
     rows = []
     try:
-        cursor.execute(
-            'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-            (user_id,)
-        )
+        cursor.execute('''
+            SELECT id, user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token
+            FROM contacts
+            WHERE user_id = ?
+            ORDER BY id ASC;
+        ''', (user_id,))
         rows = cursor.fetchall()
     except Exception:
         try:
-            cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
-            conn.commit()
-            cursor.execute(
-                'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-                (user_id,)
-            )
+            cursor.execute('''
+                SELECT id, user_id, name, phone, email, relationship, close
+                FROM contacts
+                WHERE user_id = ?
+                ORDER BY id ASC;
+            ''', (user_id,))
             rows = cursor.fetchall()
         except Exception:
-            try:
-                cursor.execute(
-                    'SELECT id, name, phone, email, relationship FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-                    (user_id,)
-                )
-                rows = cursor.fetchall()
-            except Exception:
-                rows = []
+            rows = []
     conn.close()
 
     if not rows:
@@ -60,48 +79,106 @@ def get_contacts():
             seed_conn = get_db()
             seed_cursor = seed_conn.cursor()
             for d_name, d_phone, d_email, d_rel, d_close in defaults:
+                tok = secrets.token_urlsafe(24)
                 try:
-                    seed_cursor.execute(
-                        'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
-                        (user_id, d_name, d_phone, d_email, d_rel, d_close)
-                    )
+                    seed_cursor.execute('''
+                        INSERT INTO contacts (user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, 'unknown', ?);
+                    ''', (user_id, d_name, d_phone, d_email, d_rel, d_close, tok))
                 except Exception:
                     try:
-                        seed_cursor.execute(
-                            'INSERT INTO contacts (user_id, name, phone, email, relationship) VALUES (?, ?, ?, ?, ?);',
-                            (user_id, d_name, d_phone, d_email, d_rel)
-                        )
+                        seed_cursor.execute('''
+                            INSERT INTO contacts (user_id, name, phone, email, relationship, close)
+                            VALUES (?, ?, ?, ?, ?, ?);
+                        ''', (user_id, d_name, d_phone, d_email, d_rel, d_close))
                     except Exception:
                         pass
             seed_conn.commit()
-            try:
-                seed_cursor.execute(
-                    'SELECT id, name, phone, email, relationship, close FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-                    (user_id,)
-                )
-                rows = seed_cursor.fetchall()
-            except Exception:
-                try:
-                    seed_cursor.execute(
-                        'SELECT id, name, phone, email, relationship FROM contacts WHERE user_id = ? ORDER BY id ASC;',
-                        (user_id,)
-                    )
-                    rows = seed_cursor.fetchall()
-                except Exception:
-                    rows = []
+            seed_cursor.execute('''
+                SELECT id, user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token
+                FROM contacts
+                WHERE user_id = ?
+                ORDER BY id ASC;
+            ''', (user_id,))
+            rows = seed_cursor.fetchall()
             seed_conn.close()
         except Exception:
             pass
 
-    contacts = []
-    for r in rows:
-        c = dict(r)
-        c['close'] = bool(c.get('close', 0))
-        contacts.append(c)
+    contacts = [_format_contact_dict(r) for r in rows]
 
     return jsonify({
         "ok": True,
         "data": contacts
+    }), 200
+
+
+# ─── Route: GET /api/contacts/coverage ───────────────────────
+@contacts_bp.route('/api/contacts/coverage', methods=['GET'])
+def get_contacts_coverage():
+    """
+    Return coverage metrics: how many contacts can currently receive email alerts.
+    """
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else None
+
+    conn = get_db()
+    cursor = conn.cursor()
+    if user_id:
+        cursor.execute('''
+            SELECT id, name, email, opted_out, email_status
+            FROM contacts
+            WHERE user_id = ?;
+        ''', (user_id,))
+    else:
+        cursor.execute('SELECT id, name, email, opted_out, email_status FROM contacts;')
+    rows = cursor.fetchall()
+    conn.close()
+
+    total = len(rows)
+    with_email = 0
+    opted_out = 0
+    bounced = 0
+    active_email_contacts = 0
+
+    for r in rows:
+        em = (r['email'] or '').strip()
+        is_opt = bool(r['opted_out']) if 'opted_out' in r.keys() else False
+        estat = (r['email_status'] or 'unknown').lower() if 'email_status' in r.keys() else 'unknown'
+
+        if is_opt:
+            opted_out += 1
+        if estat == 'bounced':
+            bounced += 1
+
+        if em:
+            with_email += 1
+            if not is_opt and estat != 'bounced':
+                active_email_contacts += 1
+
+    without_email = total - with_email
+    coverage_pct = round((active_email_contacts / total * 100), 1) if total > 0 else 0.0
+
+    warning = None
+    if without_email > 0:
+        warning = f"{without_email} contact(s) have no email address and cannot receive automatic alerts"
+    elif opted_out > 0:
+        warning = f"{opted_out} contact(s) have opted out of email alerts"
+    elif bounced > 0:
+        warning = f"{bounced} contact(s) have bouncing email addresses"
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "total_contacts": total,
+            "with_email": with_email,
+            "without_email": without_email,
+            "opted_out": opted_out,
+            "bounced": bounced,
+            "active_email_contacts": active_email_contacts,
+            "coverage_pct": coverage_pct,
+            "warning": warning
+        }
     }), 200
 
 
@@ -110,7 +187,7 @@ def get_contacts():
 def create_contact():
     """
     Add a new emergency contact for the authenticated user.
-    Expects JSON: { name, phone, email (optional), relationship (optional) }
+    Sends a welcome & opt-out email if contact has an email address.
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
     if not user:
@@ -136,41 +213,57 @@ def create_contact():
     if email and not is_valid_email(email):
         return jsonify({"ok": False, "error": "Invalid contact email address format"}), 400
 
+    token = secrets.token_urlsafe(24)
     conn = get_db()
     cursor = conn.cursor()
+
     try:
-        cursor.execute(
-            'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
-            (user_id, name, phone, email or None, relationship or None, close_val)
-        )
+        cursor.execute('''
+            INSERT INTO contacts (user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token)
+            VALUES (?, ?, ?, ?, ?, ?, 0, 'unknown', ?);
+        ''', (user_id, name, phone, email or None, relationship or None, close_val, token))
     except Exception:
-        try:
-            cursor.execute("ALTER TABLE contacts ADD COLUMN close INTEGER DEFAULT 0;")
-            conn.commit()
-            cursor.execute(
-                'INSERT INTO contacts (user_id, name, phone, email, relationship, close) VALUES (?, ?, ?, ?, ?, ?);',
-                (user_id, name, phone, email or None, relationship or None, close_val)
-            )
-        except Exception:
-            cursor.execute(
-                'INSERT INTO contacts (user_id, name, phone, email, relationship) VALUES (?, ?, ?, ?, ?);',
-                (user_id, name, phone, email or None, relationship or None)
-            )
+        cursor.execute('''
+            INSERT INTO contacts (user_id, name, phone, email, relationship, close)
+            VALUES (?, ?, ?, ?, ?, ?);
+        ''', (user_id, name, phone, email or None, relationship or None, close_val))
+
     contact_id = cursor.lastrowid
     conn.commit()
     conn.close()
 
+    # Send welcome email if email address was provided
+    if email:
+        try:
+            user_name = user.get('name') or 'SafeHer user'
+            notify(
+                event_type='welcome',
+                user_id=user_id,
+                context={'user_name': user_name, 'contact_name': name},
+                contact_ids=[contact_id],
+                event_key=f"welcome_{contact_id}"
+            )
+        except Exception as e:
+            from logger import app_logger
+            app_logger.warning(f"[WELCOME EMAIL] Failed to dispatch welcome email to contact #{contact_id}: {e}")
+
+    result = {
+        "id": contact_id,
+        "user_id": user_id,
+        "name": name,
+        "phone": phone,
+        "email": email or None,
+        "relationship": relationship or None,
+        "close": bool(close_val),
+        "opted_out": False,
+        "email_status": "unknown",
+        "no_email": not bool(email),
+        "email_warning": None if email else "No email address; cannot receive automatic alerts"
+    }
+
     return jsonify({
         "ok": True,
-        "data": {
-            "id": contact_id,
-            "user_id": user_id,
-            "name": name,
-            "phone": phone,
-            "email": email or None,
-            "relationship": relationship or None,
-            "close": bool(close_val)
-        }
+        "data": result
     }), 201
 
 
@@ -179,7 +272,6 @@ def create_contact():
 def update_contact(contact_id):
     """
     Update an existing contact. Strictly scoped to the authenticated user.
-    Expects JSON: { name, phone, email (optional), relationship (optional), close (optional) }
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
     if not user:
@@ -208,30 +300,43 @@ def update_contact(contact_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # Verify contact exists and belongs to the authenticated user
-    cursor.execute('SELECT id FROM contacts WHERE id = ? AND user_id = ?;', (contact_id, user_id))
-    if not cursor.fetchone():
+    cursor.execute('SELECT id, email, opted_out, email_status FROM contacts WHERE id = ? AND user_id = ?;', (contact_id, user_id))
+    existing = cursor.fetchone()
+    if not existing:
         conn.close()
         return jsonify({"ok": False, "error": "Contact not found"}), 404
 
-    cursor.execute(
-        'UPDATE contacts SET name = ?, phone = ?, email = ?, relationship = ?, close = ? WHERE id = ? AND user_id = ?;',
-        (name, phone, email or None, relationship or None, close_val, contact_id, user_id)
-    )
+    old_email = (existing['email'] or '').strip()
+    new_status = existing['email_status'] or 'unknown'
+    # If email address changed, reset email_status from bounced to unknown
+    if email and email.lower() != old_email.lower():
+        new_status = 'unknown'
+
+    cursor.execute('''
+        UPDATE contacts
+        SET name = ?, phone = ?, email = ?, relationship = ?, close = ?, email_status = ?
+        WHERE id = ? AND user_id = ?;
+    ''', (name, phone, email or None, relationship or None, close_val, new_status, contact_id, user_id))
     conn.commit()
     conn.close()
 
+    result = {
+        "id": contact_id,
+        "user_id": user_id,
+        "name": name,
+        "phone": phone,
+        "email": email or None,
+        "relationship": relationship or None,
+        "close": bool(close_val),
+        "opted_out": bool(existing['opted_out']),
+        "email_status": new_status,
+        "no_email": not bool(email),
+        "email_warning": None if email else "No email address; cannot receive automatic alerts"
+    }
+
     return jsonify({
         "ok": True,
-        "data": {
-            "id": contact_id,
-            "user_id": user_id,
-            "name": name,
-            "phone": phone,
-            "email": email or None,
-            "relationship": relationship or None,
-            "close": bool(close_val)
-        }
+        "data": result
     }), 200
 
 
@@ -249,13 +354,11 @@ def delete_contact(contact_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    # Verify ownership
     cursor.execute('SELECT id FROM contacts WHERE id = ? AND user_id = ?;', (contact_id, user_id))
     if not cursor.fetchone():
         conn.close()
         return jsonify({"ok": False, "error": "Contact not found"}), 404
 
-    # Clear foreign key references on timers, escort, and alert tables if any
     cursor.execute('UPDATE timers SET contact_id = NULL WHERE contact_id = ?;', (contact_id,))
     cursor.execute('DELETE FROM alert_contacts WHERE contact_id = ?;', (contact_id,))
     cursor.execute('DELETE FROM contact_responses WHERE contact_id = ?;', (contact_id,))

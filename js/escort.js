@@ -734,7 +734,7 @@ SafeHer.escort = (function() {
 
 
 
-      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=en&gl=in&x={x}&y={y}&z={z}', {
 
         maxZoom: 18,
 
@@ -882,7 +882,7 @@ SafeHer.escort = (function() {
 
 
 
-    var revUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1';
+    var revUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1&accept-language=en';
 
     fetch(revUrl, { headers: { 'Accept': 'application/json' } })
 
@@ -1020,149 +1020,59 @@ SafeHer.escort = (function() {
 
 
 
-    // Step 1: Query Photon Fuzzy Geocoder with ALWAYS-ON GPS Proximity Biasing
-
-    var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(queryToSearch) +
-
+    // Parallel Multi-Source Search: Biased Photon + Global Photon + Nominatim (English)
+    var photonBiased = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(queryToSearch) +
       (originLat && originLng ? ('&lat=' + originLat + '&lon=' + originLng) : '') + '&limit=15';
+    var photonGlobal = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(queryToSearch) + '&limit=15';
+    var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&accept-language=en&limit=15&q=' + encodeURIComponent(queryToSearch);
 
-
-
-    // Step 2: Fallback query builder with Nominatim viewbox around user coordinates
-
-    function buildNominatimUrl(q) {
-
-      var nomViewbox = (originLat && originLng) ?
-
-        ('&viewbox=' + (originLng - 0.25).toFixed(4) + ',' + (originLat + 0.25).toFixed(4) + ',' + (originLng + 0.25).toFixed(4) + ',' + (originLat - 0.25).toFixed(4) + '&bounded=0') : '';
-
-      return 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=15&q=' + encodeURIComponent(q) + nomViewbox;
-
+    function parsePhotonFeatures(pData) {
+      if (!pData || !pData.features) return [];
+      return pData.features.map(function(f) {
+        var props = f.properties || {};
+        var geom = f.geometry || {};
+        var coords = geom.coordinates || [0, 0];
+        var parts = [];
+        if (props.name) parts.push(props.name);
+        if (props.street) parts.push(props.street);
+        if (props.city || props.town || props.county) parts.push(props.city || props.town || props.county);
+        if (props.state) parts.push(props.state);
+        return {
+          lat: coords[1],
+          lon: coords[0],
+          name: props.name || parts[0] || 'Landmark',
+          display_name: parts.join(', ') || props.name || 'Location'
+        };
+      });
     }
 
+    Promise.allSettled([
+      fetch(photonBiased).then(function(r) { return r.json(); }).then(parsePhotonFeatures).catch(function() { return []; }),
+      fetch(photonGlobal).then(function(r) { return r.json(); }).then(parsePhotonFeatures).catch(function() { return []; }),
+      fetch(nomUrl, { headers: { 'Accept': 'application/json' } }).then(function(r) { return r.json(); }).catch(function() { return []; })
+    ]).then(function(settled) {
+      var combined = [];
+      var seen = {};
 
-
-    fetch(photonUrl)
-
-      .then(function(res) { return res.json(); })
-
-      .then(function(pData) {
-
-        var pItems = [];
-
-        if (pData && pData.features && pData.features.length > 0) {
-
-          pItems = pData.features.map(function(f) {
-
-            var props = f.properties || {};
-
-            var geom = f.geometry || {};
-
-            var coords = geom.coordinates || [0, 0];
-
-            var parts = [];
-
-            if (props.name) parts.push(props.name);
-
-            if (props.street) parts.push(props.street);
-
-            if (props.city || props.town || props.county) parts.push(props.city || props.town || props.county);
-
-            if (props.state) parts.push(props.state);
-
-            return {
-
-              lat: coords[1],
-
-              lon: coords[0],
-
-              name: props.name || parts[0] || 'Landmark',
-
-              display_name: parts.join(', ') || props.name || 'Location'
-
-            };
-
+      settled.forEach(function(res) {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+          res.value.forEach(function(item) {
+            var iLat = parseFloat(item.lat);
+            var iLon = parseFloat(item.lon);
+            if (isNaN(iLat) || isNaN(iLon)) return;
+            var key = iLat.toFixed(4) + '_' + iLon.toFixed(4);
+            if (!seen[key]) {
+              seen[key] = true;
+              combined.push(item);
+            }
           });
-
         }
-
-
-
-        if (pItems.length > 0) {
-
-          renderResults(pItems);
-
-        } else {
-
-          // Fallback: Nominatim with viewbox bias
-
-          fetch(buildNominatimUrl(queryToSearch), { headers: { 'Accept': 'application/json' } })
-
-            .then(function(nRes) { return nRes.json(); })
-
-            .then(function(nItems) {
-
-              if (nItems && nItems.length > 0) {
-
-                renderResults(nItems);
-
-              } else {
-
-                // Term relaxation: try stripping words like 'field' or 'ground'
-
-                var relaxed = queryToSearch.replace(/\b(field|ground|near|nearby|spot|place|center|hall)\b/gi, '').replace(/\s+/g, ' ').trim();
-
-                if (relaxed && relaxed !== queryToSearch) {
-
-                  fetch(buildNominatimUrl(relaxed), { headers: { 'Accept': 'application/json' } })
-
-                    .then(function(rRes) { return rRes.json(); })
-
-                    .then(function(rItems) { renderResults(rItems || []); })
-
-                    .catch(function() { renderResults([]); });
-
-                } else {
-
-                  renderResults([]);
-
-                }
-
-              }
-
-            })
-
-            .catch(function() {
-
-              renderResults([]);
-
-            });
-
-        }
-
-      })
-
-      .catch(function() {
-
-        // Fallback to Nominatim if Photon request fails
-
-        fetch(buildNominatimUrl(queryToSearch), { headers: { 'Accept': 'application/json' } })
-
-          .then(function(nRes) { return nRes.json(); })
-
-          .then(function(nItems) {
-
-            renderResults(nItems || []);
-
-          })
-
-          .catch(function() {
-
-            renderResults([]);
-
-          });
-
       });
+
+      renderResults(combined);
+    }).catch(function() {
+      renderResults([]);
+    });
 
 
 
@@ -1218,27 +1128,35 @@ SafeHer.escort = (function() {
 
 
 
-      // Sort items by distance from origin
+      // Rank items by keyword match relevance first, then proximity
+      var qWords = queryToSearch.toLowerCase().split(/\s+/).filter(Boolean);
 
       items.forEach(function(item) {
-
         var itemLat = parseFloat(item.lat);
-
         var itemLng = parseFloat(item.lon);
+        var nameLower = (item.display_name || '').toLowerCase();
+
+        var matchScore = 0;
+        qWords.forEach(function(w) {
+          if (w.length > 2 && nameLower.indexOf(w) !== -1) {
+            matchScore += 2;
+          }
+        });
 
         if (originLat && originLng && !isNaN(itemLat) && !isNaN(itemLng)) {
-
           item._distM = haversineDistM(originLat, originLng, itemLat, itemLng);
-
         } else {
-
           item._distM = 999999999;
-
         }
-
+        item._matchScore = matchScore;
       });
 
-      items.sort(function(a, b) { return a._distM - b._distM; });
+      items.sort(function(a, b) {
+        if (b._matchScore !== a._matchScore) {
+          return b._matchScore - a._matchScore;
+        }
+        return a._distM - b._distM;
+      });
 
 
 
@@ -2462,7 +2380,7 @@ SafeHer.escort = (function() {
 
 
 
-      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=en&gl=in&x={x}&y={y}&z={z}', {
 
         maxZoom: 18,
 
@@ -2796,7 +2714,7 @@ SafeHer.escort = (function() {
 
     if (!activeEscort._startDist) {
 
-      activeEscort._startDist = remDist;
+      activeEscort._startDist = Math.max(remDist, totalDist);
 
     }
 
@@ -2808,7 +2726,13 @@ SafeHer.escort = (function() {
 
       pct = 100;
 
-    } else if (activeEscort._startDist > 20) {
+    } else if (walked < 50) {
+
+      // Prevent false starting percentage due to GPS settling
+
+      pct = 0;
+
+    } else if (activeEscort._startDist > 50) {
 
       pct = Math.max(0, Math.min(100, Math.round((walked / activeEscort._startDist) * 100)));
 

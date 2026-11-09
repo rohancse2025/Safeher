@@ -244,7 +244,7 @@ SafeHer.shareLocation = (function() {
         maxZoom: 18
       }).setView([lat, lng], 15);
 
-      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=en&gl=in&x={x}&y={y}&z={z}', {
         maxZoom: 18,
         maxNativeZoom: 18,
         errorTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
