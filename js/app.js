@@ -286,6 +286,27 @@ window.addEventListener('DOMContentLoaded', function() {
   if (SafeHer.escort && SafeHer.escort.init) SafeHer.escort.init();
   if (SafeHer.vault && SafeHer.vault.init) SafeHer.vault.init();
 
+  // Continuous global background GPS acquisition on app launch
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      SafeHer.setLastLocation(lat, lng);
+      if (SafeHer.api && SafeHer.api.saveLiveLocation) {
+        SafeHer.api.saveLiveLocation({ lat: lat, lng: lng, accuracy: pos.coords.accuracy, timestamp: Date.now() });
+      }
+    }, function() {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+
+    navigator.geolocation.watchPosition(function(pos) {
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      SafeHer.setLastLocation(lat, lng);
+      if (SafeHer.api && SafeHer.api.saveLiveLocation) {
+        SafeHer.api.saveLiveLocation({ lat: lat, lng: lng, accuracy: pos.coords.accuracy, timestamp: Date.now() });
+      }
+    }, function() {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  }
+
   // Handle incoming notification click messages from service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', function(event) {

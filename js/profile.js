@@ -443,12 +443,14 @@ SafeHer.profile = (function() {
       center: [centerLat, centerLng],
       zoom: 15,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+        maxZoom: 18
     });
 
     L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
+      maxZoom: 18,
       maxNativeZoom: 18,
+        errorTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       subdomains: ['0', '1', '2', '3']
     }).addTo(detailsMapInstance);
 

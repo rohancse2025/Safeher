@@ -427,9 +427,12 @@ SafeHer.sos = (function() {
   }
 
   function onSilentScreenTap() {
+    if (navigator.vibrate) {
+      try { navigator.vibrate(35); } catch(e) {}
+    }
     var now = Date.now();
     silentTapTimes.push(now);
-    silentTapTimes = silentTapTimes.filter(function(t) { return now - t <= 2000; });
+    silentTapTimes = silentTapTimes.filter(function(t) { return now - t <= 2500; });
 
     if (silentTapTimes.length >= 3) {
       silentTapTimes = [];
@@ -586,12 +589,14 @@ SafeHer.sos = (function() {
         center: [lat, lng],
         zoom: 15,
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
+        maxZoom: 18
       });
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-        maxZoom: 20,
+        maxZoom: 18,
         maxNativeZoom: 18,
+        errorTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         subdomains: ['0', '1', '2', '3']
       }).addTo(mapInstance);
 

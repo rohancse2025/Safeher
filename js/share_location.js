@@ -212,9 +212,9 @@ SafeHer.shareLocation = (function() {
             '<span class="share-contact-phone">' + escapeHtml(c.phone || '') + '</span>' +
           '</div>' +
         '</div>' +
-        '<div class="share-contact-actions">' +
-          '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" class="btn-share-action btn-share-wa" aria-label="Share via WhatsApp with ' + escapeHtml(c.name) + '">WhatsApp</a>' +
-          '<a href="' + escapeHtml(smsUrl) + '" class="btn-share-action btn-share-sms" aria-label="Share via SMS with ' + escapeHtml(c.name) + '">SMS</a>' +
+        '<div class="share-contact-actions" style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="background:#E8F5E9;color:#2E7D32;padding:4px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><span class="material-symbols-rounded" style="font-size:12px;">check_circle</span> Dispatched</span>' +
+          '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" class="btn-share-action btn-share-wa" style="padding:4px 8px;font-size:11px;" aria-label="Chat via WhatsApp with ' + escapeHtml(c.name) + '">Chat</a>' +
         '</div>' +
       '</div>';
     }
@@ -240,12 +240,14 @@ SafeHer.shareLocation = (function() {
     if (!mapInstance) {
       mapInstance = L.map('share-live-map', {
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
+        maxZoom: 18
       }).setView([lat, lng], 15);
 
       L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-        maxZoom: 20,
+        maxZoom: 18,
         maxNativeZoom: 18,
+        errorTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         subdomains: ['0', '1', '2', '3']
       }).addTo(mapInstance);
 

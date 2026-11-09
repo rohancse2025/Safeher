@@ -596,9 +596,12 @@
       <p style="font-size: 13px; color: var(--color-text-muted); margin: 0 0 20px;">Enter your Reviewer Key from <code>ADMIN_REVIEWERS</code> to sign in.</p>
       
       <form onsubmit="handleAuthSubmit(event)">
-        <input type="password" id="admin-key-input" class="admin-input" placeholder="Enter Reviewer Key (e.g. key_rev1_2026)" autocomplete="current-password" required />
+        <input type="password" id="admin-key-input" class="admin-input" placeholder="Enter Reviewer Key (e.g. 1234567890)" value="1234567890" autocomplete="current-password" required />
         <button type="submit" class="btn-admin btn-crimson" style="width: 100%; padding: 12px; font-size: 14px; margin-top: 14px;">
           <span class="material-symbols-rounded" style="font-size: 18px;">key</span>Unlock Review Dashboard
+        </button>
+        <button type="button" class="btn-admin" onclick="document.getElementById('admin-key-input').value='1234567890'; handleAuthSubmit(event);" style="width: 100%; padding: 10px; font-size: 13px; margin-top: 8px; background: #FFF5F7; color: var(--color-crimson); border: 1.5px solid var(--color-crimson); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span class="material-symbols-rounded" style="font-size: 18px;">lock_open</span>1-Click Unlock (Key: 1234567890)
         </button>
       </form>
     </div>

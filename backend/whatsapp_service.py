@@ -358,3 +358,64 @@ def send_location_share_whatsapp_notifications_background(share_id, user_name, d
                 app_logger.error(f"[SHARE LOCATION WHATSAPP FAILED] share_id={share_id}, to={masked}, error={err_msg}")
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def send_ride_started_whatsapp_notifications_background(ride_id, user_name, vehicle_type, vehicle_number, driver_name, driver_phone, app_used, pickup, destination, eta_mins, lat, lng, share_token, recipient_phones):
+    """
+    Send automated WhatsApp notifications to contacts when user starts a monitored Ride.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        track_url = f"{frontend_url}/track.html?t={share_token}" if share_token else f"{frontend_url}/track.html"
+        driver_str = driver_name or 'Driver'
+        if driver_phone:
+            driver_str += f" (Tel: {driver_phone})"
+
+        message = (
+            f"🚖 *SAFEHER RIDE SAFETY ALERT* 🚖\n\n"
+            f"*{user_name}* has boarded a *{vehicle_type}* ({app_used}) and shared live trip details:\n\n"
+            f"• *Vehicle:* {vehicle_number} ({vehicle_type})\n"
+            f"• *Driver:* {driver_str}\n"
+            f"• *From:* {pickup}\n"
+            f"• *To:* {destination}\n"
+            f"• *ETA:* ~{eta_mins} mins\n\n"
+            f"🔴 *Live GPS Location & Route*:\n{track_url}\n\n"
+            f"⚡ SafeHer is actively monitoring this ride. You will be alerted automatically if any emergency SOS occurs."
+        )
+
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[RIDE START WHATSAPP SENT] ride_id={ride_id}, to={masked}")
+            else:
+                app_logger.error(f"[RIDE START WHATSAPP FAILED] ride_id={ride_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_ride_arrived_whatsapp_notifications_background(ride_id, user_name, destination, vehicle_number, recipient_phones):
+    """
+    Send automated WhatsApp notification when user marks ride as reached safely.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        message = (
+            f"✅ *REACHED SAFELY - SafeHer Ride* ✅\n\n"
+            f"*{user_name}* has arrived safely at *{destination}*!\n\n"
+            f"The monitored ride session ({vehicle_number}) has concluded. All clear!"
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[RIDE ARRIVED WHATSAPP SENT] ride_id={ride_id}, to={masked}")
+            else:
+                app_logger.error(f"[RIDE ARRIVED WHATSAPP FAILED] ride_id={ride_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()

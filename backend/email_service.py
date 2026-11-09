@@ -412,3 +412,99 @@ def send_location_share_email_notifications_background(share_id, user_name, dura
             send_email(email, subject, body_text, body_html)
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def send_ride_started_email_notifications_background(ride_id, user_name, vehicle_type, vehicle_number, driver_name, driver_phone, app_used, pickup, destination, eta_mins, lat, lng, share_token, recipient_emails):
+    """
+    Send automated email notifications to contacts when user starts a monitored Ride.
+    """
+    if not recipient_emails:
+        return
+
+    def worker():
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        track_url = f"{frontend_url}/track.html?t={share_token}" if share_token else f"{frontend_url}/track.html"
+        maps_url = f"https://www.google.com/maps?q={lat},{lng}" if (lat and lng) else ''
+        driver_str = driver_name or 'Driver'
+        if driver_phone:
+            driver_str += f" (Tel: {driver_phone})"
+
+        subject = f"🚖 SafeHer Ride Safety: {user_name} boarded {vehicle_type} ({vehicle_number})"
+        body_text = (
+            f"🚖 SAFEHER RIDE SAFETY NOTIFICATION 🚖\n\n"
+            f"{user_name} has started a monitored {vehicle_type} ride via {app_used} and shared trip details with you:\n\n"
+            f"Vehicle: {vehicle_number} ({vehicle_type})\n"
+            f"Driver: {driver_str}\n"
+            f"Pickup: {pickup}\n"
+            f"Destination: {destination}\n"
+            f"Estimated Travel Time: ~{eta_mins} mins\n\n"
+            f"🔴 Live GPS Tracking Map:\n{track_url}\n\n"
+            f"SafeHer is actively monitoring this trip. You will receive an immediate automated alert if an SOS occurs."
+        )
+
+        body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #FFF5F7; padding: 20px;">
+  <div style="max-width: 540px; margin: auto; background: #ffffff; border-radius: 12px; border: 2px solid #A80F3C; overflow: hidden; box-shadow: 0 4px 12px rgba(168,15,60,0.15);">
+    <div style="background: #A80F3C; color: #ffffff; padding: 18px 24px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">🚖 SAFEHER RIDE MONITORING</h1>
+    </div>
+    <div style="padding: 24px; color: #1F2937; line-height: 1.6;">
+      <p style="font-size: 16px; margin-top: 0;"><strong>{user_name}</strong> has boarded a <strong>{vehicle_type}</strong> ({app_used}) and shared live trip details with you for safety.</p>
+      <div style="background: #FCEFF3; border: 1px solid #F3C6D3; border-radius: 8px; padding: 14px; margin: 18px 0;">
+        <div><strong>Vehicle:</strong> {vehicle_number} ({vehicle_type})</div>
+        <div><strong>Driver:</strong> {driver_str}</div>
+        <div><strong>Pickup:</strong> {pickup}</div>
+        <div><strong>Destination:</strong> {destination}</div>
+        <div><strong>ETA:</strong> ~{eta_mins} mins</div>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{track_url}" style="background: #A80F3C; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; display: inline-block;">🔴 View Live Trip on Map</a>
+      </div>
+      <p style="font-size: 13px; color: #6B7280; text-align: center;">SafeHer is monitoring this trip. You will be automatically notified upon safe arrival or any emergency.</p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+        for email in recipient_emails:
+            send_email(email, subject, body_text, body_html)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def send_ride_arrived_email_notifications_background(ride_id, user_name, destination, vehicle_number, recipient_emails):
+    """
+    Send automated email notification when user marks ride as reached safely.
+    """
+    if not recipient_emails:
+        return
+
+    def worker():
+        subject = f"✅ REACHED SAFELY: {user_name} has arrived at destination"
+        body_text = (
+            f"✅ REACHED SAFELY - SafeHer Ride ✅\n\n"
+            f"{user_name} has confirmed safe arrival at {destination}.\n"
+            f"Vehicle: {vehicle_number}\n\n"
+            f"The trip monitoring session has ended safely. Thank you for your support!"
+        )
+        body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F0FDF4; padding: 20px;">
+  <div style="max-width: 540px; margin: auto; background: #ffffff; border-radius: 12px; border: 2px solid #16A34A; overflow: hidden; box-shadow: 0 4px 12px rgba(22,163,74,0.15);">
+    <div style="background: #16A34A; color: #ffffff; padding: 18px 24px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">✅ RIDE COMPLETED &bull; REACHED SAFELY</h1>
+    </div>
+    <div style="padding: 24px; color: #1F2937; line-height: 1.6;">
+      <p style="font-size: 16px; margin-top: 0;"><strong>{user_name}</strong> has confirmed safe arrival at <strong>{destination}</strong>.</p>
+      <p style="font-size: 14px; color: #4B5563;">Vehicle {vehicle_number} trip monitoring has concluded. No further action needed.</p>
+    </div>
+  </div>
+</body>
+</html>"""
+        for email in recipient_emails:
+            send_email(email, subject, body_text, body_html)
+
+    threading.Thread(target=worker, daemon=True).start()

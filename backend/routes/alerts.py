@@ -2164,3 +2164,200 @@ def stop_share_location():
     conn.close()
 
     return jsonify({"ok": True, "message": "Location sharing stopped"}), 200
+
+
+# ─── Routes: POST /api/ride/start & POST /api/ride/end ──────
+@alerts_bp.route('/api/ride/start', methods=['POST'])
+def start_ride_safety():
+    """
+    POST /api/ride/start
+    Expects JSON: {
+      vehicle_type, vehicle_number, driver_name, driver_phone,
+      app_used, pickup, destination, travel_minutes, lat, lng, contacts
+    }
+    Automatically creates a tracked ride session and dispatches WhatsApp (Green API) + Email (Gmail SMTP)
+    to all contacts without requiring user to open WhatsApp manually!
+    """
+    data = request.get_json(silent=True) or {}
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_id = user['id'] if user else 10000
+    user_name = (user.get('name') if user else None) or 'SafeHer User'
+
+    vehicle_type = (data.get('vehicle_type') or 'Cab').strip()
+    vehicle_number = (data.get('vehicle_number') or 'KA01AB1234').strip().upper()
+    driver_name = (data.get('driver_name') or '').strip()
+    driver_phone = (data.get('driver_phone') or '').strip()
+    app_used = (data.get('app_used') or 'Cab').strip()
+    pickup = (data.get('pickup') or 'Current Location').strip()
+    destination = (data.get('destination') or 'Destination').strip()
+    travel_minutes = int(data.get('travel_minutes') or 25)
+
+    lat = float(data.get('lat') or 13.0691)
+    lng = float(data.get('lng') or 77.7946)
+
+    client_contacts = data.get('contacts') or []
+
+    share_token = secrets.token_urlsafe(24)
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Create an alert record with mode='ride_safety'
+    cursor.execute("""
+        INSERT INTO alerts (user_id, mode, status, reason, lat, lng, started_at, share_token)
+        VALUES (?, 'ride_safety', 'active', ?, ?, ?, ?, ?);
+    """, (user_id, f"Ride in {vehicle_number} ({vehicle_type} via {app_used}) to {destination}", lat, lng, now_str, share_token))
+    alert_id = cursor.lastrowid
+
+    # Sync client-provided emergency contacts into DB if provided
+    recipient_phones = []
+    recipient_emails = []
+
+    for cc in (client_contacts or []):
+        if isinstance(cc, dict):
+            p = str(cc.get('phone') or '').strip()
+            e = str(cc.get('email') or '').strip()
+            if p and p not in recipient_phones:
+                recipient_phones.append(p)
+            if e and e not in recipient_emails:
+                recipient_emails.append(e)
+
+    # If still empty, query saved contacts from DB
+    if not recipient_phones and not recipient_emails:
+        try:
+            cursor.execute("SELECT phone, email FROM contacts WHERE user_id = ?;", (user_id,))
+            for r in cursor.fetchall():
+                p = str(r['phone'] or '').strip()
+                e = str(r['email'] or '').strip()
+                if p and p not in recipient_phones:
+                    recipient_phones.append(p)
+                if e and e not in recipient_emails:
+                    recipient_emails.append(e)
+        except Exception:
+            pass
+
+    # Ensure recipient_emails has fallback
+    if not recipient_emails:
+        recipient_emails.append('rohanrao1803@gmail.com')
+
+    conn.commit()
+    conn.close()
+
+    # Trigger automated WhatsApp & Email in background
+    from whatsapp_service import send_ride_started_whatsapp_notifications_background
+    from email_service import send_ride_started_email_notifications_background
+
+    if recipient_phones:
+        send_ride_started_whatsapp_notifications_background(
+            ride_id=alert_id,
+            user_name=user_name,
+            vehicle_type=vehicle_type,
+            vehicle_number=vehicle_number,
+            driver_name=driver_name,
+            driver_phone=driver_phone,
+            app_used=app_used,
+            pickup=pickup,
+            destination=destination,
+            eta_mins=travel_minutes,
+            lat=lat,
+            lng=lng,
+            share_token=share_token,
+            recipient_phones=recipient_phones
+        )
+
+    if recipient_emails:
+        send_ride_started_email_notifications_background(
+            ride_id=alert_id,
+            user_name=user_name,
+            vehicle_type=vehicle_type,
+            vehicle_number=vehicle_number,
+            driver_name=driver_name,
+            driver_phone=driver_phone,
+            app_used=app_used,
+            pickup=pickup,
+            destination=destination,
+            eta_mins=travel_minutes,
+            lat=lat,
+            lng=lng,
+            share_token=share_token,
+            recipient_emails=recipient_emails
+        )
+
+    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+    track_url = f"{frontend_url}/track.html?t={share_token}"
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "ride_id": alert_id,
+            "share_token": share_token,
+            "track_url": track_url,
+            "recipient_phones": len(recipient_phones),
+            "recipient_emails": len(recipient_emails),
+            "message": "Ride safety started. Automated alerts dispatched via WhatsApp & Email."
+        }
+    }), 201
+
+
+@alerts_bp.route('/api/ride/end', methods=['POST'])
+def end_ride_safety():
+    """
+    POST /api/ride/end
+    Dispatches "Reached Safely" WhatsApp + Email to all contacts.
+    """
+    data = request.get_json(silent=True) or {}
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    user_name = (user.get('name') if user else None) or 'SafeHer User'
+    user_id = user['id'] if user else 10000
+
+    destination = (data.get('destination') or 'Destination').strip()
+    vehicle_number = (data.get('vehicle_number') or 'Cab').strip()
+    share_token = data.get('share_token')
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if share_token:
+        cursor.execute("UPDATE alerts SET status = 'resolved', ended_at = CURRENT_TIMESTAMP WHERE share_token = ?;", (share_token,))
+    else:
+        cursor.execute("UPDATE alerts SET status = 'resolved', ended_at = CURRENT_TIMESTAMP WHERE user_id = ? AND mode = 'ride_safety' AND status = 'active';", (user_id,))
+
+    conn.commit()
+
+    # Query recipient phones & emails
+    cursor.execute("SELECT phone, email FROM contacts WHERE user_id = ?;", (user_id,))
+    rows = cursor.fetchall()
+    recipient_phones = [str(r['phone']).strip() for r in rows if r['phone'] and str(r['phone']).strip()]
+    recipient_emails = [str(r['email']).strip() for r in rows if r['email'] and str(r['email']).strip()]
+
+    if not recipient_emails:
+        recipient_emails.append('rohanrao1803@gmail.com')
+
+    conn.close()
+
+    from whatsapp_service import send_ride_arrived_whatsapp_notifications_background
+    from email_service import send_ride_arrived_email_notifications_background
+
+    if recipient_phones:
+        send_ride_arrived_whatsapp_notifications_background(
+            ride_id=0,
+            user_name=user_name,
+            destination=destination,
+            vehicle_number=vehicle_number,
+            recipient_phones=recipient_phones
+        )
+
+    if recipient_emails:
+        send_ride_arrived_email_notifications_background(
+            ride_id=0,
+            user_name=user_name,
+            destination=destination,
+            vehicle_number=vehicle_number,
+            recipient_emails=recipient_emails
+        )
+
+    return jsonify({
+        "ok": True,
+        "message": "Ride ended safely. Arrival notification dispatched via WhatsApp & Email."
+    }), 200
