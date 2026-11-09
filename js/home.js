@@ -165,12 +165,12 @@ SafeHer.home = (function() {
         return;
       }
     } catch(e) {}
-    var hasEmail = false;
+    var hasPhone = false;
     var count = (contactsList && Array.isArray(contactsList)) ? contactsList.length : 0;
     if (count > 0) {
       for (var i = 0; i < count; i++) {
-        if (contactsList[i] && contactsList[i].email && contactsList[i].email.trim()) {
-          hasEmail = true;
+        if (contactsList[i] && contactsList[i].phone && contactsList[i].phone.trim()) {
+          hasPhone = true;
           break;
         }
       }
@@ -182,44 +182,34 @@ SafeHer.home = (function() {
     var chkBadge = document.getElementById('setup-progress-badge');
 
     if (chkEmailIcon) {
-      if (hasEmail) {
-        chkEmailIcon.textContent = 'check_circle';
-        chkEmailIcon.style.color = '#16A34A';
-        if (chkEmailText) {
-          chkEmailText.style.color = '#16A34A';
-          chkEmailText.style.fontWeight = '600';
-          chkEmailText.textContent = 'Email configured for contact ✓';
-        }
-      } else {
-        chkEmailIcon.textContent = 'radio_button_unchecked';
-        chkEmailIcon.style.color = '#DC2626';
-        if (chkEmailText) {
-          chkEmailText.style.color = '#DC2626';
-          chkEmailText.style.fontWeight = '600';
-          chkEmailText.textContent = 'Add an email for at least one contact (Action needed)';
-        }
+      chkEmailIcon.textContent = 'check_circle';
+      chkEmailIcon.style.color = '#16A34A';
+      if (chkEmailText) {
+        chkEmailText.style.color = 'var(--text-dark)';
+        chkEmailText.style.fontWeight = '500';
+        chkEmailText.textContent = '1-Tap WhatsApp Emergency Alerts enabled';
       }
     }
 
     if (chkContactsIcon) {
-      if (count > 0) {
+      if (hasPhone) {
         chkContactsIcon.textContent = 'check_circle';
         chkContactsIcon.style.color = '#16A34A';
       } else {
         chkContactsIcon.textContent = 'radio_button_unchecked';
-        chkContactsIcon.style.color = '#9CA3AF';
+        chkContactsIcon.style.color = '#D97706';
       }
     }
 
     if (chkBadge) {
-      if (hasEmail && count >= 1) {
+      if (hasPhone && count >= 1) {
         chkBadge.textContent = 'Ready';
         chkBadge.style.background = '#E8F5E9';
         chkBadge.style.color = '#2E7D32';
       } else {
-        chkBadge.textContent = 'Action needed';
-        chkBadge.style.background = '#FFF0F3';
-        chkBadge.style.color = 'var(--crimson)';
+        chkBadge.textContent = 'Add Contact';
+        chkBadge.style.background = '#FFFBEB';
+        chkBadge.style.color = '#D97706';
       }
     }
   }

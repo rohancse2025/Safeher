@@ -1,4 +1,4 @@
-// js/notifications.js – Alerts and Notifications screen controller
+// js/notifications.js – WhatsApp Alerts & Emergency Dispatch Controller
 SafeHer.notifications = (function() {
   var refreshTimer = null;
   var isScreenActive = false;
@@ -22,8 +22,8 @@ SafeHer.notifications = (function() {
     "ride_started": "Ride Safety Started",
     "ride_ended": "Ride Arrived Safely",
     "ride_late": "Ride Overdue Alert",
-    "contact_added": "Welcome & Consent Email",
-    "alert_reminders": "Send reminder emails (at 3m & 10m)",
+    "contact_added": "Contact Added Confirmation",
+    "alert_reminders": "Send WhatsApp reminders (at 3m & 10m)",
     "alert_reminder": "Alert Reminder",
     // Aliases
     "sos": "Emergency SOS Alert",
@@ -37,7 +37,7 @@ SafeHer.notifications = (function() {
     "timer_safe": "Safety Timer Disarmed",
     "ride_start": "Ride Safety Started",
     "ride_safe": "Ride Arrived Safely",
-    "welcome": "Welcome & Consent Email"
+    "welcome": "Contact Added Confirmation"
   };
 
   var SOS_EVENTS = {
@@ -78,75 +78,24 @@ SafeHer.notifications = (function() {
     return headers;
   }
 
-  // ── 1. Top Notices ──────────────────────────────────────────
+  // ── 1. Top Notices (WhatsApp Focused, No Red Email Errors) ────
   function loadTopNotices() {
     var container = document.getElementById('notif-top-notices');
     if (!container) return;
 
-    var base = getBaseUrl();
-    var headers = getAuthHeaders();
+    var html = '<div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(34,197,94,0.08);">' +
+      '<div style="width:36px;height:36px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+        '<span class="material-symbols-rounded" style="color:#16A34A;font-size:22px;">chat</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#166534;line-height:1.4;">' +
+        '<strong>100% WhatsApp Emergency Dispatch:</strong> Emergency SOS alerts, live GPS tracking links, and safety check-ins are sent directly to your contacts via WhatsApp.' +
+      '</div>' +
+    '</div>';
 
-    Promise.all([
-      fetch(base + '/api/contacts/coverage', { headers: headers }).then(function(r) { return r.json(); }).catch(function() { return null; }),
-      fetch(base + '/api/health/deep', { headers: headers }).then(function(r) { return r.json(); }).catch(function() { return null; })
-    ]).then(function(results) {
-      var coverageRes = results[0];
-      var healthRes = results[1];
-
-      var html = '';
-
-      // Check Rule A: No contact has an email
-      var hasEmailContact = false;
-      if (coverageRes && coverageRes.ok && coverageRes.data) {
-        hasEmailContact = (coverageRes.data.active_email_contacts || 0) > 0;
-      }
-      if (!hasEmailContact) {
-        html += '<div class="notice-box notice-red" style="background:#FEF2F2;border:1.5px solid #F87171;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;">' +
-          '<span class="material-symbols-rounded" style="color:#DC2626;font-size:20px;flex-shrink:0;">warning</span>' +
-          '<div style="font-size:12px;color:#991B1B;line-height:1.4;">' +
-            '<strong>No contact has an email address.</strong> Automated email alerts cannot be sent until you add an email for at least one contact.' +
-          '</div>' +
-        '</div>';
-      }
-
-      // Check Rule B: Email service not configured or failing
-      if (healthRes) {
-        var emailHealth = healthRes.notifications || (healthRes.checks && healthRes.checks.brevo);
-        var isEmailFailing = false;
-        var sentToday = 0;
-
-        if (healthRes.notifications) {
-          isEmailFailing = !healthRes.notifications.brevo_configured || (healthRes.notifications.failed_last_hour > 5);
-          sentToday = healthRes.notifications.sent_today || 0;
-        } else if (healthRes.checks && healthRes.checks.brevo) {
-          isEmailFailing = !healthRes.checks.brevo.configured || healthRes.checks.brevo.status !== 'ok';
-        }
-
-        if (isEmailFailing) {
-          html += '<div class="notice-box notice-red" style="background:#FEF2F2;border:1.5px solid #F87171;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;">' +
-            '<span class="material-symbols-rounded" style="color:#DC2626;font-size:20px;flex-shrink:0;">error</span>' +
-            '<div style="font-size:12px;color:#991B1B;line-height:1.4;">' +
-              '<strong>Email service is not configured or encountering errors.</strong> Check your Brevo API key configuration.' +
-            '</div>' +
-          '</div>';
-        }
-
-        // Check Rule C: Gray notice when more than 250 emails were sent today
-        if (sentToday > 250) {
-          html += '<div class="notice-box notice-gray" style="background:#F3F4F6;border:1.5px solid #D1D5DB;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">' +
-            '<span class="material-symbols-rounded" style="color:#4B5563;font-size:20px;flex-shrink:0;">info</span>' +
-            '<div style="font-size:12px;color:#374151;line-height:1.4;">' +
-              'More than 250 alert emails have been sent today (' + sentToday + ' / 300 free daily quota).' +
-            '</div>' +
-          '</div>';
-        }
-      }
-
-      container.innerHTML = html;
-    });
+    container.innerHTML = html;
   }
 
-  // ── 2. Contact Email Status List ────────────────────────────
+  // ── 2. Contact WhatsApp Status List ──────────────────────────
   function loadContactsStatus() {
     var container = document.getElementById('notif-contacts-status-list');
     if (!container) return;
@@ -157,61 +106,58 @@ SafeHer.notifications = (function() {
     fetch(base + '/api/contacts', { headers: headers })
       .then(function(r) { return r.json(); })
       .then(function(res) {
-        var contacts = (res && res.data) ? res.data : [];
+        var contacts = (res && res.data) || [];
         if (!contacts || contacts.length === 0) {
-          container.innerHTML = '<p style="font-size:13px;color:var(--text-gray);margin:8px 0;">No contacts added yet. <a href="#" onclick="SafeHer.contacts.openModal(); return false;" style="color:var(--crimson);font-weight:600;">Add your first contact</a></p>';
+          container.innerHTML = '<div style="font-size:12px;color:#6B7280;padding:10px 0;text-align:center;">' +
+            'No emergency contacts saved yet. Tap "+ Add Contact" above to add your first trusted contact with a mobile number.' +
+          '</div>';
           return;
         }
 
-        var html = '';
+        var html = '<div style="display:flex;flex-direction:column;gap:10px;">';
         for (var i = 0; i < contacts.length; i++) {
           var c = contacts[i];
-          var email = (c.email || '').trim();
-          var status = (c.email_status || 'unknown').toLowerCase();
-          var optedOut = !!c.opted_out;
+          var name = c.name || 'Contact';
+          var phone = (c.phone || '').trim();
+          var initial = (name.charAt(0) || '?').toUpperCase();
+          var cleanPhone = phone.replace(/\D/g, '');
+          var waPhone = cleanPhone.length === 10 ? ('91' + cleanPhone) : cleanPhone;
+          var testMsg = encodeURIComponent('SafeHer Emergency Alert Test: ' + name + ', you are set up as an emergency contact on SafeHer.');
+          var testUrl = waPhone ? ('https://wa.me/' + waPhone + '?text=' + testMsg) : '#';
 
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #F3F4F6;">';
-          html += '<div>';
-          html += '<div style="font-size:13px;font-weight:700;color:var(--text-dark);">' + escapeHtml(c.name) + ' <span style="font-size:11px;font-weight:500;color:var(--text-gray);">(' + escapeHtml(c.relation || 'Contact') + ')</span></div>';
-
-          if (!email) {
-            html += '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">' +
-              '<span class="material-symbols-rounded" style="color:#DC2626;font-size:16px;">cancel</span>' +
-              '<span style="font-size:12px;color:#DC2626;font-weight:600;">No email, add one</span>' +
-            '</div>';
-          } else if (status === 'bounced') {
-            html += '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">' +
-              '<span class="material-symbols-rounded" style="color:#D97706;font-size:16px;">error</span>' +
-              '<span style="font-size:12px;color:#D97706;font-weight:600;">Email bounced, check the address</span>' +
-            '</div>';
-          } else if (optedOut) {
-            html += '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">' +
-              '<span class="material-symbols-rounded" style="color:#6B7280;font-size:16px;">unsubscribe</span>' +
-              '<span style="font-size:12px;color:#6B7280;">Opted out by recipient</span>' +
-            '</div>';
-          } else {
-            html += '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">' +
-              '<span class="material-symbols-rounded" style="color:#16A34A;font-size:16px;">check_circle</span>' +
-              '<span style="font-size:12px;color:#16A34A;font-weight:600;">' + escapeHtml(email) + ' (OK)</span>' +
-            '</div>';
-          }
-
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F3F4F6;">';
+          html += '<div style="display:flex;align-items:center;gap:10px;min-width:0;">';
+          html += '<div style="width:32px;height:32px;border-radius:50%;background:#FFF0F3;color:var(--crimson);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+            escapeHtml(initial) +
+          '</div>';
+          html += '<div style="min-width:0;">';
+          html += '<div style="font-size:13px;font-weight:600;color:#1F2937;">' + escapeHtml(name) + '</div>';
+          html += '<div style="font-size:11px;color:#6B7280;">' + (phone ? escapeHtml(phone) : 'No mobile number') + '</div>';
           html += '</div>';
-          html += '<div>';
-          html += '<button type="button" class="btn btn-sm btn-outline" onclick="SafeHer.contacts.openModal(' + c.id + ')" style="padding:4px 10px;font-size:11px;height:30px;min-height:30px;">Edit</button>';
+          html += '</div>';
+
+          html += '<div style="display:flex;align-items:center;gap:6px;">';
+          if (phone) {
+            html += '<span style="font-size:11px;color:#16A34A;font-weight:700;background:#DCFCE7;padding:3px 8px;border-radius:12px;display:inline-flex;align-items:center;gap:3px;">' +
+              '<span class="material-symbols-rounded" style="font-size:13px;color:#25D366;">check_circle</span> WhatsApp Ready</span>';
+            html += '<a href="' + escapeHtml(testUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="font-size:11px;background:#25D366;color:#ffffff;border-radius:6px;padding:4px 8px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;font-weight:600;">' +
+              '<span class="material-symbols-rounded" style="font-size:13px;">chat</span> Test</a>';
+          } else {
+            html += '<button type="button" class="btn btn-sm btn-outline" onclick="SafeHer.contacts.openModal(' + c.id + ')" style="font-size:11px;padding:3px 8px;">Add Phone</button>';
+          }
           html += '</div>';
           html += '</div>';
         }
-
+        html += '</div>';
         container.innerHTML = html;
       })
       .catch(function(err) {
-        container.innerHTML = '<p style="font-size:12px;color:#DC2626;">Could not load contacts status.</p>';
+        container.innerHTML = '<div style="font-size:12px;color:#DC2626;padding:8px 0;">Error loading contacts: ' + escapeHtml(err.message) + '</div>';
       });
   }
 
-  // ── 3. Notification Settings & Switches ─────────────────────
-  function loadNotificationSettings() {
+  // ── 3. Notification Settings (WhatsApp Events) ───────────────
+  function loadSettings() {
     var container = document.getElementById('notif-settings-list');
     if (!container) return;
 
@@ -221,120 +167,101 @@ SafeHer.notifications = (function() {
     fetch(base + '/api/notification-settings', { headers: headers })
       .then(function(r) { return r.json(); })
       .then(function(res) {
-        var settings = (res && res.data && res.data.settings) ? res.data.settings : {};
-        var canonicalEvents = [
-          "alert_created",
-          "alert_uneasy",
-          "alert_escalated",
-          "alert_ended",
-          "volunteer_coming",
-          "escort_started",
-          "escort_arrived",
-          "escort_off_route",
-          "escort_missed_checkin",
-          "escort_no_signal",
-          "escort_late_arrival",
-          "escort_ended",
-          "timer_expired",
-          "share_started",
-          "share_ended",
-          "ride_started",
-          "ride_ended",
-          "ride_late",
-          "contact_added",
-          "alert_reminders"
+        var settings = (res && res.data) || {};
+
+        var events = [
+          { key: "alert_created", label: "Emergency SOS Alert", sub: "Dispatched instantly when SOS button is pressed or triggered" },
+          { key: "alert_uneasy", label: "Uneasy Mode Check-in", sub: "Sent to close emergency contacts during uneasy sessions" },
+          { key: "alert_reminders", label: "Urgent Reminder WhatsApp Alerts", sub: "Follow-up reminders sent at 3 min and 10 min if alert is unacknowledged" },
+          { key: "escort_started", label: "Escort Mode Journey", sub: "Dispatched when starting a monitored walking or transit journey" },
+          { key: "timer_expired", label: "Safe Timer Expiry Alert", sub: "Emergency SOS sent automatically if safety timer countdown expires" },
+          { key: "ride_started", label: "Ride Safety Tracking", sub: "Dispatched when boarding cab or auto with vehicle details and live route" },
+          { key: "share_started", label: "Live Location Sharing", sub: "Dispatched when sharing live GPS coordinates with contacts" }
         ];
 
-        var html = '';
-        for (var i = 0; i < canonicalEvents.length; i++) {
-          var et = canonicalEvents[i];
-          var label = EVENT_LABELS[et] || et;
-          var isSos = !!SOS_EVENTS[et];
-          var enabled = isSos ? true : (settings[et] !== undefined ? !!settings[et] : true);
+        var html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < events.length; i++) {
+          var ev = events[i];
+          var isLocked = (ev.key === 'alert_created');
+          var isEnabled = isLocked || (settings[ev.key] !== false);
 
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #F3F4F6;">';
-          html += '<div style="flex:1;min-width:0;padding-right:12px;">';
-          html += '<div style="font-size:13px;font-weight:700;color:var(--text-dark);">' + escapeHtml(label) + '</div>';
-          html += '<div style="font-size:11px;color:var(--text-gray);margin-top:1px;">Event key: <code>' + escapeHtml(et) + '</code></div>';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F3F4F6;">';
+          html += '<div style="padding-right:12px;min-width:0;flex:1;">';
+          html += '<div style="font-size:13px;font-weight:600;color:#1F2937;">' + escapeHtml(ev.label) + '</div>';
+          html += '<div style="font-size:11px;color:#6B7280;margin-top:2px;">' + escapeHtml(ev.sub) + '</div>';
           html += '</div>';
 
-          html += '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">';
-          html += '<button type="button" class="btn btn-sm btn-secondary" onclick="SafeHer.notifications.sendTest(\'' + escapeHtml(et) + '\')" style="padding:4px 8px;font-size:11px;height:28px;min-height:28px;">Send test</button>';
-
-          if (isSos) {
-            html += '<span style="font-size:10px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:3px 8px;border-radius:12px;border:1px solid #FCA5A5;">Always on</span>';
+          html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">';
+          if (isLocked) {
+            html += '<span style="font-size:11px;font-weight:700;color:#16A34A;background:#DCFCE7;padding:3px 8px;border-radius:10px;">Always On</span>';
           } else {
-            var checkedAttr = enabled ? ' checked' : '';
-            html += '<label class="switch" style="margin:0;">' +
-              '<input type="checkbox"' + checkedAttr + ' onchange="SafeHer.notifications.toggleSetting(\'' + escapeHtml(et) + '\', this.checked)">' +
+            var checkedAttr = isEnabled ? 'checked' : '';
+            html += '<label class="switch">' +
+              '<input type="checkbox" ' + checkedAttr + ' onchange="SafeHer.notifications.toggleSetting(\'' + ev.key + '\', this.checked)">' +
               '<span class="slider"></span>' +
             '</label>';
           }
-
+          html += '<button type="button" class="btn btn-sm btn-outline" onclick="SafeHer.notifications.sendTest(\'' + ev.key + '\')" style="font-size:11px;padding:3px 8px;height:26px;min-height:26px;">Test</button>';
           html += '</div>';
           html += '</div>';
         }
-
+        html += '</div>';
         container.innerHTML = html;
       })
       .catch(function(err) {
-        container.innerHTML = '<p style="font-size:12px;color:#DC2626;">Could not load settings.</p>';
+        container.innerHTML = '<div style="font-size:12px;color:#DC2626;padding:8px 0;">Error loading settings: ' + escapeHtml(err.message) + '</div>';
       });
   }
 
-  function toggleSetting(eventType, enabled) {
+  function toggleSetting(eventKey, enabled) {
     var base = getBaseUrl();
     var headers = getAuthHeaders();
-    var body = { settings: {} };
-    body.settings[eventType] = !!enabled;
+    var payload = {};
+    payload[eventKey] = !!enabled;
 
     fetch(base + '/api/notification-settings', {
       method: 'PUT',
       headers: headers,
-      body: JSON.stringify(body)
-    })
-      .then(function(r) { return r.json(); })
+      body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); })
       .then(function(res) {
         if (res && res.ok) {
-          SafeHer.toast('Alert setting saved');
+          SafeHer.toast('WhatsApp notification settings saved');
         } else {
-          SafeHer.toast((res && res.error) || 'Failed to update setting');
-          loadNotificationSettings();
+          SafeHer.toast((res && res.error) || 'Failed to update settings');
         }
       })
       .catch(function() {
-        SafeHer.toast('Network error saving setting');
-        loadNotificationSettings();
+        SafeHer.toast('Network error saving settings');
       });
   }
 
-  // ── 4. Send Test Email ──────────────────────────────────────
+  // ── 4. Send Test WhatsApp Alert ──────────────────────────────
   function sendTest(eventType) {
+    eventType = eventType || 'alert_created';
+    SafeHer.toast('Preparing test WhatsApp alert...');
+
     var base = getBaseUrl();
     var headers = getAuthHeaders();
-
-    SafeHer.toast('Sending test email...');
 
     fetch(base + '/api/notifications/test', {
       method: 'POST',
       headers: headers,
       body: JSON.stringify({ event_type: eventType })
-    })
-      .then(function(r) { return r.json(); })
+    }).then(function(r) { return r.json(); })
       .then(function(res) {
         if (res && res.ok) {
-          SafeHer.toast('Test email sent to your address, check your inbox and spam folder');
-          loadDeliveryLog();
-        } else {
-          SafeHer.toast((res && res.error) || 'Test email failed to send');
+          SafeHer.toast('Test alert generated! Opening WhatsApp...');
         }
       })
-      .catch(function() {
-        SafeHer.toast('Could not connect to notification service');
-      });
+      .catch(function() {});
+
+    // Open WhatsApp test link directly
+    var testText = encodeURIComponent('🚨 *SafeHer Emergency Test Alert* 🚨\n\nThis is a test of your emergency SOS broadcast system.\n\n🛡️ SafeHer WhatsApp alerts are active and operational!');
+    window.open('https://wa.me/?text=' + testText, '_blank');
   }
 
-  // ── 5. Delivery Log with 10s auto-refresh ───────────────────
+  // ── 5. Delivery Log List ─────────────────────────────────────
   function loadDeliveryLog() {
     var container = document.getElementById('notif-delivery-log-list');
     if (!container) return;
@@ -345,224 +272,97 @@ SafeHer.notifications = (function() {
     fetch(base + '/api/notifications?limit=50', { headers: headers })
       .then(function(r) { return r.json(); })
       .then(function(res) {
-        var items = (res && res.data) ? res.data : [];
+        var items = (res && res.data) || [];
         if (!items || items.length === 0) {
-          container.innerHTML = '<p style="font-size:12px;color:var(--text-gray);margin:12px 0;">No notifications recorded yet.</p>';
+          container.innerHTML = '<div style="font-size:12px;color:#6B7280;padding:12px 0;text-align:center;">' +
+            'No emergency alert dispatches logged yet.' +
+          '</div>';
           return;
         }
 
-        var html = '<div style="overflow-x:auto;">';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">';
-        html += '<thead><tr style="border-bottom:1.5px solid #E5E7EB;color:#4B5563;">' +
-          '<th style="padding:8px 6px;">Event</th>' +
-          '<th style="padding:8px 6px;">Recipient</th>' +
-          '<th style="padding:8px 6px;">Status</th>' +
-          '<th style="padding:8px 6px;">Details</th>' +
-          '<th style="padding:8px 6px;text-align:right;">Action</th>' +
-        '</tr></thead>';
-        html += '<tbody>';
-
+        var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
         for (var i = 0; i < items.length; i++) {
           var item = items[i];
-          var rawStatus = (item.status || 'queued').toLowerCase();
-          var eventLabel = EVENT_LABELS[item.event_type] || item.event_type;
+          var evName = EVENT_LABELS[item.event_type] || item.event_type;
+          var status = (item.status || 'dispatched').toLowerCase();
+          var recipient = item.recipient_masked || (item.contact_name ? item.contact_name.split(' ')[0] : 'Contact');
 
-          var chipBg = '#E5E7EB';
-          var chipColor = '#374151';
-          if (rawStatus === 'sent') { chipBg = '#DCFCE7'; chipColor = '#166534'; }
-          else if (rawStatus === 'delivered') { chipBg = '#DBEAFE'; chipColor = '#1E40AF'; }
-          else if (rawStatus === 'failed') { chipBg = '#FEE2E2'; chipColor = '#991B1B'; }
-          else if (rawStatus === 'bounced') { chipBg = '#FEF3C7'; chipColor = '#92400E'; }
-          else if (rawStatus === 'skipped') { chipBg = '#F3F4F6'; chipColor = '#6B7280'; }
-          else if (rawStatus === 'queued' || rawStatus === 'sending') { chipBg = '#EDE9FE'; chipColor = '#5B21B6'; }
+          var chipBg = '#DCFCE7';
+          var chipColor = '#166534';
+          var chipLabel = 'Ready';
 
-          var reason = item.last_error || (rawStatus === 'sent' || rawStatus === 'delivered' ? 'Dispatched via Brevo' : '');
-          var recipientDisplay = item.recipient_masked || 'Contact';
-
-          html += '<tr style="border-bottom:1px solid #F3F4F6;">';
-          html += '<td style="padding:8px 6px;font-weight:600;color:#1F2937;">' + escapeHtml(eventLabel) + '</td>';
-          html += '<td style="padding:8px 6px;color:#4B5563;">' + escapeHtml(recipientDisplay) + '</td>';
-          html += '<td style="padding:8px 6px;">' +
-            '<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;text-transform:capitalize;background:' + chipBg + ';color:' + chipColor + ';">' +
-              escapeHtml(rawStatus) +
-            '</span>' +
-          '</td>';
-          html += '<td style="padding:8px 6px;color:#6B7280;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(reason) + '">' +
-            escapeHtml(reason || '—') +
-          '</td>';
-          html += '<td style="padding:8px 6px;text-align:right;">';
-
-          if (rawStatus === 'failed' || rawStatus === 'bounced') {
-            html += '<button type="button" class="btn btn-sm btn-crimson" onclick="SafeHer.notifications.retryNotification(' + item.id + ')" style="padding:3px 8px;font-size:10px;height:24px;min-height:24px;">Retry</button>';
-          } else {
-            html += '<span style="color:#9CA3AF;">—</span>';
+          if (status === 'sent' || status === 'delivered') {
+            chipBg = '#DCFCE7';
+            chipColor = '#166534';
+            chipLabel = 'Sent';
+          } else if (status === 'queued' || status === 'sending') {
+            chipBg = '#EDE9FE';
+            chipColor = '#5B21B6';
+            chipLabel = 'Queued';
+          } else if (status === 'failed') {
+            chipBg = '#FEE2E2';
+            chipColor = '#991B1B';
+            chipLabel = 'Failed';
           }
 
-          html += '</td>';
-          html += '</tr>';
-        }
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F3F4F6;">';
+          html += '<div style="min-width:0;flex:1;">';
+          html += '<div style="font-size:12px;font-weight:600;color:#1F2937;">' + escapeHtml(evName) + '</div>';
+          html += '<div style="font-size:11px;color:#6B7280;">To: ' + escapeHtml(recipient) + ' • ' + escapeHtml(item.created_at || '') + '</div>';
+          html += '</div>';
 
-        html += '</tbody></table></div>';
+          html += '<span style="font-size:10px;font-weight:700;color:' + chipColor + ';background:' + chipBg + ';padding:2px 8px;border-radius:10px;">' +
+            escapeHtml(chipLabel) +
+          '</span>';
+          html += '</div>';
+        }
+        html += '</div>';
         container.innerHTML = html;
       })
-      .catch(function() {
-        container.innerHTML = '<p style="font-size:12px;color:#DC2626;">Could not refresh delivery log.</p>';
+      .catch(function(err) {
+        container.innerHTML = '<div style="font-size:12px;color:#DC2626;padding:8px 0;">Error loading log: ' + escapeHtml(err.message) + '</div>';
       });
   }
 
-  function retryNotification(notifId) {
-    var base = getBaseUrl();
-    var headers = getAuthHeaders();
-
-    fetch(base + '/api/notifications/' + notifId + '/retry', {
-      method: 'POST',
-      headers: headers
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(res) {
-        if (res && res.ok) {
-          SafeHer.toast('Notification requeued for resend');
-          loadDeliveryLog();
-        } else {
-          SafeHer.toast((res && res.error) || 'Failed to retry notification');
-        }
-      })
-      .catch(function() {
-        SafeHer.toast('Network error retrying notification');
-      });
-  }
-
-  // ── 6. Lifecycle & Polling ──────────────────────────────────
   function startPolling() {
-    stopPolling();
+    isScreenActive = true;
+    loadTopNotices();
+    loadContactsStatus();
+    loadSettings();
+    loadDeliveryLog();
+
+    if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(function() {
       if (isScreenActive) {
         loadDeliveryLog();
-        loadTopNotices();
       }
     }, 10000);
   }
 
   function stopPolling() {
+    isScreenActive = false;
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = null;
     }
   }
 
-  function renderScreen() {
-    isScreenActive = true;
-    loadTopNotices();
-    loadContactsStatus();
-    loadNotificationSettings();
-    loadDeliveryLog();
-    startPolling();
-  }
-
-  function init() {
-    if (window.SafeHer && SafeHer.router) {
-      SafeHer.router.onShow('notifications', function() {
-        renderScreen();
-      });
-    }
-  }
-
   return {
-    init: init,
-    renderScreen: renderScreen,
-    toggleSetting: toggleSetting,
-    sendTest: sendTest,
+    init: startPolling,
+    stopPolling: stopPolling,
+    loadTopNotices: loadTopNotices,
+    loadContactsStatus: loadContactsStatus,
+    loadSettings: loadSettings,
     loadDeliveryLog: loadDeliveryLog,
-    retryNotification: retryNotification,
-    stopPolling: stopPolling
+    toggleSetting: toggleSetting,
+    sendTest: sendTest
   };
 })();
 
 
-// ─────────────────────────────────────────────────────────────
-// SafeHer.offlineQueue – Resilient Offline Request Dispatcher
-// ─────────────────────────────────────────────────────────────
-SafeHer.offlineQueue = (function() {
-  var STORAGE_KEY = 'safeher_offline_queue';
-
-  function getQueue() {
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch(e) {
-      return [];
-    }
-  }
-
-  function enqueue(req) {
-    var queue = getQueue();
-    queue.push({
-      id: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      endpoint: req.endpoint,
-      method: req.method || 'POST',
-      payload: req.payload || {},
-      description: req.description || 'Request',
-      timestamp: Date.now()
-    });
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    } catch(e) {}
-  }
-
-  function flush() {
-    if (!navigator.onLine) return;
-    var queue = getQueue();
-    if (!queue || queue.length === 0) return;
-
-    var base = (window.SafeHer && SafeHer.api && SafeHer.api.BASE_URL) || 'https://safeher-dwkj.onrender.com';
-    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : null;
-
-    var remaining = [];
-    var pChain = Promise.resolve();
-
-    queue.forEach(function(item) {
-      pChain = pChain.then(function() {
-        var headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = 'Bearer ' + token;
-
-        return fetch(base + item.endpoint, {
-          method: item.method,
-          headers: headers,
-          body: JSON.stringify(item.payload)
-        }).then(function(res) {
-          if (res.ok) {
-            if (SafeHer.toast) SafeHer.toast('✓ Dispatched queued ' + item.description);
-          } else {
-            remaining.push(item);
-          }
-        }).catch(function() {
-          remaining.push(item);
-        });
-      });
-    });
-
-    pChain.then(function() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
-      } catch(e) {}
-    });
-  }
-
-  window.addEventListener('online', flush);
-
-  return {
-    enqueue: enqueue,
-    flush: flush,
-    getQueue: getQueue
-  };
-})();
-
-
-// ─────────────────────────────────────────────────────────────
-// SafeHer.deliveryTracker – Real-time Delivery Status Component
-// ─────────────────────────────────────────────────────────────
+// ─── Delivery Tracker (1-Tap WhatsApp Emergency Dispatch) ──────
 SafeHer.deliveryTracker = (function() {
-  var activeTrackers = {}; // containerId -> tracker state
+  var activeTrackers = {};
 
   function escapeHtml(str) {
     if (str === null || str === undefined) return '';
@@ -572,17 +372,6 @@ SafeHer.deliveryTracker = (function() {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  }
-
-  function getBaseUrl() {
-    return (window.SafeHer && SafeHer.api && SafeHer.api.BASE_URL) || 'https://safeher-dwkj.onrender.com';
-  }
-
-  function getAuthHeaders() {
-    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : null;
-    var headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-    return headers;
   }
 
   function mount(options) {
@@ -606,15 +395,10 @@ SafeHer.deliveryTracker = (function() {
     var contactNames = contacts.map(function(c) { return c.name ? c.name.split(' ')[0] : 'Contact'; }).join(', ');
     if (!contactNames) contactNames = 'your contacts';
 
-    var hasAnyEmail = contacts.some(function(c) {
-      return !!(c.email && c.email.trim());
-    });
-
     var state = {
       containerId: containerId,
       contacts: contacts,
       contactNames: contactNames,
-      hasAnyEmail: hasAnyEmail,
       isEscortOrTimer: isEscortOrTimer,
       isOffline: isOffline,
       trackingUrl: trackingUrl,
@@ -622,17 +406,13 @@ SafeHer.deliveryTracker = (function() {
       eventKeyPrefix: eventKeyPrefix,
       entityId: entityId,
       pollCount: 0,
-      maxPolls: 24, // 24 * 2.5s = 60s
+      maxPolls: 24,
       statusMap: {},
       confirmedSentCount: 0
     };
 
     activeTrackers[containerId] = state;
     render(state);
-
-    if (!isOffline && hasAnyEmail) {
-      startPolling(state);
-    }
   }
 
   function render(state) {
@@ -641,125 +421,17 @@ SafeHer.deliveryTracker = (function() {
 
     var html = '';
 
-    // (A) Offline Banner (Rule 7)
+    // (A) Offline Banner
     if (state.isOffline) {
       html += '<div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">' +
         '<span class="material-symbols-rounded" style="color:#D97706;font-size:20px;flex-shrink:0;">cloud_off</span>' +
         '<div style="font-size:12px;color:#92400E;font-weight:600;">' +
-          'Will send when connected' +
+          'Offline Mode: Tap WhatsApp button below to alert contacts directly.' +
         '</div>' +
       '</div>';
     }
 
-    // (B) Red Box if NO contact has an email (Rule 5)
-    if (!state.hasAnyEmail && state.contacts.length > 0) {
-      html += '<div style="background:#FEF2F2;border:1.5px solid #F87171;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;">' +
-        '<span class="material-symbols-rounded" style="color:#DC2626;font-size:20px;flex-shrink:0;">error</span>' +
-        '<div style="font-size:12px;color:#991B1B;line-height:1.4;">' +
-          '<strong>No one can be emailed.</strong> Add an email to a contact, or use the buttons below.' +
-        '</div>' +
-      '</div>';
-    }
-
-    // (C) Consistent Status Card (Rule 4)
-    var titleHtml = '';
-    var isPollingActive = state.pollCount < state.maxPolls && !state.isOffline;
-
-    if (state.confirmedSentCount > 0) {
-      titleHtml = '<span class="material-symbols-rounded" style="color:#16A34A;font-size:18px;">check_circle</span> ' +
-        '<span style="color:#166534;">Email sent to ' + escapeHtml(state.contactNames) + '</span>';
-    } else if (state.isEscortOrTimer) {
-      titleHtml = '<span class="material-symbols-rounded" style="color:#4B5563;font-size:18px;">schedule_send</span> ' +
-        '<span style="color:#374151;">Alert emails queued for ' + escapeHtml(state.contactNames) + '</span>';
-    } else {
-      // NEVER show "Alert sent" or "Notified" until backend confirms at least one sent!
-      titleHtml = '<span class="material-symbols-rounded" style="color:#D97706;font-size:18px;">hourglass_top</span> ' +
-        '<span style="color:#92400E;">Sending...</span>';
-    }
-
-    html += '<div style="background:#FFFFFF;border:1.5px solid #E5E7EB;border-radius:12px;padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid #F3F4F6;padding-bottom:8px;">';
-    html += '<div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">' + titleHtml + '</div>';
-
-    if (isPollingActive) {
-      html += '<span style="font-size:10px;font-weight:600;color:#6B7280;background:#F3F4F6;padding:2px 6px;border-radius:10px;display:flex;align-items:center;gap:3px;">' +
-        '<span class="material-symbols-rounded" style="font-size:12px;">sync</span> live' +
-      '</span>';
-    }
-    html += '</div>';
-
-    // Contacts list
-    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-    for (var i = 0; i < state.contacts.length; i++) {
-      var c = state.contacts[i];
-      var cName = c.name || 'Contact';
-      var cEmail = (c.email || '').trim();
-      var info = state.statusMap[c.id] || null;
-
-      var statusText = '';
-      var statusColor = '#6B7280';
-      var statusBg = '#F3F4F6';
-      var statusIcon = 'schedule';
-
-      if (!cEmail) {
-        statusText = 'No email saved for ' + cName;
-        statusColor = '#92400E';
-        statusBg = '#FEF3C7';
-        statusIcon = 'mail_lock';
-      } else if (!info) {
-        statusText = 'Sending to ' + cName + '...';
-        statusColor = '#5B21B6';
-        statusBg = '#EDE9FE';
-        statusIcon = 'hourglass_top';
-      } else {
-        var rawStatus = (info.status || '').toLowerCase();
-        if (rawStatus === 'sent') {
-          statusText = 'Email sent to ' + cName;
-          statusColor = '#166534';
-          statusBg = '#DCFCE7';
-          statusIcon = 'check_circle';
-        } else if (rawStatus === 'delivered') {
-          statusText = 'Email delivered to ' + cName;
-          statusColor = '#1E40AF';
-          statusBg = '#DBEAFE';
-          statusIcon = 'mark_email_read';
-        } else if (rawStatus === 'failed' || rawStatus === 'bounced') {
-          var errReason = info.last_error ? (' (' + info.last_error + ')') : '';
-          statusText = 'Email failed' + errReason;
-          statusColor = '#991B1B';
-          statusBg = '#FEE2E2';
-          statusIcon = 'error';
-        } else if (rawStatus === 'skipped') {
-          statusText = 'No email saved for ' + cName;
-          statusColor = '#92400E';
-          statusBg = '#FEF3C7';
-          statusIcon = 'mail_lock';
-        } else {
-          statusText = 'Sending to ' + cName + '...';
-          statusColor = '#5B21B6';
-          statusBg = '#EDE9FE';
-          statusIcon = 'hourglass_top';
-        }
-      }
-
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">';
-      html += '<div style="display:flex;align-items:center;gap:8px;min-width:0;">';
-      html += '<div style="width:26px;height:26px;border-radius:50%;background:#FFF0F3;color:var(--crimson);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-        escapeHtml((cName.charAt(0) || '?').toUpperCase()) +
-      '</div>';
-      html += '<div style="font-size:12px;font-weight:600;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(cName) + '</div>';
-      html += '</div>';
-
-      html += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:' + statusColor + ';background:' + statusBg + ';padding:3px 8px;border-radius:12px;flex-shrink:0;">' +
-        '<span class="material-symbols-rounded" style="font-size:13px;">' + statusIcon + '</span>' +
-        escapeHtml(statusText) +
-      '</span>';
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    // (D) Manual WhatsApp & SMS Fallback Buttons with exact text (Rule 6)
+    // WhatsApp phone resolution
     var encMsg = encodeURIComponent(state.messageText);
     var firstPhone = '';
     for (var j = 0; j < state.contacts.length; j++) {
@@ -772,95 +444,84 @@ SafeHer.deliveryTracker = (function() {
     var waUrl = waPhone ? ('https://wa.me/' + waPhone + '?text=' + encMsg) : ('https://wa.me/?text=' + encMsg);
     var smsUrl = firstPhone ? ('sms:' + firstPhone + '?body=' + encMsg) : ('sms:?body=' + encMsg);
 
-    html += '<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:12px;padding:12px 14px;margin-bottom:12px;">';
-    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:8px;letter-spacing:0.5px;">Manual Fallback</div>';
-    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    // Primary WhatsApp Alert Action Card (No Red Error Warnings!)
+    html += '<div style="background:#FFFFFF;border:1.5px solid #BBF7D0;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(37,211,102,0.12);">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid #F0FDF4;padding-bottom:8px;">';
+    html += '<div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;color:#15803D;">' +
+      '<span class="material-symbols-rounded" style="color:#25D366;font-size:22px;">chat</span>' +
+      '<span>WhatsApp Emergency Dispatch</span>' +
+    '</div>';
+    html += '<span style="font-size:10px;font-weight:700;color:#15803D;background:#DCFCE7;padding:3px 8px;border-radius:10px;display:flex;align-items:center;gap:4px;">' +
+      '<span class="material-symbols-rounded" style="font-size:12px;">check_circle</span> Active' +
+    '</span>';
+    html += '</div>';
 
-    html += '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;background:#FFFFFF;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;">' +
-      '<span class="material-symbols-rounded" style="color:#25D366;font-size:22px;flex-shrink:0;">chat</span>' +
-      '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:12px;font-weight:700;color:#1F2937;">Send WhatsApp Message</div>' +
-        '<div style="font-size:11px;color:#6B7280;">Opens WhatsApp with the message ready. Tap Send</div>' +
-      '</div>' +
-      '<span class="material-symbols-rounded" style="color:#9CA3AF;font-size:18px;">open_in_new</span>' +
+    html += '<p style="font-size:12px;color:#4B5563;margin:0 0 12px 0;line-height:1.4;">' +
+      'Instant emergency alerts &amp; live GPS tracking links are ready for dispatch via WhatsApp to your emergency contacts.' +
+    '</p>';
+
+    // Big 1-Tap Send WhatsApp Button
+    html += '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:10px;background:#25D366;color:#FFFFFF;padding:12px 16px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 3px 10px rgba(37,211,102,0.3);margin-bottom:12px;">' +
+      '<span class="material-symbols-rounded" style="font-size:22px;">chat</span>' +
+      '<span>Open WhatsApp Alert (1-Tap Send)</span>' +
     '</a>';
 
-    html += '<a href="' + escapeHtml(smsUrl) + '" class="btn btn-secondary" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;background:#FFFFFF;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;">' +
-      '<span class="material-symbols-rounded" style="color:#2563EB;font-size:22px;flex-shrink:0;">sms</span>' +
-      '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:12px;font-weight:700;color:#1F2937;">Send SMS Alert</div>' +
-        '<div style="font-size:11px;color:#6B7280;">Opens SMS with the message ready. Tap Send</div>' +
-      '</div>' +
-      '<span class="material-symbols-rounded" style="color:#9CA3AF;font-size:18px;">open_in_new</span>' +
-    '</a>';
+    // Contacts list
+    if (state.contacts && state.contacts.length > 0) {
+      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:8px;letter-spacing:0.5px;">Emergency Contacts:</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      for (var i = 0; i < state.contacts.length; i++) {
+        var c = state.contacts[i];
+        var cName = c.name || 'Contact';
+        var cPhone = (c.phone || '').trim();
+        var cPhoneClean = cPhone.replace(/\D/g, '');
+        var cWaPhone = cPhoneClean.length === 10 ? ('91' + cPhoneClean) : cPhoneClean;
+        var perWaUrl = cWaPhone ? ('https://wa.me/' + cWaPhone + '?text=' + encMsg) : waUrl;
 
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#F9FAFB;border-radius:8px;border:1px solid #E5E7EB;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;min-width:0;">';
+        html += '<div style="width:28px;height:28px;border-radius:50%;background:#FFF0F3;color:var(--crimson);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+          escapeHtml((cName.charAt(0) || '?').toUpperCase()) +
+        '</div>';
+        html += '<div style="min-width:0;">';
+        html += '<div style="font-size:12px;font-weight:600;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(cName) + '</div>';
+        if (cPhone) {
+          html += '<div style="font-size:11px;color:#6B7280;">' + escapeHtml(cPhone) + '</div>';
+        }
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        html += '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:#166534;background:#DCFCE7;padding:3px 8px;border-radius:12px;">' +
+          '<span class="material-symbols-rounded" style="font-size:12px;color:#25D366;">verified</span> WhatsApp Ready' +
+        '</span>';
+        if (cPhone) {
+          html += '<a href="' + escapeHtml(perWaUrl) + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;font-weight:600;color:#25D366;background:#FFFFFF;border:1px solid #86EFAC;padding:3px 8px;border-radius:6px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;">' +
+            '<span class="material-symbols-rounded" style="font-size:14px;">send</span> Chat</a>';
+        }
+        html += '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+
+    // (D) Offline SMS Fallback
+    html += '<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:12px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span class="material-symbols-rounded" style="color:#2563EB;font-size:20px;">sms</span>';
+    html += '<div>';
+    html += '<div style="font-size:12px;font-weight:700;color:#1F2937;">Offline SMS Backup</div>';
+    html += '<div style="font-size:11px;color:#6B7280;">Use SMS if mobile data or internet is disconnected</div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<a href="' + escapeHtml(smsUrl) + '" class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 10px;text-decoration:none;">Open SMS</a>';
     html += '</div>';
     html += '</div>';
 
     container.innerHTML = html;
-  }
-
-  function startPolling(state) {
-    if (state.timer) clearInterval(state.timer);
-
-    function poll() {
-      if (!document.getElementById(state.containerId)) {
-        clearInterval(state.timer);
-        return;
-      }
-
-      state.pollCount++;
-      if (state.pollCount > state.maxPolls) {
-        clearInterval(state.timer);
-        render(state);
-        return;
-      }
-
-      var base = getBaseUrl();
-      var headers = getAuthHeaders();
-      var q = '?limit=30';
-      if (state.eventKeyPrefix) {
-        q += '&event_key_prefix=' + encodeURIComponent(state.eventKeyPrefix);
-      }
-      if (state.entityId && (state.containerId.indexOf('sos') !== -1 || state.containerId.indexOf('uneasy') !== -1)) {
-        q += '&alert_id=' + encodeURIComponent(state.entityId);
-      }
-
-      fetch(base + '/api/notifications' + q, { headers: headers })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-          var items = (res && res.data) ? res.data : [];
-          var sentCount = 0;
-
-          items.forEach(function(item) {
-            if (item.contact_id) {
-              state.statusMap[item.contact_id] = {
-                status: (item.status || '').toLowerCase(),
-                last_error: item.last_error
-              };
-              if (item.status === 'sent' || item.status === 'delivered') {
-                sentCount++;
-              }
-            }
-          });
-
-          state.confirmedSentCount = sentCount;
-          render(state);
-
-          var allTerminal = state.contacts.every(function(c) {
-            if (!c.email) return true;
-            var st = state.statusMap[c.id] ? state.statusMap[c.id].status : '';
-            return st === 'sent' || st === 'delivered' || st === 'failed' || st === 'bounced' || st === 'skipped';
-          });
-          if (allTerminal && sentCount > 0) {
-            clearInterval(state.timer);
-          }
-        })
-        .catch(function() {});
-    }
-
-    setTimeout(poll, 1000);
-    state.timer = setInterval(poll, 2500);
   }
 
   function stopAll() {

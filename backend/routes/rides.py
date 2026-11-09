@@ -111,6 +111,20 @@ def create_ride():
     primary_tok = tokens_list[0]['token'] if tokens_list else secrets.token_urlsafe(32)
     vehicle_desc = f"{vehicle_type} {vehicle_number}".strip()
 
+    # Dispatch automated WhatsApp notifications to selected contacts
+    try:
+        from whatsapp_service import send_ride_started_whatsapp_notifications_background
+        cursor = get_db().cursor()
+        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in contact_ids)), contact_ids)
+        c_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        if c_phones:
+            send_ride_started_whatsapp_notifications_background(
+                ride_id, user_name, vehicle_type, vehicle_number, driver_name, driver_phone,
+                app_used, pickup, destination, expected_minutes, lat or 0, lng or 0, primary_tok, c_phones
+            )
+    except Exception as e:
+        app_logger.warning(f"[RIDE START WHATSAPP DISPATCH] {e}")
+
     # Dispatch ride_started notification via central engine
     notify(
         event_type='ride_started',
@@ -240,6 +254,18 @@ def end_ride(ride_id):
     conn.close()
 
     user_name = row['user_name'] or 'SafeHer User'
+
+    try:
+        from whatsapp_service import send_ride_arrived_whatsapp_notifications_background
+        cursor = get_db().cursor()
+        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in c_ids)), c_ids)
+        c_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        if c_phones:
+            send_ride_arrived_whatsapp_notifications_background(
+                ride_id, user_name, row['destination'], dict(row).get('vehicle_number') or '', c_phones
+            )
+    except Exception as e:
+        app_logger.warning(f"[RIDE ARRIVE WHATSAPP DISPATCH] {e}")
 
     notify(
         event_type='ride_ended',

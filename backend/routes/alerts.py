@@ -206,6 +206,8 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                         c_rel = str(cc.get('relation') or 'Emergency Contact').strip()
                         c_close = 1 if cc.get('close') else 0
                         if c_name and (c_phone or c_email):
+                            if c_phone in ('7483245232', '112', '181') or c_name.lower() in ('emergency contact (family)', 'police helpline', 'women helpline'):
+                                continue
                             cursor.execute('''
                                 SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));
                             ''', (user_id, c_phone, c_email))
@@ -1658,11 +1660,7 @@ def respond_contact_track(token):
                     row['contact_id'] = c_fb['id']
                     row['contact_name'] = c_fb['name']
                 else:
-                    cursor.execute(
-                        "INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);",
-                        (row['user_id'], 'Emergency Contact', 'Emergency', 'emergency@safeher.app')
-                    )
-                    row['contact_id'] = cursor.lastrowid
+                    row['contact_id'] = None
                     row['contact_name'] = 'Emergency Contact'
             if not row.get('contact_name'):
                 row['contact_name'] = 'Emergency Contact'

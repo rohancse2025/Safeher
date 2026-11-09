@@ -54,10 +54,13 @@ SafeHer.contacts = (function() {
               '<span class="contact-badge">' + escapeHtml(relation) + '</span>' +
               closeBadge +
             '</div>' +
-            '<span class="contact-phone">' + escapeHtml(c.phone) + '</span>' +
+            '<span class="contact-phone" style="display:flex;align-items:center;gap:4px;"><span class="material-symbols-rounded" style="color:#25D366;font-size:14px;">chat</span> ' + escapeHtml(c.phone) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="contact-actions">' +
+          '<a class="contact-action-btn" href="https://wa.me/91' + encodeURIComponent((c.phone || '').replace(/\D/g, '')) + '" target="_blank" rel="noopener noreferrer" style="color:#25D366;" aria-label="WhatsApp ' + escapeHtml(c.name) + '">' +
+            '<span class="material-symbols-rounded">chat</span>' +
+          '</a>' +
           '<a class="contact-action-btn call" href="tel:' + encodeURIComponent((c.phone || '').replace(/[^\d+]/g, '')) + '" aria-label="Call ' + escapeHtml(c.name) + '">' +
             '<span class="material-symbols-rounded">call</span>' +
           '</a>' +
@@ -155,11 +158,7 @@ SafeHer.contacts = (function() {
 
     if (!ok) return;
 
-    if (!email) {
-      var warnEl = document.getElementById('warn-contact-email');
-      if (warnEl) warnEl.style.display = 'block';
-      SafeHer.toast('Saved. Notice: Without an email, automated email alerts will be skipped for this contact.');
-    }
+
 
     if (editId) {
       // PUT /api/contacts/:id

@@ -17,24 +17,15 @@ def _format_contact_dict(r):
     c['opted_out'] = bool(c.get('opted_out', 0))
     c['email_status'] = c.get('email_status') or 'unknown'
     em = (c.get('email') or '').strip()
-    has_email = bool(em)
-    c['no_email'] = not has_email
-
-    if not has_email:
-        c['email_warning'] = "No email address; cannot receive automatic alerts"
-    elif c['opted_out']:
-        c['email_warning'] = "Contact opted out of email alerts"
-    elif c['email_status'] == 'bounced':
-        c['email_warning'] = "Previous email bounced; update address"
-    elif c['email_status'] == 'invalid':
-        c['email_warning'] = "Invalid email address format"
-    else:
-        c['email_warning'] = None
+    ph = (c.get('phone') or '').strip()
+    c['has_phone'] = bool(ph)
+    c['whatsapp_ready'] = bool(ph)
+    c['no_email'] = False
+    c['email_warning'] = None
     return c
 
 
-# ─── Route: GET /api/contacts ────────────────────────────────
-@contacts_bp.route('/api/contacts', methods=['GET'])
+# â”€â”€â”€ Route: GET /api/contacts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def get_contacts():
     """
     List all emergency contacts belonging to the authenticated user.
@@ -52,6 +43,8 @@ def get_contacts():
             SELECT id, user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token
             FROM contacts
             WHERE user_id = ?
+              AND phone NOT IN ('7483245232', '112', '181')
+              AND lower(name) NOT IN ('emergency contact (family)', 'police helpline', 'women helpline')
             ORDER BY id ASC;
         ''', (user_id,))
         rows = cursor.fetchall()

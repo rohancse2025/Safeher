@@ -103,6 +103,19 @@ def create_share():
     duration_desc = f"{duration_min} minutes" if not until_stopped else "until stopped"
     primary_tok = tokens_list[0]['token'] if tokens_list else secrets.token_urlsafe(32)
 
+    # Dispatch automated WhatsApp notifications to selected contacts
+    try:
+        from whatsapp_service import send_location_share_whatsapp_notifications_background
+        cursor = get_db().cursor()
+        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in contact_ids)), contact_ids)
+        c_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        if c_phones:
+            send_location_share_whatsapp_notifications_background(
+                share_id, user_name, duration_desc, lat or 0, lng or 0, c_phones, token=primary_tok
+            )
+    except Exception as e:
+        app_logger.warning(f"[SHARE WHATSAPP DISPATCH] {e}")
+
     # Dispatch share_started notification via central engine
     notify(
         event_type='share_started',
