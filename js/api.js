@@ -920,72 +920,20 @@ SafeHer.api = (function() {
 
       var all = SafeHer.storage.get('contacts') || [];
 
-
-
-      // Auto-seed default emergency contacts so user never has zero contacts
-
-      if (!all || all.length === 0) {
-
-        all = [
-
-          {
-
-            id: 1,
-
-            userId: userId,
-
-            name: 'Emergency Contact (Family)',
-
-            phone: '7483245232',
-
-            email: 'rohanrao1803@gmail.com',
-
-            relation: 'Family',
-
-            close: true
-
-          },
-
-          {
-
-            id: 2,
-
-            userId: userId,
-
-            name: 'Police Helpline',
-
-            phone: '112',
-
-            email: 'help@112.gov.in',
-
-            relation: 'Emergency',
-
-            close: true
-
-          },
-
-          {
-
-            id: 3,
-
-            userId: userId,
-
-            name: 'Women Helpline',
-
-            phone: '181',
-
-            email: 'womenhelpline@gov.in',
-
-            relation: 'Emergency',
-
-            close: true
-
-          }
-
-        ];
-
-        SafeHer.storage.set('contacts', all);
-
+      // Purge any dummy default contacts
+      if (all && all.length > 0) {
+        var cleanAll = all.filter(function(c) {
+          if (!c) return false;
+          var name = (c.name || '').trim().toLowerCase();
+          var phone = (c.phone || '').trim();
+          if (name === 'emergency contact (family)' || name === 'police helpline' || name === 'women helpline') return false;
+          if (phone === '7483245232' || phone === '112' || phone === '181') return false;
+          return true;
+        });
+        if (cleanAll.length !== all.length) {
+          all = cleanAll;
+          SafeHer.storage.set('contacts', all);
+        }
       }
 
 

@@ -151,7 +151,20 @@ SafeHer.home = (function() {
     }
   }
 
+    function dismissChecklist() {
+    var card = document.getElementById('home-setup-checklist');
+    if (card) card.style.display = 'none';
+    try { localStorage.setItem('safeher_dismiss_checklist', '1'); } catch(e) {}
+  }
+
   function updateSetupChecklist(contactsList) {
+    try {
+      if (localStorage.getItem('safeher_dismiss_checklist') === '1') {
+        var cEl = document.getElementById('home-setup-checklist');
+        if (cEl) cEl.style.display = 'none';
+        return;
+      }
+    } catch(e) {}
     var hasEmail = false;
     var count = (contactsList && Array.isArray(contactsList)) ? contactsList.length : 0;
     if (count > 0) {
@@ -230,6 +243,7 @@ SafeHer.home = (function() {
   }
 
   return {
+    dismissChecklist: dismissChecklist,
     init: init,
     refresh: refresh,
     updateContactsCount: updateContactsCount,

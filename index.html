@@ -351,7 +351,12 @@
             <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 18px;">checklist</span>
             <span style="font-size: 13px; font-weight: 700; color: var(--text-dark);">Finish Setup Checklist</span>
           </div>
-          <span class="badge" id="setup-progress-badge" style="background: #FFF0F3; color: var(--crimson); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">Action needed</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="badge" id="setup-progress-badge" style="background: #FFF0F3; color: var(--crimson); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">Action needed</span>
+            <button type="button" onclick="SafeHer.home.dismissChecklist()" aria-label="Dismiss checklist" style="background: none; border: none; cursor: pointer; color: var(--text-gray); padding: 2px; display: flex; align-items: center;" title="Dismiss checklist">
+              <span class="material-symbols-rounded" style="font-size: 16px;">close</span>
+            </button>
+          </div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid #FFF0F3;">
           <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="SafeHer.router.go('contacts')">
@@ -2778,26 +2783,6 @@
           <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
         </div>
 
-        <!-- Emergency & Alert History Launcher Tile -->
-        <div class="settings-tile" onclick="SafeHer.router.go('history')" style="margin-top: 10px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius-tile); padding: 12px 14px; background: #ffffff; display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="material-symbols-rounded" style="color: var(--crimson); font-size: 24px;">history</span>
-            <div>
-              <p style="font-size: 13px; font-weight: 600; color: var(--text-dark); margin: 0;">Emergency &amp; Alert History</p>
-              <p style="font-size: 11px; color: var(--text-gray); margin: 2px 0 0 0;">View past SOS alerts, Escort journeys, and activity logs</p>
-            </div>
-          </div>
-          <span class="material-symbols-rounded" style="color: var(--text-gray);">chevron_right</span>
-        </div>
-      </div>
-
-      <!-- Alert History -->
-      <div class="settings-section">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <p class="settings-section-title" style="margin-bottom: 0;">Recent Alert History</p>
-          <button type="button" class="btn-text-link" onclick="SafeHer.router.go('history')" style="font-size: 12px; color: var(--crimson); font-weight: 600; cursor: pointer;">View Full &rarr;</button>
-        </div>
-        <div id="profile-alert-history" class="alert-history-list"></div>
       </div>
 
       <!-- Ride History -->
@@ -3477,32 +3462,32 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=50"></script>
-<script src="./js/storage.js?v=50"></script>
-<script src="./js/api.js?v=50"></script>
-<script src="./js/i18n.js?v=50"></script>
-<script src="./js/helpdata.js?v=50"></script>
-<script src="./js/help_rights.js?v=50"></script>
-<script src="./js/app.js?v=50"></script>
-<script src="./js/onboarding.js?v=50"></script>
-<script src="./js/auth.js?v=50"></script>
-<script src="./js/pin.js?v=50"></script>
-<script src="./js/home.js?v=50"></script>
-<script src="./js/contacts.js?v=50"></script>
-<script src="./js/tips.js?v=50"></script>
-<script src="./js/profile.js?v=50"></script>
-<script src="./js/sos.js?v=50"></script>
-<script src="./js/map.js?v=50"></script>
-<script src="./js/share_location.js?v=50"></script>
-<script src="./js/places.js?v=50"></script>
-<script src="./js/ride.js?v=50"></script>
-<script src="./js/volunteer.js?v=50"></script>
-<script src="./js/volunteer-apply.js?v=50"></script>
-<script src="./js/timer.js?v=50"></script>
-<script src="./js/fakecall.js?v=50"></script>
-<script src="./js/evidence.js?v=50"></script>
-<script src="./js/vault.js?v=50"></script>
-<script src="./js/escort.js?v=50"></script>
-<script src="./js/notifications.js?v=50"></script>
+<script src="./js/config.js?v=51"></script>
+<script src="./js/storage.js?v=51"></script>
+<script src="./js/api.js?v=51"></script>
+<script src="./js/i18n.js?v=51"></script>
+<script src="./js/helpdata.js?v=51"></script>
+<script src="./js/help_rights.js?v=51"></script>
+<script src="./js/app.js?v=51"></script>
+<script src="./js/onboarding.js?v=51"></script>
+<script src="./js/auth.js?v=51"></script>
+<script src="./js/pin.js?v=51"></script>
+<script src="./js/home.js?v=51"></script>
+<script src="./js/contacts.js?v=51"></script>
+<script src="./js/tips.js?v=51"></script>
+<script src="./js/profile.js?v=51"></script>
+<script src="./js/sos.js?v=51"></script>
+<script src="./js/map.js?v=51"></script>
+<script src="./js/share_location.js?v=51"></script>
+<script src="./js/places.js?v=51"></script>
+<script src="./js/ride.js?v=51"></script>
+<script src="./js/volunteer.js?v=51"></script>
+<script src="./js/volunteer-apply.js?v=51"></script>
+<script src="./js/timer.js?v=51"></script>
+<script src="./js/fakecall.js?v=51"></script>
+<script src="./js/evidence.js?v=51"></script>
+<script src="./js/vault.js?v=51"></script>
+<script src="./js/escort.js?v=51"></script>
+<script src="./js/notifications.js?v=51"></script>
 </body>
 </html>

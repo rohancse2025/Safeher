@@ -294,8 +294,7 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                         recipient_emails.append(em)
             except Exception:
                 pass
-            if not recipient_emails:
-                recipient_emails.append('rohanrao1803@gmail.com')
+            pass
 
         # Generate unique contact token for each contact and store in alert_contacts
         contact_tokens_email = {}
@@ -2249,10 +2248,7 @@ def share_location():
         except Exception:
             pass
 
-    if not recipient_emails:
-        recipient_emails.append('rohanrao1803@gmail.com')
-    if not recipient_phones:
-        recipient_phones.append('917483245232')
+    pass
 
     conn.commit()
     conn.close()
@@ -2428,9 +2424,7 @@ def start_ride_safety():
         except Exception:
             pass
 
-    # Ensure recipient_emails has fallback
-    if not recipient_emails:
-        recipient_emails.append('rohanrao1803@gmail.com')
+    pass
 
     conn.commit()
     conn.close()
@@ -2545,8 +2539,7 @@ def end_ride_safety():
     recipient_phones = [str(r['phone']).strip() for r in rows if r['phone'] and str(r['phone']).strip()]
     recipient_emails = [str(r['email']).strip() for r in rows if r['email'] and str(r['email']).strip()]
 
-    if not recipient_emails:
-        recipient_emails.append('rohanrao1803@gmail.com')
+    pass
 
     conn.close()
 

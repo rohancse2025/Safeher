@@ -319,8 +319,7 @@ def create_escort():
         valid_contacts = [dict(c) for c in cursor.fetchall()]
 
     if not valid_contacts:
-        cursor.execute("INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, 'Emergency Contact', '917483245232', 'rohanrao1803@gmail.com', 1);", (user_id,))
-        valid_contacts = [{'id': cursor.lastrowid, 'name': 'Emergency Contact', 'phone': '917483245232', 'email': 'rohanrao1803@gmail.com'}]
+        valid_contacts = []
 
     for c in valid_contacts:
         c_id = c['id']

@@ -105,10 +105,7 @@ def create_timer():
         except Exception:
             pass
 
-    if not recipient_emails:
-        recipient_emails.append('rohanrao1803@gmail.com')
-    if not recipient_phones:
-        recipient_phones.append('917483245232')
+    pass
 
     conn.commit()
     conn.close()
@@ -207,10 +204,7 @@ def mark_timer_safe(timer_id):
     except Exception:
         pass
 
-    if not recipient_emails:
-        recipient_emails.append('rohanrao1803@gmail.com')
-    if not recipient_phones:
-        recipient_phones.append('917483245232')
+    pass
 
     conn.commit()
     conn.close()
