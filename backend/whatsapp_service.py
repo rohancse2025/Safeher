@@ -423,3 +423,28 @@ def send_ride_arrived_whatsapp_notifications_background(ride_id, user_name, dest
                 app_logger.error(f"[RIDE ARRIVED WHATSAPP FAILED] ride_id={ride_id}, to={masked}, error={err_msg}")
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def send_share_stopped_whatsapp_notifications_background(share_id, user_name, recipient_phones):
+    """
+    Send automated WhatsApp notification when user stops Live Location Sharing.
+    """
+    if not recipient_phones:
+        return
+
+    def worker():
+        user_clean = user_name or 'Rohan P'
+        message = (
+            f"✅ *LOCATION SHARING ENDED - SafeHer* ✅\n\n"
+            f"*{user_clean}* has stopped live location sharing and confirmed she is *SAFE*.\n\n"
+            f"Thank you for watching out for her safety! All clear."
+        )
+        for phone in recipient_phones:
+            masked = mask_phone(phone)
+            success, err_msg = send_whatsapp(phone, message)
+            if success:
+                app_logger.info(f"[SHARE STOP WHATSAPP SENT] share_id={share_id}, to={masked}")
+            else:
+                app_logger.error(f"[SHARE STOP WHATSAPP FAILED] share_id={share_id}, to={masked}, error={err_msg}")
+
+    threading.Thread(target=worker, daemon=True).start()

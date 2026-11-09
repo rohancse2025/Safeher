@@ -91,27 +91,40 @@ SafeHer.contacts = (function() {
 
     if (!modal) return;
 
-    if (editId) {
-      var contacts = SafeHer.api.getContacts();
+    if (editId !== undefined && editId !== null && editId !== '') {
+      var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
       var c = null;
       for (var i = 0; i < contacts.length; i++) {
-        if (contacts[i].id === editId) { c = contacts[i]; break; }
+        if (String(contacts[i].id) === String(editId)) { c = contacts[i]; break; }
+      }
+      if (!c) {
+        var rawAll = SafeHer.storage.get('contacts') || [];
+        for (var j = 0; j < rawAll.length; j++) {
+          if (String(rawAll[j].id) === String(editId)) { c = rawAll[j]; break; }
+        }
       }
       if (c) {
-        titleEl.textContent = 'Edit Contact';
-        idInput.value = c.id;
-        nameInput.value = c.name || '';
-        phoneInput.value = c.phone || '';
-        emailInput.value = c.email || '';
-        relSelect.value = c.relation || 'Parent';
+        if (titleEl) titleEl.textContent = 'Edit Contact';
+        if (idInput) idInput.value = c.id;
+        if (nameInput) nameInput.value = c.name || '';
+        if (phoneInput) phoneInput.value = c.phone || '';
+        if (emailInput) emailInput.value = c.email || '';
+        if (relSelect) relSelect.value = c.relation || c.relationship || 'Parent';
+      } else {
+        if (titleEl) titleEl.textContent = 'Add Contact';
+        if (idInput) idInput.value = '';
+        if (nameInput) nameInput.value = '';
+        if (phoneInput) phoneInput.value = '';
+        if (emailInput) emailInput.value = '';
+        if (relSelect) relSelect.value = 'Parent';
       }
     } else {
-      titleEl.textContent = 'Add Contact';
-      idInput.value = '';
-      nameInput.value = '';
-      phoneInput.value = '';
-      emailInput.value = '';
-      relSelect.value = 'Parent';
+      if (titleEl) titleEl.textContent = 'Add Contact';
+      if (idInput) idInput.value = '';
+      if (nameInput) nameInput.value = '';
+      if (phoneInput) phoneInput.value = '';
+      if (emailInput) emailInput.value = '';
+      if (relSelect) relSelect.value = 'Parent';
     }
 
     modal.style.display = 'flex';

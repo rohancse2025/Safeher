@@ -253,6 +253,19 @@ def stop_share(share_id):
         event_key=f"share:{share_id}:ended"
     )
 
+    try:
+        from whatsapp_service import send_share_stopped_whatsapp_notifications_background
+        cursor = get_db().cursor()
+        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in c_ids)), c_ids) if c_ids else cursor.execute("SELECT phone FROM contacts WHERE user_id = ?;", (row['user_id'],))
+        sh_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        if not sh_phones:
+            cursor.execute("SELECT phone FROM contacts WHERE phone NOT IN ('112', '181');")
+            sh_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        if sh_phones:
+            send_share_stopped_whatsapp_notifications_background(share_id, user_name, sh_phones)
+    except Exception as e:
+        app_logger.warning(f"[SHARE STOP WHATSAPP DISPATCH] {e}")
+
     app_logger.info(f"[SHARE ENDED] share_id={share_id}, user_id={row['user_id']}")
 
     return jsonify({

@@ -43,7 +43,7 @@ def get_contacts():
             SELECT id, user_id, name, phone, email, relationship, close, opted_out, email_status, optout_token
             FROM contacts
             WHERE user_id = ?
-              AND phone NOT IN ('7483245232', '112', '181')
+              AND phone NOT IN ('112', '181')
               AND lower(name) NOT IN ('emergency contact (family)', 'police helpline', 'women helpline')
             ORDER BY id ASC;
         ''', (user_id,))

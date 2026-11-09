@@ -932,7 +932,7 @@ SafeHer.api = (function() {
           var name = (c.name || '').trim().toLowerCase();
           var phone = (c.phone || '').trim();
           if (name === 'emergency contact (family)' || name === 'police helpline' || name === 'women helpline') return false;
-          if (phone === '7483245232' || phone === '112' || phone === '181') return false;
+          if (phone === '112' || phone === '181') return false;
           return true;
         });
         if (cleanAll.length !== all.length) {

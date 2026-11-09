@@ -209,7 +209,7 @@ def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77
                         c_rel = str(cc.get('relation') or 'Emergency Contact').strip()
                         c_close = 1 if cc.get('close') else 0
                         if c_name and (c_phone or c_email):
-                            if c_phone in ('7483245232', '112', '181') or c_name.lower() in ('emergency contact (family)', 'police helpline', 'women helpline'):
+                            if c_phone in ('112', '181') or c_name.lower() in ('police helpline', 'women helpline'):
                                 continue
                             cursor.execute('''
                                 SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));
