@@ -129,20 +129,62 @@ SafeHer.sos = (function() {
   }
 
   function buildAlertMessage() {
-    var user = SafeHer.api.getUser();
-    var userName = user && user.name ? user.name : 'SafeHer User';
-    var time = currentAlertTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    var lat = currentLat || BENGALURU_LAT;
-    var lng = currentLng || BENGALURU_LNG;
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
+    var userName = (user && user.name && user.name !== 'SafeHer User') ? user.name : 'Rohan P';
+
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = String(now.getMonth() + 1).padStart(2, '0');
+    var d = String(now.getDate()).padStart(2, '0');
+    var h = String(now.getHours()).padStart(2, '0');
+    var mi = String(now.getMinutes()).padStart(2, '0');
+    var s = String(now.getSeconds()).padStart(2, '0');
+    var timeStr = y + '-' + m + '-' + d + ' ' + h + ':' + mi + ':' + s;
+
+    var lat = (typeof currentLat === 'number') ? currentLat.toFixed(6) : (currentLat || '13.0691321');
+    var lng = (typeof currentLng === 'number') ? currentLng.toFixed(6) : (currentLng || '77.7946567');
     var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
 
     var active = (SafeHer.api && SafeHer.api.getActiveSos) ? SafeHer.api.getActiveSos() : null;
-    var trackPart = '';
-    if (active && active.shareToken) {
-      trackPart = ' Live Tracking: ' + window.location.origin + '/track.html?t=' + active.shareToken;
-    }
+    var token = (active && active.shareToken) ? active.shareToken : (currentShareToken || 'live_emergency');
+    var frontendUrl = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
+    frontendUrl = frontendUrl.replace(/\/+$/, '');
+    var trackUrl = frontendUrl + '/track.html?t=' + token;
 
-    return 'EMERGENCY: ' + userName + ' triggered an SOS alert on SafeHer at ' + time + '. Location: ' + mapsUrl + trackPart;
+    var modeStr = (currentMode || 'emergency').toUpperCase();
+
+    var msg = '🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨
+
+' +
+      '*' + userName + '* has triggered an urgent SOS alert!
+
+' +
+      '⚠️ *Mode*: ' + modeStr + '
+' +
+      '🕒 *Time*: ' + timeStr + '
+' +
+      '📍 *Google Maps Location*:
+' + mapsUrl + '
+
+' +
+      '🔴 *Live Tracking Map*:
+' + trackUrl + '
+
+' +
+      '⚡ *Quick 1-Tap Response (No app needed):*
+' +
+      '🏃 On my way: ' + trackUrl + '&action=on_my_way
+' +
+      '📞 Called her: ' + trackUrl + '&action=called
+' +
+      '🚓 Alerted Police: ' + trackUrl + '&action=police_alerted
+' +
+      '✅ Safe with me: ' + trackUrl + '&action=safe_with_me
+
+' +
+      'Please contact ' + userName + ' immediately or call Police (112).';
+
+    return msg;
   }
 
   // ─── 5-4-3-2-1 Countdown (Normal Mode) ────────────────────

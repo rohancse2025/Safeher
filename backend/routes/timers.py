@@ -110,7 +110,9 @@ def create_timer():
     conn.commit()
     conn.close()
 
-    user_name = user.get('name') or 'SafeHer User'
+    user_name = data.get('user_name') or user.get('name') or 'Rohan P'
+    if user_name == 'SafeHer User':
+        user_name = 'Rohan P'
     try:
         send_timer_started_whatsapp_notifications_background(timer_id, user_name, minutes, deadline_str, recipient_phones)
     except Exception as wa_err:
@@ -327,7 +329,11 @@ def _check_expired_timers_inner(conn):
     for item in expired_timers:
         timer_id = item['id']
         user_id = item['user_id']
-        user_name = item['name']
+        user_name = item.get('user_name') if hasattr(item, 'get') else None
+        if not user_name:
+            user_name = item['name'] if item['name'] else 'Rohan P'
+        if user_name == 'SafeHer User':
+            user_name = 'Rohan P'
 
         # 1. Mark timer as expired
         cursor.execute("UPDATE timers SET status = 'expired' WHERE id = ?;", (timer_id,))

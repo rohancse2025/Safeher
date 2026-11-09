@@ -444,7 +444,12 @@ SafeHer.api = (function() {
 
     getUser: function() {
 
-      return SafeHer.storage.get('user');
+      var u = SafeHer.storage.get('user');
+      if (u && (!u.name || u.name === 'SafeHer User')) {
+        u.name = 'Rohan P';
+        SafeHer.storage.set('user', u);
+      }
+      return u;
 
     },
 
@@ -1814,6 +1819,8 @@ SafeHer.api = (function() {
 
               phone: currentUser.phone || '',
 
+              user_name: (currentUser.name && currentUser.name !== 'SafeHer User') ? currentUser.name : 'Rohan P',
+
               contacts: (SafeHer.storage && SafeHer.storage.get ? SafeHer.storage.get('contacts') : []) || []
 
             }),
@@ -2447,6 +2454,8 @@ SafeHer.api = (function() {
             user_id: currentUser.id,
 
             phone: currentUser.phone,
+
+            user_name: (currentUser.name && currentUser.name !== 'SafeHer User') ? currentUser.name : 'Rohan P',
 
             contacts: chosenContacts
 

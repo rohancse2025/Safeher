@@ -256,9 +256,24 @@ SafeHer.notifications = (function() {
       })
       .catch(function() {});
 
-    // Open WhatsApp test link directly
-    var testText = encodeURIComponent('🚨 *SafeHer Emergency Test Alert* 🚨\n\nThis is a test of your emergency SOS broadcast system.\n\n🛡️ SafeHer WhatsApp alerts are active and operational!');
-    window.open('https://wa.me/?text=' + testText, '_blank');
+    // Open WhatsApp test link directly with rich 1-tap response format
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
+    var userName = (user && user.name && user.name !== 'SafeHer User') ? user.name : 'Rohan P';
+    var trackUrl = 'https://rohancse2025.github.io/Safeher/track.html?t=test_preview';
+    var nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    var fullTestMsg = '🚨 *EMERGENCY SOS ALERT - SafeHer* 🚨\n\n' +
+      '*' + userName + '* has triggered an urgent SOS alert!\n\n' +
+      '⚠️ *Mode*: EMERGENCY\n' +
+      '🕒 *Time*: ' + nowStr + '\n' +
+      '📍 *Google Maps Location*:\nhttps://www.google.com/maps?q=13.0691321,77.7946567\n\n' +
+      '🔴 *Live Tracking Map*:\n' + trackUrl + '\n\n' +
+      '⚡ *Quick 1-Tap Response (No app needed):*\n' +
+      '🏃 On my way: ' + trackUrl + '&action=on_my_way\n' +
+      '📞 Called her: ' + trackUrl + '&action=called\n' +
+      '🚓 Alerted Police: ' + trackUrl + '&action=police_alerted\n' +
+      '✅ Safe with me: ' + trackUrl + '&action=safe_with_me\n\n' +
+      'Please contact ' + userName + ' immediately or call Police (112).';
+    window.open('https://wa.me/?text=' + encodeURIComponent(fullTestMsg), '_blank');
   }
 
   // ── 5. Delivery Log List ─────────────────────────────────────

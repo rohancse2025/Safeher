@@ -108,7 +108,7 @@ def get_user_from_request():
     if user:
         return dict(user)
 
-    return {"id": 10000, "name": "SafeHer User", "phone": "9999999999", "email": "user@safeher.app"}
+    return {"id": 10000, "name": req_name or "Rohan P", "phone": req_phone or "6574563222", "email": "rohan.cse25@cmrit.ac.in"}
 
 
 def is_valid_coord(lat, lng):
@@ -123,6 +123,9 @@ def is_valid_coord(lat, lng):
 
 # ─── Route: POST /api/alerts ─────────────────────────────────
 def create_alert_internal(user_id, user_name, mode='normal', lat=12.9716, lng=77.5946, reason='manual', note=None, bypass_rate_limit=False, cursor=None, conn=None, client_contacts=None):
+    user_name = str(user_name or '').strip()
+    if not user_name or user_name == 'SafeHer User':
+        user_name = 'Rohan P'
     """
     Internal alert creation core logic.
     Reused by user SOS, timer auto-expiration, and escort system alerts.

@@ -163,6 +163,10 @@ def send_whatsapp_notifications_background(alert_id, user_name, mode, started_at
     if not recipient_phones:
         return
 
+    user_name = str(user_name or '').strip()
+    if not user_name or user_name == 'SafeHer User':
+        user_name = 'Rohan P'
+
     def worker():
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         track_link = f"{frontend_url}/track.html?t={share_token}"
