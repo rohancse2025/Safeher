@@ -1523,12 +1523,7 @@ def respond_contact_track(token):
                 "error": "Tracking link not found or expired"
             }), 404
 
-    if row['alert_status'] != 'active':
-        conn.close()
-        return jsonify({
-            "ok": False,
-            "error": "This alert is no longer active"
-        }), 400
+    is_active = (row['alert_status'] == 'active')
 
     alert_id = row['alert_id']
     contact_id = row['contact_id']
@@ -1828,37 +1823,40 @@ def ping_checkin_contact_track(token):
 
 
 
-# ─── Route: POST /api/test-email ─────────────────────────────
-@alerts_bp.route('/api/test-email', methods=['POST'])
-@login_required
+# ─── Route: GET & POST /api/test-email (Live SMTP Diagnostic) ───
+@alerts_bp.route('/api/test-email', methods=['GET', 'POST'])
 def test_email():
     """
-    Send a test email to the authenticated user's registered email address.
+    Diagnostic endpoint to test live outbound Gmail SMTP delivery.
+    Works for authenticated users or public diagnostics via ?to=email.
     """
-    user_email = g.current_user.get('email')
-    user_name = g.current_user.get('name', 'User')
+    user = getattr(g, 'current_user', None) or get_user_from_request()
+    data = request.get_json(silent=True) or {}
+    to_addr = (request.args.get('to') or data.get('to') or (user.get('email') if user else None) or 'rohanrao1803@gmail.com').strip()
+    user_name = (user.get('name') if user else None) or 'SafeHer Admin'
 
-    if not user_email:
-        return jsonify({"ok": False, "error": "Your account does not have an email address registered"}), 400
-
-    subject = "SafeHer – Test Email Notification"
-    body = (
+    from email_service import send_email
+    subject = f"SafeHer Live SMTP Test ({datetime.datetime.now().strftime('%H:%M:%S')})"
+    body_txt = (
         f"Hello {user_name},\n\n"
-        "This is a test notification confirming that SafeHer emergency email alerts are configured and working properly.\n\n"
-        "Stay safe,\n"
-        "SafeHer Team"
+        "This is an automated diagnostic email confirming that SafeHer Gmail SMTP is fully operational.\n\n"
+        "All emergency SOS email notifications will be delivered instantly to contacts.\n\n"
+        "Stay safe,\nSafeHer Team"
+    )
+    body_html = (
+        f"<h3>SafeHer Live SMTP Diagnostic</h3>"
+        f"<p>Hello <strong>{user_name}</strong>,</p>"
+        f"<p>Email notifications are configured and functioning properly via Gmail SMTP.</p>"
+        f"<p>Timestamp: <code>{datetime.datetime.now().isoformat()}</code></p>"
     )
 
-    success, error_msg = send_email(user_email, subject, body)
-    if not success:
-        return jsonify({"ok": False, "error": "Failed to send email notification"}), 500
-
+    success, error_msg = send_email(to_addr, subject, body_txt, body_html)
     return jsonify({
-        "ok": True,
-        "data": {
-            "message": f"Test email sent successfully to {user_email}"
-        }
-    }), 200
+        "ok": success,
+        "recipient": to_addr,
+        "error": error_msg,
+        "timestamp": datetime.datetime.now().isoformat()
+    }), (200 if success else 500)
 
 
 # ─── Route: GET /api/alerts/<id>/responder-selfie/<vol_id> ───
@@ -2166,24 +2164,3 @@ def stop_share_location():
     conn.close()
 
     return jsonify({"ok": True, "message": "Location sharing stopped"}), 200
-
-
-# ─── Route: GET /api/test-email (Diagnostics) ────────────────
-@alerts_bp.route('/api/test-email', methods=['GET'])
-def test_email_endpoint():
-    """
-    Public diagnostic endpoint to verify live outbound email connectivity on Render.
-    """
-    to_addr = (request.args.get('to') or 'rohanrao1803@gmail.com').strip()
-    from email_service import send_email
-    subject = f"SafeHer Live SMTP Test ({datetime.datetime.now().strftime('%H:%M:%S')})"
-    body_txt = "This is a live test email from SafeHer backend confirming SMTP delivery works."
-    body_html = "<h3>SafeHer Live SMTP Diagnostic</h3><p>Email delivery is operational!</p>"
-    ok, err = send_email(to_addr, subject, body_txt, body_html)
-    return jsonify({
-        "ok": ok,
-        "recipient": to_addr,
-        "error": err,
-        "env_email_user": (os.getenv('EMAIL_ADDRESS') or 'rohan.cse25@cmrit.ac.in')[:3] + '***',
-        "timestamp": datetime.datetime.now().isoformat()
-    }), (200 if ok else 500)

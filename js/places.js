@@ -376,7 +376,7 @@ SafeHer.places = (function() {
 
       // 1. Primary: Nominatim viewbox search (High uptime, fast, reliable in India)
       var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=25&q=' +
-        encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=1';
+        encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=0';
 
       fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
         .then(function(res) {

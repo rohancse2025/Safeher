@@ -940,13 +940,14 @@ SafeHer.sos = (function() {
         renderResponders(responders);
         renderContactsResponding(contactResponses);
         if (contactResponses.length > prevContactResponseCount) {
-          if (prevContactResponseCount > 0 && contactResponses.length > 0) {
+          if (contactResponses.length > 0) {
             var latest = contactResponses[0];
             var lMap = {
               'on_my_way': "I’m on my way",
               'called': "I called you",
               'alerted_police': "I alerted police",
-              'cannot_reach': "I can’t reach you"
+              'cannot_reach': "I can’t reach you",
+              'safe_with_me': "She is safe with me"
             };
             var lText = lMap[latest.status] || latest.status;
             if (SafeHer.toast) {

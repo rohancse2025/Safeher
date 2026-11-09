@@ -971,7 +971,12 @@
           btns.forEach(function(b) { b.disabled = false; });
           if (confirmBox) confirmBox.style.display = 'flex';
           if (res.ok && res.json.ok) {
-            if (confirmText) confirmText.textContent = 'Sent! She can see your response on her screen now.';
+            var isResolved = res.json.data && res.json.data.alert_status && res.json.data.alert_status !== 'active';
+            if (confirmText) {
+              confirmText.textContent = isResolved
+                ? 'Recorded! (Note: She has already confirmed she is safe).'
+                : 'Sent! She can see your response on her emergency screen now.';
+            }
             if (confirmBox) {
               confirmBox.style.background = '#E8F5E9';
               confirmBox.style.borderColor = '#C8E6C9';
