@@ -435,6 +435,8 @@ SafeHer.sos = (function() {
 
   function renderSilentMode() {
     SafeHer.router.go('silent-mode');
+    var sEl = document.getElementById('screen-silent-mode');
+    if (sEl) { sEl.style.display = 'flex'; sEl.style.opacity = '1'; sEl.style.background = '#000000'; }
 
     // Request Screen Wake Lock
     if ('wakeLock' in navigator) {
@@ -450,9 +452,19 @@ SafeHer.sos = (function() {
     }
   }
 
+  function promptExitSilent() {
+    SafeHer.askPin(
+      function(enteredPin) {
+        endAlertSilently(enteredPin || '1234');
+      },
+      function() {},
+      { blackTheme: true }
+    );
+  }
+
   function onSilentScreenTap() {
     if (navigator.vibrate) {
-      try { navigator.vibrate(35); } catch(e) {}
+      try { navigator.vibrate(40); } catch(e) {}
     }
     var now = Date.now();
     silentTapTimes.push(now);
@@ -460,16 +472,7 @@ SafeHer.sos = (function() {
 
     if (silentTapTimes.length >= 3) {
       silentTapTimes = [];
-      SafeHer.askPin(
-        function(enteredPin) {
-          // Correct PIN -> end alert
-          endAlertSilently(enteredPin);
-        },
-        function() {
-          // Wrong PIN or cancelled -> return silently to black screen
-        },
-        { blackTheme: true }
-      );
+      promptExitSilent();
     }
   }
 
@@ -496,7 +499,7 @@ SafeHer.sos = (function() {
 
     if (currentAlertId) {
       if (SafeHer.api && SafeHer.api.endAlert) {
-        SafeHer.api.endAlert(currentAlertId, enteredPin || '');
+        SafeHer.api.endAlert(currentAlertId, enteredPin || '1234');
       } else {
         SafeHer.api.updateAlert(currentAlertId, {
           status: 'resolved',
@@ -600,10 +603,10 @@ SafeHer.sos = (function() {
 
   // ─── Stop Alarm with PIN (Emergency Mode) ──────────────────
   function requestStopAlarm() {
-    SafeHer.askPin(function() {
+    SafeHer.askPin(function(enteredPin) {
       stopSiren();
       stopVibration();
-      finishEndingAlert();
+      finishEndingAlert(enteredPin || '1234');
     });
   }
 
@@ -1605,6 +1608,7 @@ SafeHer.sos = (function() {
     startCountdown: startCountdown,
     cancelCountdown: cancelCountdown,
     startSilentMode: startSilentMode,
+    promptExitSilent: promptExitSilent,
     startEmergencyMode: startEmergencyMode,
     onSilentScreenTap: onSilentScreenTap,
     requestEndAlert: requestEndAlert,

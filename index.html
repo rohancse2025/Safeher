@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="SafeHer" />
-  <link rel="icon" type="image/png" href="./assets/icon-192.png?v=56" />
-  <link rel="apple-touch-icon" href="./assets/icon-192.png?v=56" />
+  <link rel="icon" type="image/png" href="./assets/icon-192.png?v=57" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png?v=57" />
   <title>SafeHer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,7 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./css/style.css?v=56" />
+  <link rel="stylesheet" href="./css/style.css?v=57" />
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
@@ -33,7 +33,7 @@
   <!-- ── Splash ──────────────────────────────────────────── -->
   <div id="screen-splash" class="screen screen-splash">
     <div class="splash-inner">
-      <img src="./assets/logo.png?v=56" alt="SafeHer" class="splash-logo"
+      <img src="./assets/logo.png?v=57" alt="SafeHer" class="splash-logo"
            onerror="this.style.display='none';document.getElementById('splash-fallback').style.display='block'" />
       <span id="splash-fallback" class="splash-fallback">SafeHer</span>
       <p class="splash-tagline">Your safety, always with you</p>
@@ -89,7 +89,7 @@
     <div class="auth-welcome-wrap">
       <div class="auth-logo-box">
         <span id="auth-logo-icon-fallback" class="material-symbols-rounded auth-logo-icon" style="display:none;">shield</span>
-        <img src="./assets/logo.png?v=56" alt="SafeHer" class="auth-logo-img"
+        <img src="./assets/logo.png?v=57" alt="SafeHer" class="auth-logo-img"
              onerror="document.getElementById('auth-logo-icon-fallback').style.display='block';this.style.display='none'" />
       </div>
       <h1 class="auth-app-name">SafeHer</h1>
@@ -3034,10 +3034,13 @@
   </div>
 
   <!-- ── Silent Mode Screen ──────────────────────────────── -->
-  <div id="screen-silent-mode" class="screen screen-silent" onclick="SafeHer.sos.onSilentScreenTap()" style="position:relative;background:#000000;">
-    <div style="position:absolute;bottom:36px;left:0;right:0;text-align:center;color:#444444;font-size:12px;font-family:system-ui,-apple-system,sans-serif;user-select:none;pointer-events:none;letter-spacing:0.3px;">
-      Silent SOS Active &bull; Tap anywhere 3 times to enter PIN &amp; stop
+  <div id="screen-silent-mode" class="screen screen-silent" onclick="SafeHer.sos.onSilentScreenTap()" style="position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;background:#000000 !important;z-index:999999 !important;display:flex !important;flex-direction:column !important;justify-content:flex-end !important;align-items:center !important;padding-bottom:48px !important;box-sizing:border-box !important;cursor:pointer;">
+    <div style="color:#888888;font-size:12px;font-family:system-ui,-apple-system,sans-serif;user-select:none;pointer-events:none;letter-spacing:0.3px;margin-bottom:12px;text-align:center;">
+      Silent SOS Active in Background
     </div>
+    <button type="button" onclick="event.stopPropagation();SafeHer.sos.promptExitSilent();" style="background:#111827;color:#D1D5DB;border:1px solid #374151;border-radius:20px;padding:8px 18px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+      <span class="material-symbols-rounded" style="font-size:16px;">lock</span>Tap here or tap screen 3x to stop with PIN
+    </button>
   </div>
 
   <!-- ── Emergency Mode Screen ────────────────────────────── -->
@@ -3459,32 +3462,32 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=56"></script>
-<script src="./js/storage.js?v=56"></script>
-<script src="./js/api.js?v=56"></script>
-<script src="./js/i18n.js?v=56"></script>
-<script src="./js/helpdata.js?v=56"></script>
-<script src="./js/help_rights.js?v=56"></script>
-<script src="./js/app.js?v=56"></script>
-<script src="./js/onboarding.js?v=56"></script>
-<script src="./js/auth.js?v=56"></script>
-<script src="./js/pin.js?v=56"></script>
-<script src="./js/home.js?v=56"></script>
-<script src="./js/contacts.js?v=56"></script>
-<script src="./js/tips.js?v=56"></script>
-<script src="./js/profile.js?v=56"></script>
-<script src="./js/sos.js?v=56"></script>
-<script src="./js/map.js?v=56"></script>
-<script src="./js/share_location.js?v=56"></script>
-<script src="./js/places.js?v=56"></script>
-<script src="./js/ride.js?v=56"></script>
-<script src="./js/volunteer.js?v=56"></script>
-<script src="./js/volunteer-apply.js?v=56"></script>
-<script src="./js/timer.js?v=56"></script>
-<script src="./js/fakecall.js?v=56"></script>
-<script src="./js/evidence.js?v=56"></script>
-<script src="./js/vault.js?v=56"></script>
-<script src="./js/escort.js?v=56"></script>
-<script src="./js/notifications.js?v=56"></script>
+<script src="./js/config.js?v=57"></script>
+<script src="./js/storage.js?v=57"></script>
+<script src="./js/api.js?v=57"></script>
+<script src="./js/i18n.js?v=57"></script>
+<script src="./js/helpdata.js?v=57"></script>
+<script src="./js/help_rights.js?v=57"></script>
+<script src="./js/app.js?v=57"></script>
+<script src="./js/onboarding.js?v=57"></script>
+<script src="./js/auth.js?v=57"></script>
+<script src="./js/pin.js?v=57"></script>
+<script src="./js/home.js?v=57"></script>
+<script src="./js/contacts.js?v=57"></script>
+<script src="./js/tips.js?v=57"></script>
+<script src="./js/profile.js?v=57"></script>
+<script src="./js/sos.js?v=57"></script>
+<script src="./js/map.js?v=57"></script>
+<script src="./js/share_location.js?v=57"></script>
+<script src="./js/places.js?v=57"></script>
+<script src="./js/ride.js?v=57"></script>
+<script src="./js/volunteer.js?v=57"></script>
+<script src="./js/volunteer-apply.js?v=57"></script>
+<script src="./js/timer.js?v=57"></script>
+<script src="./js/fakecall.js?v=57"></script>
+<script src="./js/evidence.js?v=57"></script>
+<script src="./js/vault.js?v=57"></script>
+<script src="./js/escort.js?v=57"></script>
+<script src="./js/notifications.js?v=57"></script>
 </body>
 </html>
