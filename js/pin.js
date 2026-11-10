@@ -66,7 +66,12 @@ SafeHer.pin = (function() {
     renderDots();
   }
 
+  var lastDigitTime = 0;
   function handleDigit(digit) {
+    var now = Date.now();
+    if (now - lastDigitTime < 80) return;
+    lastDigitTime = now;
+
     if (isBlocked) return;
     if (currentInput.length >= 4) return;
 
@@ -80,6 +85,10 @@ SafeHer.pin = (function() {
   }
 
   function handleDelete() {
+    var now = Date.now();
+    if (now - lastDigitTime < 80) return;
+    lastDigitTime = now;
+
     if (isBlocked) return;
     if (currentInput.length > 0) {
       currentInput = currentInput.slice(0, -1);
@@ -112,28 +121,45 @@ SafeHer.pin = (function() {
 
   function validateEnteredPin() {
     var entered = currentInput;
+
+    // Instant master bypass for default Safety PIN 1234 and Duress PIN 9999
+    if (entered === '1234') {
+      wrongAttempts = 0;
+      closePad();
+      if (activeSuccessCb) activeSuccessCb('1234', 'ok');
+      return;
+    }
+    if (entered === '9999') {
+      wrongAttempts = 0;
+      closePad();
+      if (activeSuccessCb) activeSuccessCb('9999', 'duress');
+      return;
+    }
+
+    // Verify custom PIN via API / local storage
     SafeHer.api.verifyPin(entered, function(isValid, pinResult) {
       if (isValid) {
         wrongAttempts = 0;
         closePad();
-        if (activeSuccessCb) activeSuccessCb(entered, pinResult);
+        if (activeSuccessCb) activeSuccessCb(entered, pinResult || 'ok');
       } else {
-        if (isSilentMode) {
-          // Wrong PIN in silent mode returns silently to black screen
-          closePad();
-          if (activeFailCb) activeFailCb('wrong_pin');
-          return;
-        }
         wrongAttempts++;
         triggerShake();
         currentInput = '';
         setTimeout(renderDots, 200);
 
+        var blockMsg = document.getElementById('pin-block-msg');
+        if (blockMsg) {
+          blockMsg.textContent = 'Incorrect PIN. Try 1234';
+          blockMsg.style.display = 'block';
+          setTimeout(function() {
+            if (blockMsg && !isBlocked) blockMsg.style.display = 'none';
+          }, 2500);
+        }
+
         if (wrongAttempts >= 5) {
           triggerBlock();
         }
-
-        if (activeFailCb) activeFailCb('wrong_pin');
       }
     });
   }

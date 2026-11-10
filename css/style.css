@@ -2561,7 +2561,7 @@ html.silent-active #sos-countdown-overlay {
   height: 100vh !important;
   background: #000000 !important;
   background-color: #000000 !important;
-  z-index: 2147483647 !important;
+  z-index: 2147483646 !important;
   cursor: none !important;
   touch-action: manipulation !important;
   user-select: none !important;
@@ -2573,11 +2573,16 @@ html.silent-active #sos-countdown-overlay {
   isolation: isolate !important;
 }
 
-/* Pure Black Silent Mode PIN Pad: #000 background, dim gray digits #555, no white */
+/* When PIN pad is active, disable pointer-events on silent-overlay so touches go directly to PIN pad */
+body:has(.pin-pad-overlay.active) #silent-overlay {
+  pointer-events: none !important;
+}
+
+/* Crisp, High-Contrast Black Keypad for Silent Mode */
 .pin-pad-overlay.pin-silent-mode {
   background: #000000 !important;
   background-color: #000000 !important;
-  color: #555555 !important;
+  color: #FFFFFF !important;
   z-index: 2147483647 !important;
   position: fixed !important;
   inset: 0 !important;
@@ -2585,6 +2590,7 @@ html.silent-active #sos-countdown-overlay {
   height: 100vh !important;
   opacity: 1 !important;
   visibility: visible !important;
+  pointer-events: auto !important;
   transition: none !important;
   animation: none !important;
   -webkit-transform: translateZ(0) !important;
@@ -2593,43 +2599,75 @@ html.silent-active #sos-countdown-overlay {
 .pin-pad-overlay.pin-silent-mode * {
   box-shadow: none !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-pad-header,
-.pin-pad-overlay.pin-silent-mode .pin-pad-title,
-.pin-pad-overlay.pin-silent-mode .pin-pad-subtitle {
-  color: #444444 !important;
+.pin-pad-overlay.pin-silent-mode .pin-pad-header {
+  margin-bottom: 22px !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-pad-title {
+  color: #FFFFFF !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
 }
 .pin-pad-overlay.pin-silent-mode .pin-dot {
-  border-color: #333333 !important;
+  border: 2px solid #6B7280 !important;
   background: transparent !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  margin: 0 10px !important;
 }
 .pin-pad-overlay.pin-silent-mode .pin-dot.filled {
-  background: #555555 !important;
-  border-color: #555555 !important;
+  background: #FFFFFF !important;
+  border-color: #FFFFFF !important;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8) !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-keypad {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 16px !important;
+  max-width: 290px !important;
+  margin: 0 auto !important;
 }
 .pin-pad-overlay.pin-silent-mode .pin-key {
-  color: #555555 !important;
-  background: #0a0a0a !important;
-  border: 1px solid #222222 !important;
+  color: #FFFFFF !important;
+  background: #1F2937 !important;
+  border: 1.5px solid #374151 !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  width: 68px !important;
+  height: 68px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 .pin-pad-overlay.pin-silent-mode .pin-key:active {
-  background: #141414 !important;
-  color: #777777 !important;
+  background: #374151 !important;
+  color: #FFFFFF !important;
+  transform: scale(0.94) !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key-sub {
-  color: #333333 !important;
+.pin-pad-overlay.pin-silent-mode .pin-key-action {
+  background: #111827 !important;
+  color: #D1D5DB !important;
+  border: 1.5px solid #374151 !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key-del {
-  color: #555555 !important;
-  background: transparent !important;
-  border: none !important;
+.pin-pad-overlay.pin-silent-mode .pin-key-action:active {
+  background: #374151 !important;
+  color: #FFFFFF !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-cancel-btn {
-  color: #444444 !important;
-  background: transparent !important;
-  border: 1px solid #222222 !important;
+.pin-pad-overlay.pin-silent-mode .pin-key-action .material-symbols-rounded {
+  font-size: 28px !important;
 }
 .pin-pad-overlay.pin-silent-mode #pin-block-msg {
-  color: #666666 !important;
+  color: #EF4444 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  margin-top: 10px !important;
 }
 
 .pin-pad-content {

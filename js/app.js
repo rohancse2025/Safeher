@@ -259,7 +259,7 @@ SafeHer.pwa = (function() {
 window.addEventListener('DOMContentLoaded', function() {
   // Register Service Worker with relative path and update check
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=65').then(function(reg) {
+    navigator.serviceWorker.register('./sw.js?v=66').then(function(reg) {
       if (reg && reg.update) reg.update();
     }).catch(function(err) {
       console.warn('SW registration failed:', err);
