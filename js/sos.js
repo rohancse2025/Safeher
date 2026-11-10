@@ -75,7 +75,10 @@ SafeHer.sos = (function() {
         if (currentAlertId) localStorage.setItem('safeher_silent_alert_id', String(currentAlertId));
       } catch(e) {}
     } else if (to === 'pin') {
-      hideSilentOverlay();
+      // KEEP #silent-overlay visible and active!
+      // The silent PIN pad renders directly on top of the black background.
+      // Hiding the overlay here was the primary cause of the white screen!
+      showSilentOverlay();
     } else if (to === 'idle') {
       hideSilentOverlay();
       try {
@@ -217,16 +220,15 @@ SafeHer.sos = (function() {
       }
       if (silentPendingTimer) {
         clearTimeout(silentPendingTimer);
-      }
-      silentPendingTimer = setTimeout(function() {
         silentPendingTimer = null;
-        if (currentState === 'countdown') {
-          tapTimes = [];
-          var overlay = document.getElementById('sos-countdown-overlay');
-          if (overlay) overlay.classList.remove('active');
-          startSilentMode();
-        }
-      }, 300);
+      }
+      tapTimes = [];
+      var overlay = document.getElementById('sos-countdown-overlay');
+      if (overlay) overlay.classList.remove('active');
+
+      // ★ SHOW BLACK SCREEN IMMEDIATELY (zero delay) on 3rd tap
+      // Do NOT wait for a setTimeout — the 300 ms gap was causing the white flash
+      startSilentMode();
     }
   }
 
@@ -417,8 +419,13 @@ SafeHer.sos = (function() {
       status: 'active'
     }, function(err, created, isOfflineFallback) {
       if (err) {
-        if (typeof err === 'string' && err.toLowerCase().indexOf('too many alerts') !== -1) {
-          // Abuse limit hit: cancel active alert state and show modal
+        var isTooMany = (typeof err === 'string' && (err.toLowerCase().indexOf('too many alerts') !== -1 || err.toLowerCase().indexOf('rate limit') !== -1));
+        if (isTooMany) {
+          if (currentMode === 'silent') {
+            console.log('[SafeHer SOS] Rate limit reached in silent SOS -> keeping pure black screen silently');
+            return;
+          }
+          // Abuse limit hit in normal/emergency mode: cancel active alert state and show modal
           if (silentPendingTimer) {
             clearTimeout(silentPendingTimer);
             silentPendingTimer = null;
@@ -447,8 +454,8 @@ SafeHer.sos = (function() {
           return;
         }
 
-        // When SOS creation fails after 3 retries, show offline emergency fallback
-        if (isOfflineFallback || (typeof err === 'string' && err.indexOf('failed after 3 attempts') !== -1)) {
+        // When SOS creation fails after 3 retries, show offline emergency fallback (non-silent only)
+        if (currentMode !== 'silent' && (isOfflineFallback || (typeof err === 'string' && err.indexOf('failed after 3 attempts') !== -1))) {
           showOfflineFallback();
         }
       }
@@ -655,6 +662,13 @@ SafeHer.sos = (function() {
   }
 
   function startSilentMode() {
+    // Guard: if already in silent or transitioning, do not re-enter
+    if (currentState === 'silent' || currentState === 'pin') {
+      console.log('[SafeHer SOS] startSilentMode() called but already in', currentState, '- ignoring');
+      showSilentOverlay(); // ensure overlay is visible
+      return;
+    }
+
     if (countdownInterval) {
       clearInterval(countdownInterval);
       countdownInterval = null;
@@ -666,9 +680,9 @@ SafeHer.sos = (function() {
     var cdOverlay = document.getElementById('sos-countdown-overlay');
     if (cdOverlay) cdOverlay.classList.remove('active');
 
-    // Show black overlay FIRST synchronously
+    // Show black overlay FIRST synchronously — setState triggers showSilentOverlay via onStateTransition
     setState('silent');
-    showSilentOverlay();
+    showSilentOverlay(); // redundant but ensures overlay is definitely shown
 
     // Async work wrapped in try/catch and .catch
     requestWakeLock();
@@ -787,6 +801,7 @@ SafeHer.sos = (function() {
     console.log('[SafeHer SOS] Restoring active silent SOS from localStorage');
     currentState = 'silent';
     currentMode = 'silent';
+    modeEnteredTimestamp = Date.now();
     try {
       var savedId = localStorage.getItem('safeher_silent_alert_id');
       if (savedId) currentAlertId = savedId;
@@ -2075,3 +2090,12 @@ SafeHer.sos = (function() {
     getCurrentMode: function() { return currentMode; }
   };
 })();
+
+// Immediate auto-recovery when sos.js executes
+try {
+  if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
+    if (SafeHer.sos && SafeHer.sos.restoreSilentMode) {
+      SafeHer.sos.restoreSilentMode();
+    }
+  }
+} catch(e) {}

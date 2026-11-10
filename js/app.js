@@ -58,9 +58,15 @@ SafeHer.router = (function() {
 
   function go(id) {
     // Block router screen change and fading while Silent SOS is active
+    try {
+      if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
+        console.log('[SafeHer Router] Screen change blocked in Silent SOS (flag active):', id);
+        return;
+      }
+    } catch(e) {}
     if (SafeHer.sos && SafeHer.sos.getState) {
       var s = SafeHer.sos.getState();
-      if (s === 'silent' || (s === 'pin' && SafeHer.sos.isSilentModeActive && SafeHer.sos.isSilentModeActive())) {
+      if (s === 'silent' || s === 'pin') {
         console.log('[SafeHer Router] Screen change blocked in Silent SOS:', id);
         return;
       }
@@ -251,7 +257,7 @@ SafeHer.pwa = (function() {
 window.addEventListener('DOMContentLoaded', function() {
   // Register Service Worker with relative path and update check
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=62').then(function(reg) {
+    navigator.serviceWorker.register('./sw.js?v=63').then(function(reg) {
       if (reg && reg.update) reg.update();
     }).catch(function(err) {
       console.warn('SW registration failed:', err);
@@ -334,8 +340,8 @@ window.addEventListener('DOMContentLoaded', function() {
       console.log('[SafeHer App] Active Silent SOS detected on startup - restoring black screen');
       if (SafeHer.sos && SafeHer.sos.restoreSilentMode) {
         SafeHer.sos.restoreSilentMode();
-        return;
       }
+      return;
     }
   } catch(e) {}
 
@@ -367,6 +373,13 @@ window.addEventListener('DOMContentLoaded', function() {
 
   SafeHer.router.go('splash');
   setTimeout(function() {
+    try {
+      if (localStorage.getItem('safeher_silent_sos_active') === 'true' ||
+          (SafeHer.sos && SafeHer.sos.getState && (SafeHer.sos.getState() === 'silent' || SafeHer.sos.getState() === 'pin'))) {
+        console.log('[SafeHer App] Startup navigation aborted: Silent SOS active');
+        return;
+      }
+    } catch(e) {}
     if (SafeHer.api.isLoggedIn()) {
       SafeHer.router.go('home');
     } else if (SafeHer.api.hasSeenOnboarding()) {

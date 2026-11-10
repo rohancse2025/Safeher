@@ -2522,11 +2522,32 @@ html.silent-active #app,
 html.silent-active .screen,
 html.silent-active .page-wrap,
 html.silent-active .modal-sheet,
-html.silent-active .modal-backdrop {
+html.silent-active .modal-backdrop,
+html.silent-active .pin-pad-overlay {
   background: #000000 !important;
   background-color: #000000 !important;
   color: #000000 !important;
   overflow: hidden !important;
+}
+
+/* Kill all transitions and fade-ins during silent mode so no screen can flash white */
+html.silent-active * {
+  transition-duration: 0s !important;
+  -webkit-transition-duration: 0s !important;
+}
+
+html.silent-active .screen {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Keep the sos-countdown-overlay fully hidden when silent-active */
+html.silent-active #sos-countdown-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 #silent-overlay {
@@ -2545,6 +2566,11 @@ html.silent-active .modal-backdrop {
   touch-action: manipulation !important;
   user-select: none !important;
   -webkit-user-select: none !important;
+  /* Force GPU compositing layer - prevents white flash on Android Chrome */
+  -webkit-transform: translateZ(0) !important;
+  transform: translateZ(0) !important;
+  will-change: transform !important;
+  isolation: isolate !important;
 }
 
 /* Pure Black Silent Mode PIN Pad: #000 background, dim gray digits #555, no white */
@@ -2555,6 +2581,14 @@ html.silent-active .modal-backdrop {
   z-index: 2147483647 !important;
   position: fixed !important;
   inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transition: none !important;
+  animation: none !important;
+  -webkit-transform: translateZ(0) !important;
+  transform: translateZ(0) !important;
 }
 .pin-pad-overlay.pin-silent-mode * {
   box-shadow: none !important;
