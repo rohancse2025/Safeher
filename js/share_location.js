@@ -353,6 +353,7 @@ SafeHer.shareLocation = (function() {
 
     // 10-second position update
     positionInterval = setInterval(function() {
+      checkContactResponses();
       if (!navigator.geolocation) return;
 
       navigator.geolocation.getCurrentPosition(
@@ -382,8 +383,129 @@ SafeHer.shareLocation = (function() {
         },
         { timeout: 7000, enableHighAccuracy: true }
       );
-    }, 10000);
+    }, 5000);
   }
+
+  // ─── Contact Responses Tracking ────────────────────────────
+  var receivedResponses = [];
+
+  function checkContactResponses() {
+    var session = getActiveSession();
+    if (!session || !session.active) return;
+
+    try {
+      var raw = localStorage.getItem('safeher_response_update');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.status && (Date.now() - parsed.time < 3600000)) {
+          addResponseItem(parsed);
+        }
+      }
+    } catch(e) {}
+
+    if (session.shareToken && window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
+      fetch(window.SafeHerConfig.API_BASE.replace(/\/+$/, '') + '/api/track/' + encodeURIComponent(session.shareToken))
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          if (json && json.ok && json.data && json.data.contact_responses) {
+            json.data.contact_responses.forEach(function(r) {
+              addResponseItem(r);
+            });
+          }
+        })
+        .catch(function() {});
+    }
+  }
+
+  function addResponseItem(resp) {
+    var exists = false;
+    var respTime = resp.time || resp.timestamp || Date.now();
+    for (var i = 0; i < receivedResponses.length; i++) {
+      if (receivedResponses[i].status === resp.status && Math.abs(receivedResponses[i].time - respTime) < 5000) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      receivedResponses.unshift({
+        name: resp.name || resp.contact || 'Emergency Contact',
+        status: resp.status,
+        time: respTime
+      });
+      renderContactResponses();
+
+      var statusLabels = {
+        'watching': '👀 Watching your live trip',
+        'called': '📞 Called you',
+        'on_my_way': '🏃 On the way to you',
+        'safe_with_me': '✅ Safe with me / Reached',
+        'alerted_police': '🚓 Alerted police'
+      };
+      var sText = statusLabels[resp.status] || resp.status;
+      if (SafeHer.toast) {
+        SafeHer.toast('🔔 ' + (resp.name || 'Contact') + ': ' + sText);
+      }
+      if (navigator.vibrate) {
+        navigator.vibrate([150, 100, 150]);
+      }
+    }
+  }
+
+  function renderContactResponses() {
+    var card = document.getElementById('share-contact-responses-card');
+    var list = document.getElementById('share-contact-responses-list');
+    var badge = document.getElementById('share-responses-count-badge');
+    if (!card || !list) return;
+
+    if (receivedResponses.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    if (badge) badge.textContent = receivedResponses.length + (receivedResponses.length === 1 ? ' response' : ' responses');
+
+    var statusLabels = {
+      'watching': '👀 Watching your live trip',
+      'called': '📞 Called you',
+      'on_my_way': '🏃 On the way to you',
+      'safe_with_me': '✅ Safe with me / Reached',
+      'alerted_police': '🚓 Alerted police',
+      'cannot_reach': '⚠️ Cannot reach'
+    };
+
+    var html = '';
+    for (var i = 0; i < receivedResponses.length; i++) {
+      var r = receivedResponses[i];
+      var label = statusLabels[r.status] || r.status;
+      var timeStr = new Date(r.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:#DCFCE7;color:#15803D;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px;">' +
+            escapeHtml((r.name.charAt(0) || 'C').toUpperCase()) +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:12px;font-weight:700;color:#1F2937;">' + escapeHtml(r.name) + '</div>' +
+            '<div style="font-size:11px;font-weight:600;color:#047857;">' + escapeHtml(label) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;color:#6B7280;">' + timeStr + '</span>' +
+      '</div>';
+    }
+    list.innerHTML = html;
+  }
+
+  try {
+    if (window.BroadcastChannel) {
+      var bc = new BroadcastChannel('safeher_cross_tab');
+      bc.onmessage = function(ev) {
+        if (ev && ev.data && ev.data.status) {
+          addResponseItem(ev.data);
+        }
+      };
+    }
+  } catch(e) {}
 
   // ─── Start Sharing Action ─────────────────────────────────
   function startSharing() {
@@ -531,7 +653,52 @@ SafeHer.shareLocation = (function() {
     updateHomeBanner();
     renderSetupView();
 
+    receivedResponses = [];
+    var respCard = document.getElementById('share-contact-responses-card');
+    if (respCard) respCard.style.display = 'none';
+
     SafeHer.toast('Sharing ended');
+  }
+
+  function promptStopSharing() {
+    var modal = document.getElementById('share-stop-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+    } else {
+      stopSharing(false);
+    }
+  }
+
+  function stopSharingAndNotifyWhatsApp() {
+    var modal = document.getElementById('share-stop-modal');
+    if (modal) modal.style.display = 'none';
+
+    var session = getActiveSession();
+    var user = (SafeHer.api && SafeHer.api.getUser ? SafeHer.api.getUser() : null);
+    var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'SafeHer User';
+    var message = '✅ *SafeHer Location Update*\n\n*' + userName + '* has arrived safely and stopped sharing their live location. All is well!';
+
+    var targetPhone = '';
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if (session && session.contactIds && session.contactIds.length > 0) {
+      for (var i = 0; i < contacts.length; i++) {
+        if (session.contactIds.indexOf(contacts[i].id) !== -1 && contacts[i].phone) {
+          targetPhone = contacts[i].phone.replace(/\D/g, '');
+          break;
+        }
+      }
+    }
+    if (!targetPhone && contacts.length > 0 && contacts[0].phone) {
+      targetPhone = contacts[0].phone.replace(/\D/g, '');
+    }
+    if (targetPhone.length === 10) targetPhone = '91' + targetPhone;
+
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+
+    stopSharing(false);
+    window.open(waUrl, '_blank');
   }
 
   // ─── Web Share API & Clipboard Fallback ───────────────────
@@ -672,6 +839,8 @@ SafeHer.shareLocation = (function() {
     toggleAllContacts: toggleAllContacts,
     startSharing: startSharing,
     stopSharing: stopSharing,
+    promptStopSharing: promptStopSharing,
+    stopSharingAndNotifyWhatsApp: stopSharingAndNotifyWhatsApp,
     shareViaWhatsApp: shareViaWhatsApp,
     shareViaWebShare: shareViaWebShare,
     copyLiveLink: copyLiveLink,

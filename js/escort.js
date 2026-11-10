@@ -2428,7 +2428,7 @@ SafeHer.escort = (function() {
     // Status polling every 5 seconds (monitors status & contact check-in pings)
 
     pollIntervalId = setInterval(function() {
-
+      checkEscortResponses();
       if (!activeEscort || !activeEscort.id) return;
 
       if (activeEscort.is_local_only) {
@@ -2544,14 +2544,135 @@ SafeHer.escort = (function() {
     }
 
     if (pollIntervalId !== null) {
-
       clearInterval(pollIntervalId);
-
       pollIntervalId = null;
-
     }
 
+    receivedEscortResponses = [];
+    var card = document.getElementById('escort-contact-responses-card');
+    if (card) card.style.display = 'none';
   }
+
+  // ─── Contact Responses Tracking in Escort Mode ─────────────
+  var receivedEscortResponses = [];
+
+  function checkEscortResponses() {
+    if (!activeEscort) return;
+
+    try {
+      var raw = localStorage.getItem('safeher_response_update');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.status && (Date.now() - parsed.time < 3600000)) {
+          addEscortResponseItem(parsed);
+        }
+      }
+    } catch(e) {}
+
+    var token = (activeEscort.tokens && Object.values(activeEscort.tokens)[0]) || '';
+    if (token && window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
+      fetch(window.SafeHerConfig.API_BASE.replace(/\/+$/, '') + '/api/track/' + encodeURIComponent(token))
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          if (json && json.ok && json.data && json.data.contact_responses) {
+            json.data.contact_responses.forEach(function(r) {
+              addEscortResponseItem(r);
+            });
+          }
+        })
+        .catch(function() {});
+    }
+  }
+
+  function addEscortResponseItem(resp) {
+    var exists = false;
+    var respTime = resp.time || resp.timestamp || Date.now();
+    for (var i = 0; i < receivedEscortResponses.length; i++) {
+      if (receivedEscortResponses[i].status === resp.status && Math.abs(receivedEscortResponses[i].time - respTime) < 5000) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      receivedEscortResponses.unshift({
+        name: resp.name || resp.contact || 'Emergency Contact',
+        status: resp.status,
+        time: respTime
+      });
+      renderEscortContactResponses();
+
+      var statusLabels = {
+        'watching': '👀 Watching your live trip',
+        'called': '📞 Called you',
+        'on_my_way': '🏃 On the way to you',
+        'safe_with_me': '✅ Safe with me / Reached',
+        'alerted_police': '🚓 Alerted police'
+      };
+      var sText = statusLabels[resp.status] || resp.status;
+      if (SafeHer.toast) {
+        SafeHer.toast('🔔 ' + (resp.name || 'Contact') + ': ' + sText);
+      }
+      if (navigator.vibrate) {
+        navigator.vibrate([150, 100, 150]);
+      }
+    }
+  }
+
+  function renderEscortContactResponses() {
+    var card = document.getElementById('escort-contact-responses-card');
+    var list = document.getElementById('escort-contact-responses-list');
+    var badge = document.getElementById('escort-responses-count-badge');
+    if (!card || !list) return;
+
+    if (receivedEscortResponses.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    if (badge) badge.textContent = receivedEscortResponses.length + (receivedEscortResponses.length === 1 ? ' response' : ' responses');
+
+    var statusLabels = {
+      'watching': '👀 Watching your live trip',
+      'called': '📞 Called you',
+      'on_my_way': '🏃 On the way to you',
+      'safe_with_me': '✅ Safe with me / Reached',
+      'alerted_police': '🚓 Alerted police',
+      'cannot_reach': '⚠️ Cannot reach'
+    };
+
+    var html = '';
+    for (var i = 0; i < receivedEscortResponses.length; i++) {
+      var r = receivedEscortResponses[i];
+      var label = statusLabels[r.status] || r.status;
+      var timeStr = new Date(r.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:#DCFCE7;color:#15803D;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px;">' +
+            escapeHtml((r.name.charAt(0) || 'C').toUpperCase()) +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:12px;font-weight:700;color:#1F2937;">' + escapeHtml(r.name) + '</div>' +
+            '<div style="font-size:11px;font-weight:600;color:#047857;">' + escapeHtml(label) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;color:#6B7280;">' + timeStr + '</span>' +
+      '</div>';
+    }
+    list.innerHTML = html;
+  }
+
+  try {
+    if (window.BroadcastChannel) {
+      var bcEscort = new BroadcastChannel('safeher_cross_tab');
+      bcEscort.onmessage = function(ev) {
+        if (ev && ev.data && ev.data.status) {
+          addEscortResponseItem(ev.data);
+        }
+      };
+    }
+  } catch(e) {}
 
 
 
@@ -3818,60 +3939,39 @@ SafeHer.escort = (function() {
 
 
   function sendArrivedSafelyMessage() {
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
+    var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'I';
+    var dest = (currentDest && currentDest.name) ? currentDest.name : 'my destination';
+    var msg = '✅ *SafeHer Safe Arrival Alert*\n\n*' + userName + '* has arrived safely at *' + dest + '*. Journey completed safely!';
+
+    var targetPhone = '';
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if (contacts.length > 0 && contacts[0].phone) {
+      targetPhone = contacts[0].phone.replace(/\D/g, '');
+    }
+    if (targetPhone.length === 10) targetPhone = '91' + targetPhone;
+
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(msg));
 
     var notifyBtn = document.getElementById('escort-summary-notify-btn');
-
     var statusMsg = document.getElementById('escort-summary-notify-status');
-
-    if (!lastEndedEscortId) {
-
-      if (statusMsg) {
-
-        statusMsg.style.display = 'flex';
-
-        statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Message sent to your contacts!';
-
-      }
-
-      return;
-
-    }
-
-
-
     if (notifyBtn) {
+      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">check_circle</span>Sent to contacts via WhatsApp';
+    }
+    if (statusMsg) {
+      statusMsg.style.display = 'flex';
+      statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Safe arrival update sent!';
+    }
+    if (SafeHer.toast) SafeHer.toast("Opening WhatsApp to notify contacts of safe arrival!");
 
-      notifyBtn.disabled = true;
-
-      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">hourglass_top</span>Sending...';
-
+    if (lastEndedEscortId && SafeHer.api && SafeHer.api.notifyEscortArrived) {
+      try { SafeHer.api.notifyEscortArrived(lastEndedEscortId); } catch(e) {}
     }
 
-
-
-    SafeHer.api.notifyEscortArrived(lastEndedEscortId, function(err, res) {
-
-      if (notifyBtn) {
-
-        notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">check_circle</span>Sent to contacts';
-
-      }
-
-      if (statusMsg) {
-
-        statusMsg.style.display = 'flex';
-
-        statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Message sent to your contacts!';
-
-      }
-
-      if (SafeHer.toast) SafeHer.toast("Sent 'Arrived safely' to contacts!");
-
-    });
-
+    window.open(waUrl, '_blank');
   }
-
-
 
   function closeSummary() {
 

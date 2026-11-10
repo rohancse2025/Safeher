@@ -1599,7 +1599,7 @@ def respond_contact_track(token):
     if status == 'police_alerted':
         status = 'alerted_police'
 
-    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me'}
+    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me', 'watching', 'safe'}
     if status not in VALID_CONTACT_STATUSES:
         return jsonify({
             "ok": False,
@@ -1722,6 +1722,39 @@ def respond_contact_track(token):
             if not row.get('contact_name'):
                 row['contact_name'] = 'Emergency Contact'
         else:
+            # Check share_contacts for Share Location tracking link
+            cursor.execute('''
+                SELECT sc.id AS sc_id, sc.share_id, sc.contact_id, sc.token,
+                       s.id AS share_id, s.user_id, s.status AS share_status,
+                       c.name AS contact_name
+                FROM share_contacts sc
+                JOIN shares s ON sc.share_id = s.id
+                JOIN contacts c ON sc.contact_id = c.id
+                WHERE sc.token = ?;
+            ''', (clean_token,))
+            sc_row = cursor.fetchone()
+            if sc_row:
+                owner_user_id = sc_row['user_id']
+                contact_name_val = (sc_row['contact_name'] or 'Contact').strip()
+                first_name = contact_name_val.split()[0] if contact_name_val else 'Contact'
+                log_event(
+                    user_id=owner_user_id,
+                    type='contact_responded',
+                    actor='contact',
+                    detail={'contact': first_name, 'status': status, 'share_id': sc_row['share_id']},
+                    cursor=cursor
+                )
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "ok": True,
+                    "message": f"Response recorded: {status}",
+                    "data": {
+                        "contact_first_name": first_name,
+                        "status": status
+                    }
+                }), 200
+
             conn.close()
             return jsonify({
                 "ok": False,
@@ -1813,7 +1846,7 @@ def respond_contact_track_get(token):
     if status == 'police_alerted':
         status = 'alerted_police'
 
-    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me'}
+    VALID_CONTACT_STATUSES = {'on_my_way', 'called', 'alerted_police', 'cannot_reach', 'safe_with_me', 'watching', 'safe'}
     if status not in VALID_CONTACT_STATUSES:
         status = 'on_my_way'
 
