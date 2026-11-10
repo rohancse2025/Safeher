@@ -815,6 +815,40 @@ body {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-dark);
+  transition: all 0.2s ease;
+}
+
+.chip.chip-active {
+  background: #FFF1F2 !important;
+  border-color: #FDA4AF !important;
+  color: #9E1B32 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 6px rgba(158, 27, 50, 0.15) !important;
+}
+
+.chip.chip-active .material-symbols-rounded {
+  color: #9E1B32 !important;
+}
+
+/* PocketGuard Card & Modal Styling */
+.pg-test-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #E5E7EB;
+  color: #374151;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.pg-test-badge.active {
+  background: var(--crimson) !important;
+  color: #FFFFFF !important;
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(168, 15, 60, 0.4);
 }
 
 .chip .material-symbols-rounded {

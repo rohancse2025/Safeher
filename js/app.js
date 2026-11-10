@@ -259,7 +259,7 @@ SafeHer.pwa = (function() {
 window.addEventListener('DOMContentLoaded', function() {
   // Register Service Worker with relative path and update check
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=68').then(function(reg) {
+    navigator.serviceWorker.register('./sw.js?v=69').then(function(reg) {
       if (reg && reg.update) reg.update();
     }).catch(function(err) {
       console.warn('SW registration failed:', err);
@@ -305,6 +305,7 @@ window.addEventListener('DOMContentLoaded', function() {
   if (SafeHer.escort && SafeHer.escort.init) SafeHer.escort.init();
   if (SafeHer.vault && SafeHer.vault.init) SafeHer.vault.init();
   if (SafeHer.notifications && SafeHer.notifications.init) SafeHer.notifications.init();
+  if (SafeHer.pocketGuard && SafeHer.pocketGuard.init) SafeHer.pocketGuard.init();
 
   // Continuous global background GPS acquisition on app launch
   if (navigator.geolocation) {
