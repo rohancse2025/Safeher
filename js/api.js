@@ -1990,13 +1990,14 @@ SafeHer.api = (function() {
       if (useBackend()) {
 
         var u = this.getUser() || {};
-
+        var contacts = (SafeHer.storage && SafeHer.storage.get ? SafeHer.storage.get('contacts') : []) || [];
         apiFetch('/api/alerts/' + id + '/end', {
-
           method: 'POST',
-
-          body: JSON.stringify({ pin: pin, user_id: u.id || null })
-
+          body: JSON.stringify({
+            pin: pin,
+            user_id: u.id || null,
+            contacts: contacts
+          })
         }).then(function(json) {
 
           if (callback) callback(null, json.data);

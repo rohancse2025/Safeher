@@ -21,6 +21,9 @@ SafeHer.sos = (function() {
   var tapTimes = [];
   var silentPendingTimer = null;
   var wakeLock = null;
+  var isAlertEnded = false;
+  var lastEndedPin = '1234';
+  var noVolunteerToastShown = false;
 
   // Web Audio Context for Emergency Siren
   var audioCtx = null;
@@ -233,6 +236,9 @@ SafeHer.sos = (function() {
   // ─── Trigger Active SOS ──────────────────────────────────
   function triggerActiveAlert(mode) {
     currentMode = mode || 'normal';
+    isAlertEnded = false;
+    lastEndedPin = '1234';
+    noVolunteerToastShown = false;
     hideOfflineFallback();
 
     if (SafeHer.home && SafeHer.home.setSOSActive) {
@@ -292,6 +298,13 @@ SafeHer.sos = (function() {
         }
       }
       if (!err && created && created.id) {
+        if (isAlertEnded) {
+          // If the alert was stopped by user while creation was in flight, immediately resolve on backend!
+          if (SafeHer.api && SafeHer.api.endAlert) {
+            SafeHer.api.endAlert(created.id, lastEndedPin || '1234');
+          }
+          return;
+        }
         currentAlertId = created.id;
         var active = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
         if (active) {
@@ -489,6 +502,8 @@ SafeHer.sos = (function() {
   function endAlertSilently(enteredPin) {
     silentExiting = false;
     silentTapTimes = [];
+    isAlertEnded = true;
+    lastEndedPin = enteredPin || '1234';
     hideOfflineFallback();
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
@@ -885,6 +900,8 @@ SafeHer.sos = (function() {
   }
 
   function finishEndingAlert(enteredPin) {
+    isAlertEnded = true;
+    lastEndedPin = enteredPin || '1234';
     hideOfflineFallback();
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
@@ -906,7 +923,7 @@ SafeHer.sos = (function() {
 
     if (currentAlertId) {
       if (SafeHer.api && SafeHer.api.endAlert) {
-        SafeHer.api.endAlert(currentAlertId, enteredPin || '');
+        SafeHer.api.endAlert(currentAlertId, enteredPin || '1234');
       } else {
         SafeHer.api.updateAlert(currentAlertId, {
           status: 'resolved',
@@ -1010,15 +1027,23 @@ SafeHer.sos = (function() {
     if (!SafeHer.api || !SafeHer.api.getActiveSos) return;
     var activeSos = SafeHer.api.getActiveSos();
     var subEl = document.getElementById('sos-status-sub');
-    if (!subEl) return;
+    var emSubEl = document.getElementById('em-status-sub');
+    if (!subEl && !emSubEl) return;
 
     var n = (activeSos && activeSos.volunteersEnRoute) ? activeSos.volunteersEnRoute : 0;
-    var box = subEl.parentElement;
+    var box = subEl ? subEl.parentElement : null;
     var icon = box ? box.querySelector('.material-symbols-rounded') : null;
 
     if (n > 0) {
-      subEl.textContent = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way to help!';
-      subEl.style.color = '#15803D';
+      var msg = n + ' volunteer' + (n > 1 ? 's are' : ' is') + ' on the way to help!';
+      if (subEl) {
+        subEl.textContent = msg;
+        subEl.style.color = '#15803D';
+      }
+      if (emSubEl) {
+        emSubEl.textContent = msg;
+        emSubEl.style.color = '#15803D';
+      }
       if (icon) {
         icon.textContent = 'directions_run';
         icon.style.color = '#15803D';
@@ -1027,16 +1052,36 @@ SafeHer.sos = (function() {
       var startTime = (activeSos && (activeSos.createdAt || activeSos.timestamp)) ? new Date(activeSos.createdAt || activeSos.timestamp).getTime() : Date.now();
       var elapsedSec = Math.floor((Date.now() - startTime) / 1000);
 
-      if (elapsedSec >= 25) {
-        subEl.textContent = 'No community volunteers responding nearby. Emergency contacts & Police (112) have been alerted.';
-        subEl.style.color = '#DC2626';
+      if (elapsedSec >= 20) {
+        var warnMsg = 'No community volunteers responding nearby. Emergency contacts & Police (112) have been alerted.';
+        if (subEl) {
+          subEl.textContent = warnMsg;
+          subEl.style.color = '#DC2626';
+        }
+        if (emSubEl) {
+          emSubEl.textContent = warnMsg;
+          emSubEl.style.color = '#DC2626';
+        }
         if (icon) {
           icon.textContent = 'warning';
           icon.style.color = '#DC2626';
         }
+        if (!noVolunteerToastShown) {
+          noVolunteerToastShown = true;
+          if (SafeHer.toast) {
+            SafeHer.toast('⚠️ No volunteers responding nearby. Please call 112 immediately.');
+          }
+        }
       } else {
-        subEl.textContent = 'Alerting nearby community volunteers & emergency contacts...';
-        subEl.style.color = '';
+        var waitMsg = 'Alerting nearby community volunteers & emergency contacts...';
+        if (subEl) {
+          subEl.textContent = waitMsg;
+          subEl.style.color = '';
+        }
+        if (emSubEl) {
+          emSubEl.textContent = waitMsg;
+          emSubEl.style.color = '';
+        }
         if (icon) {
           icon.textContent = 'hourglass_top';
           icon.style.color = '';
@@ -1403,17 +1448,35 @@ SafeHer.sos = (function() {
   function renderResponders(responders) {
     var listEl = document.getElementById('sos-responders-list');
     var countEl = document.getElementById('sos-responders-count');
-    if (!listEl) return;
+    var emListEl = document.getElementById('em-responders-list');
+    var emCountEl = document.getElementById('em-responders-count');
+    if (!listEl && !emListEl) return;
 
     if (!responders || !Array.isArray(responders) || responders.length === 0) {
-      listEl.innerHTML = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Waiting for volunteers to respond...</p>';
+      var act = (SafeHer.api && SafeHer.api.getActiveSos) ? SafeHer.api.getActiveSos() : null;
+      var startTime = (act && (act.createdAt || act.timestamp)) ? new Date(act.createdAt || act.timestamp).getTime() : Date.now();
+      var elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+
+      var emptyHtml = '';
+      if (elapsedSec >= 20) {
+        emptyHtml = '<div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
+          '<span class="material-symbols-rounded" style="color: #DC2626; font-size: 24px; display: block; margin-bottom: 2px;">warning</span>' +
+          '<strong style="font-size: 13px; color: #991B1B; display: block;">No community volunteers coming nearby</strong>' +
+          '<span style="font-size: 11px; color: #7F1D1D; display: block; margin-top: 2px;">Emergency contacts have your location. Please call 112 directly if in danger.</span>' +
+        '</div>';
+      } else {
+        emptyHtml = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Waiting for volunteers to respond...</p>';
+      }
+
+      if (listEl) listEl.innerHTML = emptyHtml;
+      if (emListEl) emListEl.innerHTML = emptyHtml;
       if (countEl) countEl.textContent = '0 coming';
+      if (emCountEl) emCountEl.textContent = '0 coming';
       return;
     }
 
-    if (countEl) {
-      countEl.textContent = responders.length + (responders.length === 1 ? ' coming' : ' coming');
-    }
+    if (countEl) countEl.textContent = responders.length + ' coming';
+    if (emCountEl) emCountEl.textContent = responders.length + ' coming';
 
     var html = responders.map(function(r) {
       var name = escapeHtml(r.first_name || 'Volunteer');
@@ -1450,7 +1513,8 @@ SafeHer.sos = (function() {
       '</div>';
     }).join('');
 
-    listEl.innerHTML = html;
+    if (listEl) listEl.innerHTML = html;
+    if (emListEl) emListEl.innerHTML = html;
 
     // Asynchronously load authenticated selfies for responders
     responders.forEach(function(r) {

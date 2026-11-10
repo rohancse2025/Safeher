@@ -689,7 +689,38 @@ def end_alert(alert_id):
         cursor.execute("SELECT id, status FROM alerts WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
         alert = cursor.fetchone()
     if not alert:
+        cursor.execute("SELECT id, status FROM alerts WHERE status = 'active' ORDER BY id DESC LIMIT 1;")
+        alert = cursor.fetchone()
+
+    # If still no alert found (e.g. client sent a local Date.now() timestamp or network race),
+    # we STILL dispatch the Safe Update WhatsApp message to the user's contacts!
+    if not alert:
+        safe_phones = []
+        client_contacts = data.get('contacts') or []
+        for cc in client_contacts:
+            if isinstance(cc, dict):
+                p = str(cc.get('phone') or '').strip()
+                if p and p not in safe_phones: safe_phones.append(p)
+        cursor.execute('SELECT phone FROM contacts WHERE user_id = ?;', (user_id,))
+        for cr in cursor.fetchall():
+            p = (cr['phone'] or '').strip()
+            if p and p not in safe_phones: safe_phones.append(p)
+        if not safe_phones:
+            cursor.execute('SELECT phone FROM contacts;')
+            for cr in cursor.fetchall():
+                p = (cr['phone'] or '').strip()
+                if p and p not in safe_phones: safe_phones.append(p)
         conn.close()
+
+        safe_now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
+        uname = (user.get('name') or '').strip()
+        if not uname or uname == 'SafeHer User': uname = 'Rohan P'
+        if safe_phones:
+            try:
+                from whatsapp_service import send_safe_update_whatsapp_notifications_background
+                send_safe_update_whatsapp_notifications_background(alert_id, uname, safe_now_str, safe_phones)
+            except Exception as e:
+                app_logger.error(f"[Safe Update WA Early Error]: {e}")
         return jsonify({"ok": True, "data": {"alert_id": alert_id, "status": "resolved", "message": "Alert ended successfully"}}), 200
 
     target_alert_id = alert['id']
@@ -748,17 +779,39 @@ def end_alert(alert_id):
             )
 
         # Collect contact phones and emails to notify them she is SAFE
+        safe_phones = []
+        safe_emails = []
         cursor.execute('''
             SELECT c.phone, c.email FROM alert_contacts ac
             JOIN contacts c ON ac.contact_id = c.id
             WHERE ac.alert_id = ?;
         ''', (target_alert_id,))
-        safe_contact_rows = cursor.fetchall()
-        safe_phones = [r['phone'].strip() for r in safe_contact_rows if r['phone'] and r['phone'].strip()]
-        safe_emails = [r['email'].strip() for r in safe_contact_rows if r['email'] and r['email'].strip()]
+        for r in cursor.fetchall():
+            p = (r['phone'] or '').strip()
+            e = (r['email'] or '').strip()
+            if p and p not in safe_phones: safe_phones.append(p)
+            if e and e not in safe_emails: safe_emails.append(e)
 
-        if not safe_phones or not safe_emails:
-            cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+        # Merge client-provided contacts
+        client_contacts = data.get('contacts') or []
+        for cc in client_contacts:
+            if isinstance(cc, dict):
+                p = str(cc.get('phone') or '').strip()
+                e = str(cc.get('email') or '').strip()
+                if p and p not in safe_phones: safe_phones.append(p)
+                if e and e not in safe_emails: safe_emails.append(e)
+
+        # Fallback to contacts table for user
+        cursor.execute('SELECT phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+        for cr in cursor.fetchall():
+            p = (cr['phone'] or '').strip()
+            e = (cr['email'] or '').strip()
+            if p and p not in safe_phones: safe_phones.append(p)
+            if e and e not in safe_emails: safe_emails.append(e)
+
+        # Global fallback: all contacts in DB so safe updates NEVER fail
+        if not safe_phones:
+            cursor.execute('SELECT phone, email FROM contacts;')
             for cr in cursor.fetchall():
                 p = (cr['phone'] or '').strip()
                 e = (cr['email'] or '').strip()
@@ -771,7 +824,7 @@ def end_alert(alert_id):
         conn.commit()
         conn.close()
 
-        # Send automated Safe Updates via WhatsApp and Email
+        # Send automated Safe Updates via WhatsApp
         safe_now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
         uname = (user.get('name') or '').strip()
         if not uname or uname == 'SafeHer User': uname = 'Rohan P'

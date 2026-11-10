@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="SafeHer" />
-  <link rel="icon" type="image/png" href="./assets/icon-192.png?v=59" />
-  <link rel="apple-touch-icon" href="./assets/icon-192.png?v=59" />
+  <link rel="icon" type="image/png" href="./assets/icon-192.png?v=60" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png?v=60" />
   <title>SafeHer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,7 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./css/style.css?v=59" />
+  <link rel="stylesheet" href="./css/style.css?v=60" />
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
@@ -3091,6 +3091,22 @@
         <div id="em-notified-list" class="sos-notified-list"></div>
       </div>
 
+      <!-- Live Responders List in Emergency Mode -->
+      <div id="em-responders-container" style="margin-top: 14px; background: rgba(255,255,255,0.95); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--crimson); display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 17px;">shield_person</span>Responders on the way
+          </span>
+          <span id="em-responders-count" style="font-size: 11px; font-weight: 600; color: var(--crimson); background: var(--crimson-bg); padding: 2px 8px; border-radius: 10px;">0 coming</span>
+        </div>
+        <div style="margin-bottom: 6px;">
+          <p id="em-status-sub" style="font-size: 12px; margin: 0; line-height: 1.4; color: var(--text-gray);">Searching for nearby community volunteers...</p>
+        </div>
+        <div id="em-responders-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Searching for nearby community volunteers...</p>
+        </div>
+      </div>
+
       <!-- Stop Alarm (requires PIN) -->
       <div style="margin-top: 20px;">
         <button class="btn em-stop-btn" onclick="SafeHer.sos.requestStopAlarm()">
@@ -3462,32 +3478,32 @@
 </div><!-- /#app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./js/config.js?v=58"></script>
-<script src="./js/storage.js?v=58"></script>
-<script src="./js/api.js?v=58"></script>
-<script src="./js/i18n.js?v=58"></script>
-<script src="./js/helpdata.js?v=58"></script>
-<script src="./js/help_rights.js?v=58"></script>
-<script src="./js/app.js?v=58"></script>
-<script src="./js/onboarding.js?v=58"></script>
-<script src="./js/auth.js?v=58"></script>
-<script src="./js/pin.js?v=58"></script>
-<script src="./js/home.js?v=58"></script>
-<script src="./js/contacts.js?v=58"></script>
-<script src="./js/tips.js?v=58"></script>
-<script src="./js/profile.js?v=58"></script>
-<script src="./js/sos.js?v=58"></script>
-<script src="./js/map.js?v=58"></script>
-<script src="./js/share_location.js?v=58"></script>
-<script src="./js/places.js?v=58"></script>
-<script src="./js/ride.js?v=58"></script>
-<script src="./js/volunteer.js?v=58"></script>
-<script src="./js/volunteer-apply.js?v=58"></script>
-<script src="./js/timer.js?v=58"></script>
-<script src="./js/fakecall.js?v=58"></script>
-<script src="./js/evidence.js?v=58"></script>
-<script src="./js/vault.js?v=58"></script>
-<script src="./js/escort.js?v=58"></script>
-<script src="./js/notifications.js?v=58"></script>
+<script src="./js/config.js?v=60"></script>
+<script src="./js/storage.js?v=60"></script>
+<script src="./js/api.js?v=60"></script>
+<script src="./js/i18n.js?v=60"></script>
+<script src="./js/helpdata.js?v=60"></script>
+<script src="./js/help_rights.js?v=60"></script>
+<script src="./js/app.js?v=60"></script>
+<script src="./js/onboarding.js?v=60"></script>
+<script src="./js/auth.js?v=60"></script>
+<script src="./js/pin.js?v=60"></script>
+<script src="./js/home.js?v=60"></script>
+<script src="./js/contacts.js?v=60"></script>
+<script src="./js/tips.js?v=60"></script>
+<script src="./js/profile.js?v=60"></script>
+<script src="./js/sos.js?v=60"></script>
+<script src="./js/map.js?v=60"></script>
+<script src="./js/share_location.js?v=60"></script>
+<script src="./js/places.js?v=60"></script>
+<script src="./js/ride.js?v=60"></script>
+<script src="./js/volunteer.js?v=60"></script>
+<script src="./js/volunteer-apply.js?v=60"></script>
+<script src="./js/timer.js?v=60"></script>
+<script src="./js/fakecall.js?v=60"></script>
+<script src="./js/evidence.js?v=60"></script>
+<script src="./js/vault.js?v=60"></script>
+<script src="./js/escort.js?v=60"></script>
+<script src="./js/notifications.js?v=60"></script>
 </body>
 </html>

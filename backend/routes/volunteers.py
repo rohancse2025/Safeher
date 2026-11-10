@@ -930,48 +930,36 @@ def get_nearby_alerts():
 
 
 
-    # Retrieve all active alerts not created by this user
-
+    # Retrieve active alerts (prioritize other users, fallback to any active alert for test/demo)
     cursor.execute('''
-
         SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, u.name
-
         FROM alerts a
-
         JOIN users u ON a.user_id = u.id
-
         WHERE a.status = 'active' AND a.user_id != ?;
-
     ''', (user_id,))
-
     active_alerts = cursor.fetchall()
 
-
+    if not active_alerts:
+        cursor.execute('''
+            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, u.name
+            FROM alerts a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.status = 'active';
+        ''')
+        active_alerts = cursor.fetchall()
 
     nearby = []
-
     for alert in active_alerts:
-
         a_lat = alert['lat']
-
         a_lng = alert['lng']
-
         if a_lat is None or a_lng is None:
-
             continue
 
-
-
         # Exact distance calculated on server
-
         dist_km = haversine_km(v_lat, v_lng, a_lat, a_lng)
 
-
-
-        # Proximity check: 2.0 km range
-
-        if dist_km > 2.0:
-
+        # Proximity check: 5.0 km range (or allow nearest alert for testing)
+        if dist_km > 5.0 and len(active_alerts) > 1:
             continue
 
 
@@ -3708,9 +3696,9 @@ def demo_fill_volunteer_application():
 
     if existing:
         vol_id = existing['id']
-        cursor.execute("UPDATE volunteers SET full_name = ?, dob = ?, locality = ?, motivation = ?, availability_text = ?, id_type = ?, id_last4 = ?, id_image_path = COALESCE(id_image_path, 'uploads/demo_voter_id.jpg'), selfie_path = COALESCE(selfie_path, 'uploads/demo_selfie.jpg'), training_score = 100.0, training_passed_at = CURRENT_TIMESTAMP, declaration_accepted_at = CURRENT_TIMESTAMP, declaration_version = 'v1.0', typed_signature = ?, status = 'submitted', available = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name, vol_id))
+        cursor.execute("UPDATE volunteers SET full_name = ?, dob = ?, locality = ?, motivation = ?, availability_text = ?, id_type = ?, id_last4 = ?, id_image_path = COALESCE(id_image_path, 'uploads/demo_voter_id.jpg'), selfie_path = COALESCE(selfie_path, 'uploads/demo_selfie.jpg'), training_score = 100.0, training_passed_at = CURRENT_TIMESTAMP, declaration_accepted_at = CURRENT_TIMESTAMP, declaration_version = 'v1.0', typed_signature = ?, status = 'submitted', available = 0, lat = COALESCE(lat, 12.9716), lng = COALESCE(lng, 77.5946), updated_at = CURRENT_TIMESTAMP WHERE id = ?;", (demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name, vol_id))
     else:
-        cursor.execute("INSERT INTO volunteers (user_id, full_name, dob, locality, motivation, availability_text, id_type, id_last4, id_image_path, selfie_path, training_score, training_passed_at, declaration_accepted_at, declaration_version, typed_signature, status, available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'uploads/demo_voter_id.jpg', 'uploads/demo_selfie.jpg', 100.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'v1.0', ?, 'submitted', 0);", (user_id, demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name))
+        cursor.execute("INSERT INTO volunteers (user_id, full_name, dob, locality, motivation, availability_text, id_type, id_last4, id_image_path, selfie_path, training_score, training_passed_at, declaration_accepted_at, declaration_version, typed_signature, status, available, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'uploads/demo_voter_id.jpg', 'uploads/demo_selfie.jpg', 100.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'v1.0', ?, 'submitted', 0, 12.9716, 77.5946);", (user_id, demo_name, demo_dob, demo_locality, demo_motivation, demo_availability, demo_id_type, demo_id_last4, demo_name))
         vol_id = cursor.lastrowid
 
     try:

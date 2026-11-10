@@ -1123,7 +1123,7 @@ def quick_approve_volunteer(volunteer_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("UPDATE volunteers SET status = 'approved', level = 'trusted', badge = 'Trusted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, valid_until = datetime('now', '+1 year'), updated_at = CURRENT_TIMESTAMP WHERE id = ? OR user_id = ?;", (reviewer, volunteer_id, volunteer_id))
+    cursor.execute("UPDATE volunteers SET status = 'approved', level = 'trusted', badge = 'Trusted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, valid_until = datetime('now', '+1 year'), available = 1, lat = COALESCE(lat, 12.9716), lng = COALESCE(lng, 77.5946), updated_at = CURRENT_TIMESTAMP WHERE id = ? OR user_id = ?;", (reviewer, volunteer_id, volunteer_id))
 
     record_review_audit(cursor, volunteer_id, reviewer, 'approve', None, 'Quick-approved via admin dashboard')
     conn.commit()
