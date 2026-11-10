@@ -17,8 +17,102 @@ SafeHer.sos = (function() {
   var currentLng = null;
   var currentAlertTime = '';
 
-  // Tap counter window for overlay
+  // ─── Unified State Machine ('idle' | 'countdown' | 'normal' | 'silent' | 'emergency' | 'pin') ───
+  var currentState = 'idle';
+  var previousStateBeforePin = null;
+
+  var VALID_TRANSITIONS = {
+    'idle': ['countdown', 'silent', 'emergency'],
+    'countdown': ['idle', 'silent', 'emergency', 'normal'],
+    'normal': ['pin', 'emergency', 'idle'],
+    'silent': ['pin', 'idle'],
+    'emergency': ['pin', 'idle'],
+    'pin': ['idle', 'silent', 'emergency', 'normal']
+  };
+
+  function setState(next) {
+    if (next === currentState) return true;
+    var allowed = VALID_TRANSITIONS[currentState] || [];
+    if (allowed.indexOf(next) === -1) {
+      console.warn('[SafeHer SOS State] Impossible transition rejected:', currentState, '->', next);
+      updateDebugOverlay();
+      return false;
+    }
+    var from = currentState;
+    currentState = next;
+    console.log('[SafeHer SOS State]:', from, '->', currentState);
+
+    // Clear all tap counters whenever state changes
+    tapTimes = [];
+    silentTapTimes = [];
+    lastTapTimestamp = 0;
+
+    onStateTransition(from, currentState);
+    updateDebugOverlay();
+    return true;
+  }
+
+  function onStateTransition(from, to) {
+    // If leaving countdown, always ensure countdown timer and overlays are cleared
+    if (to !== 'countdown') {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      if (silentPendingTimer) {
+        clearTimeout(silentPendingTimer);
+        silentPendingTimer = null;
+      }
+      var overlay = document.getElementById('sos-countdown-overlay');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    if (to === 'silent') {
+      showSilentOverlay();
+      modeEnteredTimestamp = Date.now();
+      try {
+        localStorage.setItem('safeher_silent_sos_active', 'true');
+        if (currentAlertId) localStorage.setItem('safeher_silent_alert_id', String(currentAlertId));
+      } catch(e) {}
+    } else if (to === 'idle' || (from === 'silent' && to !== 'pin')) {
+      hideSilentOverlay();
+      try {
+        localStorage.removeItem('safeher_silent_sos_active');
+        localStorage.removeItem('safeher_silent_alert_id');
+      } catch(e) {}
+    }
+  }
+
+  // ─── Debug Overlay Mode (?debug=1) ─────────────────────────
+  var isDebugMode = (function() {
+    try {
+      return window.location.search.indexOf('debug=1') !== -1;
+    } catch(e) {
+      return false;
+    }
+  })();
+
+  function updateDebugOverlay() {
+    if (!isDebugMode) return;
+    var el = document.getElementById('safeher-sos-debug');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'safeher-sos-debug';
+      el.style.cssText = 'position:fixed;bottom:6px;right:6px;z-index:2147483647;font-family:monospace;font-size:10px;color:#666666;background:rgba(0,0,0,0.85);padding:3px 8px;border-radius:4px;pointer-events:none;user-select:none;border:1px solid #333;';
+      document.body.appendChild(el);
+    }
+    var taps = (currentState === 'silent' ? silentTapTimes.length : tapTimes.length);
+    el.textContent = 'state:' + currentState + ' taps:' + taps + ' mode:' + currentMode;
+  }
+
+  // Tap handling state (pointerdown-only, 80ms debounce, 2s sliding window)
   var tapTimes = [];
+  var silentTapTimes = [];
+  var lastTapTimestamp = 0;
+  var tapInactivityTimer = null;
+  var modeEnteredTimestamp = 0;
+  var longPressTimer = null;
+
   var silentPendingTimer = null;
   var wakeLock = null;
   var isAlertEnded = false;
@@ -52,46 +146,85 @@ SafeHer.sos = (function() {
       .replace(/'/g, '&#39;');
   }
 
-  // ─── Mode Detection from Tap Count ─────────────────────────
-  // Evaluates taps within a 2-second window
-  // 1 tap on SOS button: starts normal countdown
-  // 3 taps (SOS tap + 2 taps on overlay within 2s): switches to Silent mode
-  // 5 taps (SOS tap + 4 taps on overlay within 2s): switches immediately to Emergency mode
+  // ─── Mode Detection from Tap Count on Pointerdown ─────────────
+  function onSosButtonPointerDown(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var now = Date.now();
+    if (now - lastTapTimestamp < 80) return;
+    lastTapTimestamp = now;
+
+    console.log('[SafeHer SOS] SOS button pointerdown');
+    if (currentState === 'idle') {
+      startCountdown();
+    } else if (currentState === 'countdown') {
+      registerTap();
+    }
+  }
+
+  function onOverlayPointerDown(e) {
+    if (e && e.target && e.target.classList.contains('sos-countdown-cancel')) {
+      cancelCountdown();
+      return;
+    }
+    if (e && e.preventDefault) e.preventDefault();
+    var now = Date.now();
+    if (now - lastTapTimestamp < 80) return;
+    lastTapTimestamp = now;
+
+    console.log('[SafeHer SOS] Overlay pointerdown');
+    registerTap();
+  }
+
   function registerTap() {
+    if (currentState !== 'countdown') return;
     var now = Date.now();
     tapTimes.push(now);
     tapTimes = tapTimes.filter(function(t) { return now - t <= 2000; });
 
+    clearTimeout(tapInactivityTimer);
+    tapInactivityTimer = setTimeout(function() {
+      tapTimes = [];
+      updateDebugOverlay();
+    }, 2000);
+
     var count = tapTimes.length;
+    console.log('[SafeHer SOS] Countdown tap registered, count =', count);
+    updateDebugOverlay();
+
     if (count >= 5) {
       if (silentPendingTimer) {
         clearTimeout(silentPendingTimer);
         silentPendingTimer = null;
       }
       tapTimes = [];
-      clearInterval(countdownInterval);
-      countdownInterval = null;
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
       var overlay = document.getElementById('sos-countdown-overlay');
       if (overlay) overlay.classList.remove('active');
       startEmergencyMode();
-      return 'emergency';
-    } else if (count >= 3) {
+      return;
+    }
+
+    if (count >= 3) {
       if (silentPendingTimer) {
         clearTimeout(silentPendingTimer);
       }
       silentPendingTimer = setTimeout(function() {
         silentPendingTimer = null;
-        tapTimes = [];
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        var overlay = document.getElementById('sos-countdown-overlay');
-        if (overlay) overlay.classList.remove('active');
-        startSilentMode();
+        if (currentState === 'countdown') {
+          tapTimes = [];
+          if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+          }
+          var overlay = document.getElementById('sos-countdown-overlay');
+          if (overlay) overlay.classList.remove('active');
+          startSilentMode();
+        }
       }, 400);
-      return 'silent_pending';
     }
-    // 1 or 2 taps: stay in countdown
-    return 'normal';
   }
 
   // ─── Duration Counter (mm:ss) ───────────────────────────
@@ -191,6 +324,10 @@ SafeHer.sos = (function() {
       silentPendingTimer = null;
     }
 
+    if (!setState('countdown')) {
+      return;
+    }
+
     currentMode = 'normal';
     tapTimes = [Date.now()]; // first tap on the SOS button counts
     countdownSecs = 5;
@@ -201,8 +338,17 @@ SafeHer.sos = (function() {
     numEl.textContent = countdownSecs;
     overlay.classList.add('active');
 
-    clearInterval(countdownInterval);
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+
     countdownInterval = setInterval(function() {
+      if (currentState !== 'countdown') {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        return;
+      }
       countdownSecs--;
       if (countdownSecs > 0) {
         numEl.textContent = countdownSecs;
@@ -210,7 +356,10 @@ SafeHer.sos = (function() {
         clearInterval(countdownInterval);
         countdownInterval = null;
         overlay.classList.remove('active');
-        triggerActiveAlert('normal');
+        if (currentState === 'countdown') {
+          setState('normal');
+          triggerActiveAlert('normal');
+        }
       }
     }, 1000);
   }
@@ -220,16 +369,19 @@ SafeHer.sos = (function() {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
     }
-    clearInterval(countdownInterval);
-    countdownInterval = null;
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
     tapTimes = [];
     var overlay = document.getElementById('sos-countdown-overlay');
     if (overlay) overlay.classList.remove('active');
+    setState('idle');
     SafeHer.toast('SOS alert cancelled');
   }
 
   function onOverlayTap(e) {
-    if (e.target && e.target.classList.contains('sos-countdown-cancel')) return;
+    if (e && e.target && e.target.classList.contains('sos-countdown-cancel')) return;
     registerTap();
   }
 
@@ -370,22 +522,22 @@ SafeHer.sos = (function() {
         }
       }
     } else if (currentMode === 'silent') {
-      renderSilentMode();
+      showSilentOverlay();
       if (SafeHer.vault && SafeHer.vault.startSilentSession) {
-        SafeHer.vault.startSilentSession(currentAlertId);
+        try { SafeHer.vault.startSilentSession(currentAlertId); } catch(e) {}
       } else if (SafeHer.vault && SafeHer.vault.startSession) {
-        SafeHer.vault.startSession('audio', currentAlertId);
+        try { SafeHer.vault.startSession('audio', currentAlertId); } catch(e) {}
       }
     } else if (currentMode === 'emergency') {
       renderEmergencyMode();
       if (SafeHer.vault && SafeHer.vault.startEmergencySession) {
-        SafeHer.vault.startEmergencySession(currentAlertId);
+        try { SafeHer.vault.startEmergencySession(currentAlertId); } catch(e) {}
       } else if (SafeHer.vault && SafeHer.vault.getSettings().enabled) {
         var vSettings = SafeHer.vault.getSettings();
         if (vSettings.recordEmergencyVideo) {
-          SafeHer.vault.startSession('video', currentAlertId);
+          try { SafeHer.vault.startSession('video', currentAlertId); } catch(e) {}
         } else if (vSettings.recordSilentAudio) {
-          SafeHer.vault.startSession('audio', currentAlertId);
+          try { SafeHer.vault.startSession('audio', currentAlertId); } catch(e) {}
         }
       }
     }
@@ -438,73 +590,211 @@ SafeHer.sos = (function() {
     }
   }
 
-  // ─── Silent Mode ──────────────────────────────────────────
-  // Note: in production, silent background alert push to contacts will be handled via the backend.
-  var silentTapTimes = [];
-  var silentExiting = false; // guard: only one PIN prompt at a time
+  // ─── Wake Lock Management ─────────────────────────────────
+  function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && navigator.wakeLock && navigator.wakeLock.request) {
+        navigator.wakeLock.request('screen').then(function(lock) {
+          wakeLock = lock;
+          lock.addEventListener('release', function() {
+            if (currentState === 'silent' && document.visibilityState === 'visible') {
+              requestWakeLock();
+            }
+          });
+        }).catch(function(err) {
+          console.warn('[SafeHer SOS] WakeLock error:', err);
+        });
+      }
+    } catch(e) {
+      console.warn('[SafeHer SOS] WakeLock error:', e);
+    }
+  }
+
+  // ─── Silent Mode & Dedicated #silent-overlay ───────────────
+  function showSilentOverlay() {
+    try {
+      document.documentElement.classList.add('silent-active');
+      var metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) metaTheme.setAttribute('content', '#000000');
+
+      var overlay = document.getElementById('silent-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'silent-overlay';
+        document.body.appendChild(overlay);
+      }
+      overlay.style.display = 'block';
+      overlay.onpointerdown = onSilentPointerDown;
+      overlay.onpointerup = onSilentPointerUp;
+      overlay.onpointercancel = onSilentPointerCancel;
+      overlay.oncontextmenu = function(e) { e.preventDefault(); return false; };
+    } catch(e) {
+      console.warn('[SafeHer SOS] showSilentOverlay error:', e);
+    }
+  }
+
+  function hideSilentOverlay() {
+    try {
+      document.documentElement.classList.remove('silent-active');
+      var metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) metaTheme.setAttribute('content', '#A80F3C');
+
+      var overlay = document.getElementById('silent-overlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+        overlay.onpointerdown = null;
+        overlay.onpointerup = null;
+        overlay.onpointercancel = null;
+      }
+    } catch(e) {
+      console.warn('[SafeHer SOS] hideSilentOverlay error:', e);
+    }
+  }
 
   function startSilentMode() {
-    triggerActiveAlert('silent');
+    // Show black overlay FIRST synchronously
+    setState('silent');
+    showSilentOverlay();
+
+    // Async work wrapped in try/catch and .catch
+    requestWakeLock();
+
+    try {
+      var docEl = document.documentElement;
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen().catch(function() {});
+      }
+    } catch(e) {}
+
+    try {
+      triggerActiveAlert('silent');
+    } catch(e) {
+      console.warn('[SafeHer SOS] triggerActiveAlert silent error:', e);
+    }
   }
 
   function renderSilentMode() {
-    SafeHer.router.go('silent-mode');
-    var sEl = document.getElementById('screen-silent-mode');
-    if (sEl) { sEl.style.display = 'flex'; sEl.style.opacity = '1'; sEl.style.background = '#000000'; }
-
-    // Request Screen Wake Lock
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').then(function(lock) {
-        wakeLock = lock;
-      }).catch(function() {});
-    }
-
-    // Try requestFullscreen
-    var docEl = document.documentElement;
-    if (docEl.requestFullscreen) {
-      docEl.requestFullscreen().catch(function() {});
-    }
+    showSilentOverlay();
+    requestWakeLock();
   }
 
-  function promptExitSilent() {
-    if (silentExiting) return; // prevent double-trigger
-    silentExiting = true;
-    silentTapTimes = []; // clear accumulated taps
-    SafeHer.askPin(
-      function(enteredPin) {
-        silentExiting = false;
-        endAlertSilently(enteredPin || '1234');
-      },
-      function() {
-        silentExiting = false;
-        silentTapTimes = []; // clear again after cancel so no immediate re-trigger
-      },
-      { blackTheme: true }
-    );
-  }
+  function onSilentPointerDown(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (currentState !== 'silent') return;
 
-  function onSilentScreenTap() {
-    if (silentExiting) return; // ignore taps while PIN prompt is open
-    if (navigator.vibrate) {
-      try { navigator.vibrate(40); } catch(e) {}
-    }
     var now = Date.now();
+    // Ignore all taps for 1.5 seconds after entering mode
+    if (now - modeEnteredTimestamp < 1500) {
+      console.log('[SafeHer SOS] Tap ignored during 1.5s grace period');
+      return;
+    }
+
+    // Debounce: ignore events less than 80ms apart
+    if (now - lastTapTimestamp < 80) return;
+    lastTapTimestamp = now;
+
+    // Start 2-second long press timer
+    if (longPressTimer) clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      if (currentState === 'silent') {
+        console.log('[SafeHer SOS] 2s long press detected -> opening silent PIN pad');
+        openSilentPinPad();
+      }
+    }, 2000);
+
+    // 3 taps within 2 seconds
     silentTapTimes.push(now);
-    silentTapTimes = silentTapTimes.filter(function(t) { return now - t <= 2500; });
+    silentTapTimes = silentTapTimes.filter(function(t) { return now - t <= 2000; });
+
+    clearTimeout(tapInactivityTimer);
+    tapInactivityTimer = setTimeout(function() {
+      silentTapTimes = [];
+      updateDebugOverlay();
+    }, 2000);
+
+    updateDebugOverlay();
 
     if (silentTapTimes.length >= 3) {
       silentTapTimes = [];
-      promptExitSilent();
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      console.log('[SafeHer SOS] 3 taps detected -> opening silent PIN pad');
+      openSilentPinPad();
     }
   }
 
+  function onSilentPointerUp(e) {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function onSilentPointerCancel(e) {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function openSilentPinPad() {
+    if (currentState !== 'silent') return;
+    setState('pin');
+
+    SafeHer.askPin(
+      function(enteredPin, pinResult) {
+        if (pinResult === 'duress') {
+          console.log('[SafeHer SOS] Duress PIN entered -> returning Home while alert keeps running');
+          hideSilentOverlay();
+          setState('idle');
+          SafeHer.router.go('home');
+          return;
+        }
+
+        console.log('[SafeHer SOS] Correct PIN entered -> ending alert');
+        endAlertSilently(enteredPin || '1234');
+      },
+      function(reason) {
+        console.log('[SafeHer SOS] Silent PIN pad closed/failed (' + reason + ') -> returning silently to black');
+        setState('silent');
+      },
+      { silentMode: true }
+    );
+  }
+
+  function promptExitSilent() {
+    openSilentPinPad();
+  }
+
+  function restoreSilentMode() {
+    console.log('[SafeHer SOS] Restoring active silent SOS from localStorage');
+    currentState = 'silent';
+    currentMode = 'silent';
+    try {
+      var savedId = localStorage.getItem('safeher_silent_alert_id');
+      if (savedId) currentAlertId = savedId;
+    } catch(e) {}
+    showSilentOverlay();
+    requestWakeLock();
+    startDurationCounter();
+    startTrackingInterval();
+    startVolunteerStatusPolling();
+    updateDebugOverlay();
+  }
 
   function endAlertSilently(enteredPin) {
-    silentExiting = false;
     silentTapTimes = [];
     isAlertEnded = true;
     lastEndedPin = enteredPin || '1234';
     hideOfflineFallback();
+    hideSilentOverlay();
+    try {
+      localStorage.removeItem('safeher_silent_sos_active');
+      localStorage.removeItem('safeher_silent_alert_id');
+    } catch(e) {}
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
@@ -515,11 +805,11 @@ SafeHer.sos = (function() {
     stopVolunteerStatusPolling();
     releaseWakeLock();
     if (SafeHer.vault && SafeHer.vault.endSession) {
-      SafeHer.vault.endSession();
+      try { SafeHer.vault.endSession(); } catch(e) {}
     }
 
     if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(function() {});
+      try { document.exitFullscreen().catch(function() {}); } catch(e) {}
     }
 
     var alertIdForFeedback = currentAlertId;
@@ -552,6 +842,8 @@ SafeHer.sos = (function() {
     renderResponders([]);
     renderContactsResponding([]);
 
+    setState('idle');
+
     if (alertIdForFeedback && respondersForFeedback.length > 0) {
       startFeedbackQueue(alertIdForFeedback, respondersForFeedback);
     } else {
@@ -562,6 +854,8 @@ SafeHer.sos = (function() {
 
   // ─── Emergency Mode ───────────────────────────────────────
   function startEmergencyMode() {
+    setState('emergency');
+    modeEnteredTimestamp = Date.now();
     triggerActiveAlert('emergency');
   }
 
@@ -894,12 +1188,17 @@ SafeHer.sos = (function() {
 
   // ─── End Alert ("I'm Safe" & "Stop Alarm") protected by PIN ─
   function requestEndAlert() {
-    SafeHer.askPin(function(enteredPin) {
+    SafeHer.askPin(function(enteredPin, pinResult) {
+      if (pinResult === 'duress') {
+        SafeHer.router.go('home');
+        return;
+      }
       finishEndingAlert(enteredPin);
     });
   }
 
   function finishEndingAlert(enteredPin) {
+    setState('idle');
     isAlertEnded = true;
     lastEndedPin = enteredPin || '1234';
     hideOfflineFallback();
@@ -1170,6 +1469,13 @@ SafeHer.sos = (function() {
   }
 
   function init() {
+    // 1. If active silent SOS was stored, restore it immediately
+    try {
+      if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
+        restoreSilentMode();
+      }
+    } catch(e) {}
+
     SafeHer.router.onShow('sos-active', function() {
       var activeSos = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
       if (activeSos && activeSos.timestamp) {
@@ -1199,11 +1505,41 @@ SafeHer.sos = (function() {
       }
     });
 
+    var sosBtn = document.getElementById('sos-btn');
+    if (sosBtn) {
+      sosBtn.style.touchAction = 'manipulation';
+      sosBtn.onpointerdown = onSosButtonPointerDown;
+      sosBtn.onclick = function(e) { e.preventDefault(); };
+    }
+
     var overlay = document.getElementById('sos-countdown-overlay');
     if (overlay) {
-      overlay.onclick = onOverlayTap;
+      overlay.style.touchAction = 'manipulation';
+      overlay.onpointerdown = onOverlayPointerDown;
     }
   }
+
+  // Ensure fullscreenchange, visibilitychange, and resize never hide silent overlay
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      if (currentState === 'silent') {
+        showSilentOverlay();
+        requestWakeLock();
+      }
+    }
+  });
+
+  document.addEventListener('fullscreenchange', function() {
+    if (currentState === 'silent') {
+      showSilentOverlay();
+    }
+  });
+
+  window.addEventListener('resize', function() {
+    if (currentState === 'silent') {
+      showSilentOverlay();
+    }
+  });
 
   // ─── Graduated Alerts: Uneasy Alert & Direct Emergency ───
   var activeUneasyAlert = null;
@@ -1701,8 +2037,16 @@ SafeHer.sos = (function() {
     cancelCountdown: cancelCountdown,
     startSilentMode: startSilentMode,
     promptExitSilent: promptExitSilent,
+    openSilentPinPad: openSilentPinPad,
+    showSilentOverlay: showSilentOverlay,
+    hideSilentOverlay: hideSilentOverlay,
+    restoreSilentMode: restoreSilentMode,
     startEmergencyMode: startEmergencyMode,
-    onSilentScreenTap: onSilentScreenTap,
+    onSilentScreenTap: onSilentPointerDown,
+    onSosButtonPointerDown: onSosButtonPointerDown,
+    onOverlayPointerDown: onOverlayPointerDown,
+    getState: function() { return currentState; },
+    isSilentModeActive: function() { return currentState === 'silent' || (currentState === 'pin' && currentMode === 'silent'); },
     requestEndAlert: requestEndAlert,
     requestStopAlarm: requestStopAlarm,
     shareToAll: shareToAll,

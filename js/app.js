@@ -57,6 +57,15 @@ SafeHer.router = (function() {
   var hooks   = {};   // onShow callbacks keyed by screen id
 
   function go(id) {
+    // Block router screen change and fading while Silent SOS is active
+    if (SafeHer.sos && SafeHer.sos.getState) {
+      var s = SafeHer.sos.getState();
+      if (s === 'silent' || (s === 'pin' && SafeHer.sos.isSilentModeActive && SafeHer.sos.isSilentModeActive())) {
+        console.log('[SafeHer Router] Screen change blocked in Silent SOS:', id);
+        return;
+      }
+    }
+
     if (id === 'helplines') {
       id = 'help-rights';
     }
@@ -317,6 +326,17 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // Check for active silent SOS recovery on startup before rendering
+  try {
+    if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
+      console.log('[SafeHer App] Active Silent SOS detected on startup - restoring black screen');
+      if (SafeHer.sos && SafeHer.sos.restoreSilentMode) {
+        SafeHer.sos.restoreSilentMode();
+        return;
+      }
+    }
+  } catch(e) {}
+
   // Check for SOS shortcut launch (?sos=1 or ?sos=quick) or notification screen launch (?screen=...)
   var urlParams = new URLSearchParams(window.location.search);
   var sosParam = urlParams.get('sos');
@@ -354,3 +374,31 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   }, 2000);
 });
+
+// ─── Global Error Resilience & Recovery ──────────────────────
+window.addEventListener('error', function(e) {
+  console.error('[SafeHer Uncaught Error]:', e.error || e.message);
+  if (SafeHer.sos && SafeHer.sos.getState && (SafeHer.sos.getState() === 'silent' || SafeHer.sos.getState() === 'pin')) {
+    if (SafeHer.sos.showSilentOverlay) SafeHer.sos.showSilentOverlay();
+    return;
+  }
+  showGlobalErrorNotice();
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[SafeHer Unhandled Rejection]:', e.reason);
+  if (SafeHer.sos && SafeHer.sos.getState && (SafeHer.sos.getState() === 'silent' || SafeHer.sos.getState() === 'pin')) {
+    if (SafeHer.sos.showSilentOverlay) SafeHer.sos.showSilentOverlay();
+    return;
+  }
+  showGlobalErrorNotice();
+});
+
+function showGlobalErrorNotice() {
+  if (document.getElementById('global-error-banner')) return;
+  var b = document.createElement('div');
+  b.id = 'global-error-banner';
+  b.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;background:#1F2937;color:#F9FAFB;padding:12px 16px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:9999999;display:flex;align-items:center;justify-content:space-between;font-family:system-ui,sans-serif;font-size:13px;';
+  b.innerHTML = '<span>Something went wrong.</span><button type="button" onclick="location.reload()" style="background:#EF4444;color:#FFF;border:none;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer;font-size:12px;margin-left:8px;">Reload</button>';
+  document.body.appendChild(b);
+}

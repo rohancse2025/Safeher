@@ -2515,6 +2515,74 @@ input:checked + .slider:before {
   border-color: #333;
 }
 
+/* Silent Mode HTML / Body Lock */
+html.silent-active,
+html.silent-active body {
+  background: #000000 !important;
+  overflow: hidden !important;
+}
+
+#silent-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000000 !important;
+  z-index: 2147483647 !important;
+  cursor: none !important;
+  touch-action: manipulation !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Pure Black Silent Mode PIN Pad: #000 background, dim gray digits #555, no white */
+.pin-pad-overlay.pin-silent-mode {
+  background: #000000 !important;
+  color: #555555 !important;
+  z-index: 2147483647 !important;
+}
+.pin-pad-overlay.pin-silent-mode * {
+  box-shadow: none !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-pad-header,
+.pin-pad-overlay.pin-silent-mode .pin-pad-title,
+.pin-pad-overlay.pin-silent-mode .pin-pad-subtitle {
+  color: #444444 !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-dot {
+  border-color: #333333 !important;
+  background: transparent !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-dot.filled {
+  background: #555555 !important;
+  border-color: #555555 !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-key {
+  color: #555555 !important;
+  background: #0a0a0a !important;
+  border: 1px solid #222222 !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-key:active {
+  background: #141414 !important;
+  color: #777777 !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-key-sub {
+  color: #333333 !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-key-del {
+  color: #555555 !important;
+  background: transparent !important;
+  border: none !important;
+}
+.pin-pad-overlay.pin-silent-mode .pin-cancel-btn {
+  color: #444444 !important;
+  background: transparent !important;
+  border: 1px solid #222222 !important;
+}
+.pin-pad-overlay.pin-silent-mode #pin-block-msg {
+  color: #666666 !important;
+}
+
 .pin-pad-content {
   display: flex;
   flex-direction: column;

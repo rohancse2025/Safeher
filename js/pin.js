@@ -10,29 +10,56 @@ SafeHer.pin = (function() {
   var activeSuccessCb = null;
   var activeFailCb = null;
   var isBlackTheme = false;
+  var isSilentMode = false;
+  var inactivityTimer = null;
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    }
+    if (isSilentMode) {
+      inactivityTimer = setTimeout(function() {
+        console.log('[SafeHer PIN] 10s inactivity in silent mode -> returning to black screen');
+        closePad();
+        if (activeFailCb) activeFailCb('timeout');
+      }, 10000);
+    }
+  }
 
   // Ask for PIN using full-screen numeric pad
   function askPin(onSuccess, onFail, options) {
     activeSuccessCb = onSuccess || null;
     activeFailCb = onFail || null;
     currentInput = '';
-    isBlackTheme = options && options.blackTheme;
+    isSilentMode = !!(options && options.silentMode);
+    isBlackTheme = !!(options && (options.blackTheme || options.silentMode));
 
     var overlay = document.getElementById('pin-pad-overlay');
     if (!overlay) return;
 
-    if (isBlackTheme) {
+    if (isSilentMode) {
+      overlay.classList.add('pin-silent-mode');
+      overlay.classList.add('pin-black-theme');
+    } else if (isBlackTheme) {
+      overlay.classList.remove('pin-silent-mode');
       overlay.classList.add('pin-black-theme');
     } else {
+      overlay.classList.remove('pin-silent-mode');
       overlay.classList.remove('pin-black-theme');
     }
 
     renderDots();
     updateBlockState();
     overlay.classList.add('active');
+    resetInactivityTimer();
   }
 
   function closePad() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    }
     var overlay = document.getElementById('pin-pad-overlay');
     if (overlay) overlay.classList.remove('active');
     currentInput = '';
@@ -45,6 +72,7 @@ SafeHer.pin = (function() {
 
     currentInput += digit;
     renderDots();
+    resetInactivityTimer();
 
     if (currentInput.length === 4) {
       validateEnteredPin();
@@ -56,6 +84,7 @@ SafeHer.pin = (function() {
     if (currentInput.length > 0) {
       currentInput = currentInput.slice(0, -1);
       renderDots();
+      resetInactivityTimer();
     }
   }
 
@@ -89,6 +118,12 @@ SafeHer.pin = (function() {
         closePad();
         if (activeSuccessCb) activeSuccessCb(entered, pinResult);
       } else {
+        if (isSilentMode) {
+          // Wrong PIN in silent mode returns silently to black screen
+          closePad();
+          if (activeFailCb) activeFailCb('wrong_pin');
+          return;
+        }
         wrongAttempts++;
         triggerShake();
         currentInput = '';
