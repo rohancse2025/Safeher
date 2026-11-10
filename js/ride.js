@@ -1366,7 +1366,32 @@ SafeHer.ride = (function() {
 
   }
 
+  function shareViaWhatsApp() {
+    if (!activeRide) return;
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
+    var message = buildRideMessage(activeRide, user);
 
+    var targetPhone = '';
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if (activeRide.contactIds && activeRide.contactIds.length > 0) {
+      for (var i = 0; i < contacts.length; i++) {
+        if (activeRide.contactIds.indexOf(contacts[i].id) !== -1 && contacts[i].phone) {
+          targetPhone = contacts[i].phone.replace(/\D/g, '');
+          break;
+        }
+      }
+    }
+    if (!targetPhone && contacts.length > 0 && contacts[0].phone) {
+      targetPhone = contacts[0].phone.replace(/\D/g, '');
+    }
+    if (targetPhone.length === 10) targetPhone = '91' + targetPhone;
+
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+
+    window.open(waUrl, '_blank');
+  }
 
   function copyRideText(text) {
 
@@ -2126,6 +2151,7 @@ SafeHer.ride = (function() {
     removePhoto: removePhoto,
 
     shareViaWebShare: shareViaWebShare,
+    shareViaWhatsApp: shareViaWhatsApp,
 
     userIsOk: userIsOk,
 

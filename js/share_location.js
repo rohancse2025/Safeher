@@ -248,13 +248,49 @@ SafeHer.shareLocation = (function() {
 
   // ─── Build Message ────────────────────────────────────────
   function buildShareMessage(lat, lng, endTime, endTimeStr) {
-    // Note: Real live tracking links for contacts will come from the backend.
     var user = (SafeHer.api && SafeHer.api.getUser ? SafeHer.api.getUser() : null);
-    var userName = (user && user.name) ? user.name : 'SafeHer User';
+    var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'SafeHer User';
+    var session = getActiveSession();
+    var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
+    var trackLink = (session && session.trackUrl) ? session.trackUrl : (frontendBase.replace(/\/+$/, '') + '/track.html');
     var mapsLink = 'https://www.google.com/maps?q=' + lat + ',' + lng;
     var endDesc = (endTime === null) ? 'until I stop' : ('until ' + endTimeStr);
 
-    return userName + ' is sharing their live location with you on SafeHer ' + endDesc + ':\n' + mapsLink;
+    return '📍 *SafeHer Live Location Sharing*\n\n' +
+      '*' + userName + '* is sharing their live location with you ' + endDesc + '.\n\n' +
+      '🗺️ *Live Tracking Map*:\n' + trackLink + '\n\n' +
+      '📍 *Google Maps Pin*:\n' + mapsLink;
+  }
+
+  function shareViaWhatsApp() {
+    var session = getActiveSession();
+    var lat = session ? session.lat : (currentLat || 12.9716);
+    var lng = session ? session.lng : (currentLng || 77.5946);
+    var endTime = session ? session.endTime : null;
+    var endTimeStr = session ? session.endTimeStr : 'until I stop';
+
+    var message = buildShareMessage(lat, lng, endTime, endTimeStr);
+
+    var targetPhone = '';
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if (session && session.contactIds && session.contactIds.length > 0) {
+      for (var i = 0; i < contacts.length; i++) {
+        if (session.contactIds.indexOf(contacts[i].id) !== -1 && contacts[i].phone) {
+          targetPhone = contacts[i].phone.replace(/\D/g, '');
+          break;
+        }
+      }
+    }
+    if (!targetPhone && contacts.length > 0 && contacts[0].phone) {
+      targetPhone = contacts[0].phone.replace(/\D/g, '');
+    }
+    if (targetPhone.length === 10) targetPhone = '91' + targetPhone;
+
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+
+    window.open(waUrl, '_blank');
   }
 
   // ─── Leaflet Map Management ───────────────────────────────
@@ -392,6 +428,7 @@ SafeHer.shareLocation = (function() {
       else if (selectedDuration === 'all_day') durationMins = 1440;
       if (untilStopped) durationMins = null;
 
+      var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
       var session = {
         active: true,
         startTime: Date.now(),
@@ -403,7 +440,7 @@ SafeHer.shareLocation = (function() {
         lng: currentLng,
         lastUpdated: Date.now(),
         shareId: null,
-        trackUrl: window.location.origin + '/track.html',
+        trackUrl: frontendBase.replace(/\/+$/, '') + '/track.html',
         isOffline: !navigator.onLine
       };
 
@@ -411,6 +448,7 @@ SafeHer.shareLocation = (function() {
       updateHomeBanner();
       renderActiveView(session);
       startTrackingLoop();
+      shareViaWhatsApp();
 
       var sharePayload = {
         contact_ids: selectedContactIds,
@@ -634,6 +672,7 @@ SafeHer.shareLocation = (function() {
     toggleAllContacts: toggleAllContacts,
     startSharing: startSharing,
     stopSharing: stopSharing,
+    shareViaWhatsApp: shareViaWhatsApp,
     shareViaWebShare: shareViaWebShare,
     copyLiveLink: copyLiveLink,
     updateHomeBanner: updateHomeBanner,

@@ -401,16 +401,18 @@ window.addEventListener('error', function(e) {
     if (SafeHer.sos.showSilentOverlay) SafeHer.sos.showSilentOverlay();
     return;
   }
-  showGlobalErrorNotice();
+  // Only surface for serious script runtime exceptions, not harmless asset load issues
+  if (e && e.error) {
+    showGlobalErrorNotice();
+  }
 });
 
 window.addEventListener('unhandledrejection', function(e) {
-  console.error('[SafeHer Unhandled Rejection]:', e.reason);
+  // Non-fatal: Log unhandled promise rejections without blocking user interface
+  console.warn('[SafeHer Handled Rejection]:', e.reason);
   if (SafeHer.sos && SafeHer.sos.getState && (SafeHer.sos.getState() === 'silent' || SafeHer.sos.getState() === 'pin')) {
     if (SafeHer.sos.showSilentOverlay) SafeHer.sos.showSilentOverlay();
-    return;
   }
-  showGlobalErrorNotice();
 });
 
 function showGlobalErrorNotice() {
@@ -418,6 +420,9 @@ function showGlobalErrorNotice() {
   var b = document.createElement('div');
   b.id = 'global-error-banner';
   b.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;background:#1F2937;color:#F9FAFB;padding:12px 16px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:9999999;display:flex;align-items:center;justify-content:space-between;font-family:system-ui,sans-serif;font-size:13px;';
-  b.innerHTML = '<span>Something went wrong.</span><button type="button" onclick="location.reload()" style="background:#EF4444;color:#FFF;border:none;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer;font-size:12px;margin-left:8px;">Reload</button>';
+  b.innerHTML = '<span>SafeHer encountered a glitch.</span><div style="display:flex;align-items:center;gap:6px;"><button type="button" onclick="this.parentElement.parentElement.remove()" style="background:#374151;color:#E5E7EB;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">Dismiss</button><button type="button" onclick="location.reload()" style="background:#EF4444;color:#FFF;border:none;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer;font-size:12px;">Reload</button></div>';
   document.body.appendChild(b);
+  setTimeout(function() {
+    if (b && b.parentNode) b.remove();
+  }, 6000);
 }

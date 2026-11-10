@@ -475,21 +475,12 @@ SafeHer.deliveryTracker = (function() {
       'Instant emergency alerts &amp; live GPS tracking links are ready for dispatch via WhatsApp to your emergency contacts.' +
     '</p>';
 
-    // In active monitored sessions (Timer, Escort, Ride), WhatsApp is 100% automated in background!
-    if (state.isEscortOrTimer) {
-      html += '<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">' +
-        '<span class="material-symbols-rounded" style="color:#16A34A;font-size:22px;flex-shrink:0;">sync</span>' +
-        '<div style="font-size:12px;color:#166534;line-height:1.4;">' +
-          '<strong>Automated WhatsApp Dispatch Active:</strong> Your contacts are monitored and alerted automatically from our server in the background. No manual tap needed.' +
-        '</div>' +
-      '</div>';
-    } else {
-      // For active emergency SOS, show prominent 1-tap WhatsApp trigger
-      html += '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:10px;background:#25D366;color:#FFFFFF;padding:12px 16px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 3px 10px rgba(37,211,102,0.3);margin-bottom:12px;">' +
-        '<span class="material-symbols-rounded" style="font-size:22px;">chat</span>' +
-        '<span>Open WhatsApp Alert (1-Tap Send)</span>' +
-      '</a>';
-    }
+    // Prominent 1-Tap WhatsApp trigger button for ALL sessions
+    var waButtonText = state.isEscortOrTimer ? 'Share Journey on WhatsApp (1-Tap)' : 'Open WhatsApp Alert (1-Tap Send)';
+    html += '<a href="' + escapeHtml(waUrl) + '" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:10px;background:#25D366;color:#FFFFFF;padding:12px 16px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 3px 10px rgba(37,211,102,0.3);margin-bottom:12px;">' +
+      '<span class="material-symbols-rounded" style="font-size:22px;">chat</span>' +
+      '<span>' + waButtonText + '</span>' +
+    '</a>';
 
     // Contacts list
     if (state.contacts && state.contacts.length > 0) {

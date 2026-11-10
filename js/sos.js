@@ -16,6 +16,7 @@ SafeHer.sos = (function() {
   var currentLat = null;
   var currentLng = null;
   var currentAlertTime = '';
+  var currentShareToken = null;
 
   // ─── Unified State Machine ('idle' | 'countdown' | 'normal' | 'silent' | 'emergency' | 'pin') ───
   var currentState = 'idle';
@@ -213,7 +214,7 @@ SafeHer.sos = (function() {
     }
 
     if (count >= 3) {
-      // STOP COUNTDOWN INTERVAL IMMEDIATELY so it can NEVER tick or trigger normal SOS
+      // Pause countdown immediately on 3rd tap, but wait 400ms in case user is tapping towards 5 taps for Emergency Mode
       if (countdownInterval) {
         clearInterval(countdownInterval);
         countdownInterval = null;
@@ -222,13 +223,12 @@ SafeHer.sos = (function() {
         clearTimeout(silentPendingTimer);
         silentPendingTimer = null;
       }
-      tapTimes = [];
-      var overlay = document.getElementById('sos-countdown-overlay');
-      if (overlay) overlay.classList.remove('active');
-
-      // ★ SHOW BLACK SCREEN IMMEDIATELY (zero delay) on 3rd tap
-      // Do NOT wait for a setTimeout — the 300 ms gap was causing the white flash
-      startSilentMode();
+      silentPendingTimer = setTimeout(function() {
+        tapTimes = [];
+        var overlay = document.getElementById('sos-countdown-overlay');
+        if (overlay) overlay.classList.remove('active');
+        startSilentMode();
+      }, 400);
     }
   }
 
@@ -478,7 +478,10 @@ SafeHer.sos = (function() {
         var active = SafeHer.api && SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
         if (active) {
           active.id = created.id;
-          if (created.shareToken) active.shareToken = created.shareToken;
+          if (created.shareToken) {
+            active.shareToken = created.shareToken;
+            currentShareToken = created.shareToken;
+          }
           SafeHer.api.setActiveSos(active);
         }
         if (SafeHer.sentinel && typeof SafeHer.sentinel.updateAlertId === 'function') {
@@ -564,7 +567,16 @@ SafeHer.sos = (function() {
 
     // Live Sentinel™: Start 1-way real-time ambient audio uplink for emergency contacts
     if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
-      try { SafeHer.sentinel.start(currentAlertId, currentShareToken); } catch(e) {}
+      try {
+        var sentinelPromise = SafeHer.sentinel.start(currentAlertId, currentShareToken);
+        if (sentinelPromise && typeof sentinelPromise.catch === 'function') {
+          sentinelPromise.catch(function(err) {
+            console.warn('[SafeHer SOS] Live Sentinel background start non-fatal:', err);
+          });
+        }
+      } catch(e) {
+        console.warn('[SafeHer SOS] Live Sentinel start sync error:', e);
+      }
     }
 
     // Now resolve real location in the background

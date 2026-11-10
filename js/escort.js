@@ -3892,51 +3892,64 @@ SafeHer.escort = (function() {
   // ─── Native Web Share & Copy ───────────────────────────────
 
   function shareNative() {
-
     if (!activeEscort) return;
-
     var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
-
     var userName = (user && user.name) ? user.name : 'I';
-
     var dest = activeEscort.dest_name || 'destination';
-
-
-
     var tokens = activeEscort.tokens || {};
-
     var firstCid = Object.keys(tokens)[0];
-
     var token = firstCid ? tokens[firstCid] : '';
-
+    var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
     var link = (activeEscort.share_links && activeEscort.share_links[firstCid]) ||
-
-      (window.location.origin + '/track.html?t=' + token);
-
-
-
-    var shareText = userName + ' started an Escort Mode journey to ' + dest + '. Follow live here: ' + link;
-
-
+      (frontendBase.replace(/\/+$/, '') + '/track.html' + (token ? ('?t=' + token) : ''));
+    var shareText = '🛡️ *SafeHer Ride & Escort Alert*\n\n*' + userName + '* has started a journey to *' + dest + '*.\n\n📍 Follow live journey & GPS here:\n' + link;
 
     if (navigator.share) {
-
       navigator.share({
-
         title: 'SafeHer Escort Mode Journey',
-
         text: shareText,
-
         url: link
-
-      }).catch(function() {});
-
+      }).catch(function() {
+        shareWhatsApp();
+      });
     } else {
-
-      copyLink(link);
-
+      shareWhatsApp();
     }
+  }
 
+  function shareWhatsApp() {
+    if (!activeEscort) return;
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
+    var userName = (user && user.name) ? user.name : 'I';
+    var dest = activeEscort.dest_name || 'destination';
+    var tokens = activeEscort.tokens || {};
+    var firstCid = Object.keys(tokens)[0];
+    var token = firstCid ? tokens[firstCid] : '';
+    var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
+    var link = (activeEscort.share_links && activeEscort.share_links[firstCid]) ||
+      (frontendBase.replace(/\/+$/, '') + '/track.html' + (token ? ('?t=' + token) : ''));
+    var shareText = '🛡️ *SafeHer Ride & Escort Alert*\n\n*' + userName + '* has started a journey to *' + dest + '*.\n\n📍 Follow live journey & GPS here:\n' + link;
+
+    var targetPhone = '';
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if (activeEscort.contact_ids && activeEscort.contact_ids.length > 0) {
+      for (var i = 0; i < contacts.length; i++) {
+        if (activeEscort.contact_ids.indexOf(contacts[i].id) !== -1 && contacts[i].phone) {
+          targetPhone = contacts[i].phone.replace(/\D/g, '');
+          break;
+        }
+      }
+    }
+    if (!targetPhone && contacts.length > 0 && contacts[0].phone) {
+      targetPhone = contacts[0].phone.replace(/\D/g, '');
+    }
+    if (targetPhone.length === 10) targetPhone = '91' + targetPhone;
+
+    var waUrl = targetPhone
+      ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(shareText))
+      : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText));
+
+    window.open(waUrl, '_blank');
   }
 
 
@@ -4248,7 +4261,7 @@ SafeHer.escort = (function() {
     closeSummary: closeSummary,
 
     shareNative: shareNative,
-
+    shareWhatsApp: shareWhatsApp,
     copyLink: copyLink
 
   };
