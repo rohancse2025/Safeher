@@ -428,6 +428,7 @@ SafeHer.sos = (function() {
   // ─── Silent Mode ──────────────────────────────────────────
   // Note: in production, silent background alert push to contacts will be handled via the backend.
   var silentTapTimes = [];
+  var silentExiting = false; // guard: only one PIN prompt at a time
 
   function startSilentMode() {
     triggerActiveAlert('silent');
@@ -453,16 +454,24 @@ SafeHer.sos = (function() {
   }
 
   function promptExitSilent() {
+    if (silentExiting) return; // prevent double-trigger
+    silentExiting = true;
+    silentTapTimes = []; // clear accumulated taps
     SafeHer.askPin(
       function(enteredPin) {
+        silentExiting = false;
         endAlertSilently(enteredPin || '1234');
       },
-      function() {},
+      function() {
+        silentExiting = false;
+        silentTapTimes = []; // clear again after cancel so no immediate re-trigger
+      },
       { blackTheme: true }
     );
   }
 
   function onSilentScreenTap() {
+    if (silentExiting) return; // ignore taps while PIN prompt is open
     if (navigator.vibrate) {
       try { navigator.vibrate(40); } catch(e) {}
     }
@@ -476,12 +485,16 @@ SafeHer.sos = (function() {
     }
   }
 
+
   function endAlertSilently(enteredPin) {
+    silentExiting = false;
+    silentTapTimes = [];
     hideOfflineFallback();
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
     }
+
     stopTrackingInterval();
     stopDurationCounter();
     stopVolunteerStatusPolling();
