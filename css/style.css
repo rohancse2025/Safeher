@@ -798,23 +798,36 @@ body {
 /* Chips */
 .chip-row {
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 6px 2px;
+  margin: 10px 0 4px 0;
+}
+.chip-row::-webkit-scrollbar {
+  display: none;
 }
 
 .chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 16px;
+  padding: 7px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-btn);
+  border-radius: 20px;
   background: var(--white);
   cursor: pointer;
   font-family: 'Poppins', sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-dark);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 36px;
+  line-height: 1.2;
   transition: all 0.2s ease;
 }
 
@@ -828,6 +841,40 @@ body {
 
 .chip.chip-active .material-symbols-rounded {
   color: #9E1B32 !important;
+}
+
+.chip .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--crimson);
+}
+
+/* Feature Card Test Button (Clean, compact, no global .btn conflict) */
+.btn-card-test {
+  background: #FFFFFF !important;
+  color: var(--crimson) !important;
+  border: 1px solid #EAD3DA !important;
+  border-radius: 8px !important;
+  padding: 4px 12px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  width: auto !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-family: inherit !important;
+  text-decoration: none !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-card-test:hover,
+.btn-card-test:active {
+  background: #FFF1F2 !important;
+  border-color: #FDA4AF !important;
 }
 
 /* PocketGuard Card & Modal Styling */

@@ -392,17 +392,46 @@
   function updateSentinelChipUi(active) {
     var chip = document.getElementById('chip-sentinel-status');
     var dot = document.getElementById('sentinel-chip-dot');
-    if (!chip) return;
+    var s = getSettings();
+    var isEnabled = s.enabled;
 
-    if (active) {
-      chip.classList.add('chip-active');
-      if (dot) dot.style.background = '#4CAF50';
-      chip.title = 'Live Sentinel: Uplink Active';
-    } else {
-      chip.classList.remove('chip-active');
-      var s = getSettings();
-      if (dot) dot.style.background = s.micPreAuthorized ? '#2196F3' : '#9E9E9E';
-      chip.title = s.micPreAuthorized ? 'Live Sentinel: Ready (Mic authorized)' : 'Live Sentinel: Tap to test';
+    if (chip) {
+      if (active) {
+        chip.classList.add('chip-active');
+        if (dot) dot.style.background = '#4CAF50';
+        chip.title = 'Live Sentinel: Uplink Active';
+      } else if (isEnabled) {
+        chip.classList.add('chip-active');
+        if (dot) dot.style.background = s.micPreAuthorized ? '#2196F3' : '#4CAF50';
+        chip.title = s.micPreAuthorized ? 'Live Sentinel: Ready (Mic authorized)' : 'Live Sentinel: Ready';
+      } else {
+        chip.classList.remove('chip-active');
+        if (dot) dot.style.background = '#9E9E9E';
+        chip.title = 'Live Sentinel: OFF';
+      }
+    }
+
+    var chipText = document.getElementById('home-chip-sentinel-text');
+    if (chipText) {
+      chipText.textContent = 'Sentinel: ' + (isEnabled ? 'ON' : 'OFF');
+    }
+
+    var pill = document.getElementById('sentinel-home-status-pill');
+    if (pill) {
+      pill.textContent = isEnabled ? 'READY' : 'OFF';
+      pill.style.background = isEnabled ? '#ECFDF5' : '#F3F4F6';
+      pill.style.color = isEnabled ? '#047857' : '#6B7280';
+    }
+
+    var homeSwitch = document.getElementById('sentinel-toggle-switch');
+    if (homeSwitch) homeSwitch.checked = isEnabled;
+
+    var modalSwitch = document.getElementById('sentinel-modal-switch');
+    if (modalSwitch) modalSwitch.checked = isEnabled;
+
+    var activeDetails = document.getElementById('sentinel-active-details');
+    if (activeDetails) {
+      activeDetails.style.display = isEnabled ? 'flex' : 'none';
     }
   }
 
@@ -435,16 +464,7 @@
     var s = getSettings();
     s.enabled = checked;
     saveSettings(s);
-    var pill = document.getElementById('sentinel-home-status-pill');
-    var chipText = document.getElementById('home-chip-sentinel-text');
-    if (pill) {
-      pill.textContent = checked ? 'READY' : 'OFF';
-      pill.style.background = checked ? '#ECFDF5' : '#F3F4F6';
-      pill.style.color = checked ? '#047857' : '#6B7280';
-    }
-    if (chipText) {
-      chipText.textContent = 'Sentinel: ' + (checked ? 'ON' : 'OFF');
-    }
+    updateSentinelChipUi(false);
   };
 
   window.startSentinelMicTest = async function() {
