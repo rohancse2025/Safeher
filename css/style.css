@@ -2576,10 +2576,18 @@ body:has(.pin-pad-overlay.active) #silent-overlay {
   pointer-events: none !important;
 }
 
-/* Crisp, High-Contrast Black Keypad for Silent & Black Mode */
-.pin-pad-overlay.pin-silent-mode,
-.pin-pad-overlay.pin-black-theme,
-html.silent-active .pin-pad-overlay {
+/* Inactive overlay is ALWAYS completely hidden from layout and touch */
+.pin-pad-overlay:not(.active) {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Crisp, High-Contrast Black Keypad for Silent & Black Mode (ACTIVE ONLY) */
+.pin-pad-overlay.active.pin-silent-mode,
+.pin-pad-overlay.active.pin-black-theme,
+html.silent-active .pin-pad-overlay.active {
   background: #000000 !important;
   background-color: #000000 !important;
   color: #FFFFFF !important;

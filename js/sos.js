@@ -827,6 +827,19 @@ SafeHer.sos = (function() {
     lastEndedPin = enteredPin || '1234';
     hideOfflineFallback();
     hideSilentOverlay();
+
+    // Guarantee PIN pad is completely closed, classes removed, and hidden
+    if (SafeHer.pin && SafeHer.pin.closePad) {
+      try { SafeHer.pin.closePad(); } catch(e) {}
+    }
+    var pinPadEl = document.getElementById('pin-pad-overlay');
+    if (pinPadEl) {
+      pinPadEl.classList.remove('active', 'pin-silent-mode', 'pin-black-theme');
+      pinPadEl.style.display = 'none';
+    }
+    document.documentElement.classList.remove('silent-active');
+    document.documentElement.style.backgroundColor = '';
+
     try {
       localStorage.removeItem('safeher_silent_sos_active');
       localStorage.removeItem('safeher_silent_alert_id');

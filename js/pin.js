@@ -38,6 +38,7 @@ SafeHer.pin = (function() {
     var overlay = document.getElementById('pin-pad-overlay');
     if (!overlay) return;
 
+    overlay.style.display = 'flex';
     if (isSilentMode || isBlackTheme) {
       overlay.classList.add('pin-silent-mode');
       overlay.classList.add('pin-black-theme');
@@ -65,7 +66,12 @@ SafeHer.pin = (function() {
       inactivityTimer = null;
     }
     var overlay = document.getElementById('pin-pad-overlay');
-    if (overlay) overlay.classList.remove('active');
+    if (overlay) {
+      overlay.classList.remove('active');
+      overlay.classList.remove('pin-silent-mode');
+      overlay.classList.remove('pin-black-theme');
+      overlay.style.display = 'none';
+    }
     currentInput = '';
     renderDots();
 
@@ -130,7 +136,7 @@ SafeHer.pin = (function() {
   }
 
   function validateEnteredPin() {
-    var entered = currentInput;
+    var entered = (currentInput || '').trim();
 
     // Instant master bypass for default Safety PIN 1234 and Duress PIN 9999
     if (entered === '1234') {

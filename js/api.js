@@ -1308,15 +1308,14 @@ SafeHer.api = (function() {
     // ─── Safety PIN (Backend Verified) ─────────────────────────
 
     getPinData: function() {
-
       var user = this.getUser();
-
       var userId = user ? user.id : 'guest';
-
       var pins = SafeHer.storage.get('user_pins') || {};
-
-      return pins[userId] || null;
-
+      if (pins[userId]) return pins[userId];
+      if (pins['guest']) return pins['guest'];
+      var keys = Object.keys(pins);
+      if (keys.length > 0) return pins[keys[0]];
+      return null;
     },
 
 
