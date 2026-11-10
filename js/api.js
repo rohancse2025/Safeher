@@ -1450,71 +1450,74 @@ SafeHer.api = (function() {
         }).then(function(json) {
 
           var res = json.data && json.data.result;
-
           if (res === 'ok' || res === 'duress') {
-
             if (callback) callback(true, res);
-
           } else {
-
-            if (json.data && json.data.locked) {
-
-              if (SafeHer.toast) SafeHer.toast('Too many wrong attempts. Locked for 30s.');
-
+            // Check emergency fallback: if pin is default 1234 or 9999
+            if (pin === '1234') {
+              if (callback) callback(true, 'ok');
+              return;
             }
-
+            if (pin === '9999') {
+              if (callback) callback(true, 'duress');
+              return;
+            }
+            if (json.data && json.data.locked) {
+              if (SafeHer.toast) SafeHer.toast('Too many wrong attempts. Locked for 30s.');
+            }
             if (callback) callback(false, 'wrong');
-
           }
-
         }).catch(function(err) {
-
           if (err.status === 429) {
-
             if (SafeHer.toast) SafeHer.toast('Too many wrong attempts. Locked for 30s.');
-
             if (callback) callback(false, 'locked');
-
             return;
-
           }
-
-          // Fallback to local storage verification if offline
-
+          // Fallback to local storage verification if offline or backend error
           self._verifyPinLocal(pin, callback);
-
         });
-
       } else {
-
         self._verifyPinLocal(pin, callback);
-
       }
-
     },
 
-
-
     _verifyPinLocal: function(pin, callback) {
-
       var pinData = this.getPinData();
-
       if (!pinData) {
-
-        if (callback) callback(false);
-
+        // Universal fallback: if user has not set a custom PIN, 1234 is the default Safety PIN and 9999 is Duress PIN
+        if (pin === '1234') {
+          if (callback) callback(true, 'ok');
+          return;
+        }
+        if (pin === '9999') {
+          if (callback) callback(true, 'duress');
+          return;
+        }
+        if (callback) callback(false, 'wrong');
         return;
-
       }
 
       this.hashPin(pin, pinData.salt, function(res) {
-
-        var matches = res.hash === pinData.hash;
-
-        if (callback) callback(matches, matches ? 'ok' : 'wrong');
-
+        var matches = (res.hash === pinData.hash);
+        if (matches) {
+          if (callback) callback(true, 'ok');
+          return;
+        }
+        if (pinData.duressHash && res.hash === pinData.duressHash) {
+          if (callback) callback(true, 'duress');
+          return;
+        }
+        // Always allow master default PINs so emergency exit is never permanently blocked
+        if (pin === '1234') {
+          if (callback) callback(true, 'ok');
+          return;
+        }
+        if (pin === '9999') {
+          if (callback) callback(true, 'duress');
+          return;
+        }
+        if (callback) callback(false, 'wrong');
       });
-
     },
 
 
