@@ -1,5 +1,5 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v63';
+var CACHE_NAME = 'safeher-v64';
 
 var ASSETS = [
   './',
@@ -71,17 +71,12 @@ self.addEventListener('activate', function(event) {
     caches.keys().then(function(keys) {
       return Promise.all(
         keys.filter(function(k) { return k !== CACHE_NAME; }).map(function(k) {
+          console.log('[SW] Deleting stale cache:', k);
           return caches.delete(k);
         })
       );
     }).then(function() {
       return self.clients.claim();
-    }).then(function() {
-      return self.clients.matchAll({ type: 'window' });
-    }).then(function(clients) {
-      clients.forEach(function(c) {
-        c.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME });
-      });
     })
   );
 });

@@ -273,3 +273,8 @@ SafeHer.pin = (function() {
     submitChangePin: submitChangePin
   };
 })();
+
+// Ensure SafeHer.askPin is available synchronously immediately upon script parse
+if (SafeHer.pin && SafeHer.pin.askPin) {
+  SafeHer.askPin = SafeHer.pin.askPin;
+}

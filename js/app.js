@@ -56,19 +56,21 @@ SafeHer.router = (function() {
   var current = null;
   var hooks   = {};   // onShow callbacks keyed by screen id
 
-  function go(id) {
-    // Block router screen change and fading while Silent SOS is active
-    try {
-      if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
-        console.log('[SafeHer Router] Screen change blocked in Silent SOS (flag active):', id);
-        return;
-      }
-    } catch(e) {}
-    if (SafeHer.sos && SafeHer.sos.getState) {
-      var s = SafeHer.sos.getState();
-      if (s === 'silent' || s === 'pin') {
-        console.log('[SafeHer Router] Screen change blocked in Silent SOS:', id);
-        return;
+  function go(id, force) {
+    // Block router screen change and fading while Silent SOS is active (unless force=true)
+    if (!force) {
+      try {
+        if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
+          console.log('[SafeHer Router] Screen change blocked in Silent SOS (flag active):', id);
+          return;
+        }
+      } catch(e) {}
+      if (SafeHer.sos && SafeHer.sos.getState) {
+        var s = SafeHer.sos.getState();
+        if (s === 'silent' || s === 'pin') {
+          console.log('[SafeHer Router] Screen change blocked in Silent SOS:', id);
+          return;
+        }
       }
     }
 
@@ -86,8 +88,8 @@ SafeHer.router = (function() {
     var next = document.getElementById('screen-' + id);
     if (!next) {
       console.warn('SafeHer: no screen #screen-' + id);
-      if (id !== '404' && document.getElementById('screen-404')) {
-        return go('404');
+      if (id !== 'home' && document.getElementById('screen-home')) {
+        return go('home', force);
       }
       return;
     }
@@ -257,7 +259,7 @@ SafeHer.pwa = (function() {
 window.addEventListener('DOMContentLoaded', function() {
   // Register Service Worker with relative path and update check
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=63').then(function(reg) {
+    navigator.serviceWorker.register('./sw.js?v=64').then(function(reg) {
       if (reg && reg.update) reg.update();
     }).catch(function(err) {
       console.warn('SW registration failed:', err);
@@ -338,6 +340,7 @@ window.addEventListener('DOMContentLoaded', function() {
   try {
     if (localStorage.getItem('safeher_silent_sos_active') === 'true') {
       console.log('[SafeHer App] Active Silent SOS detected on startup - restoring black screen');
+      SafeHer.router.go('home', true); // Ensure baseline screen is active underneath
       if (SafeHer.sos && SafeHer.sos.restoreSilentMode) {
         SafeHer.sos.restoreSilentMode();
       }

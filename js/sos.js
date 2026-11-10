@@ -370,6 +370,10 @@ SafeHer.sos = (function() {
   }
 
   function cancelCountdown() {
+    if (currentState !== 'countdown') {
+      console.log('[SafeHer SOS] cancelCountdown() ignored: not in countdown (current state is ' + currentState + ')');
+      return;
+    }
     if (silentPendingTimer) {
       clearTimeout(silentPendingTimer);
       silentPendingTimer = null;
@@ -383,6 +387,9 @@ SafeHer.sos = (function() {
     if (overlay) overlay.classList.remove('active');
     setState('idle');
     SafeHer.toast('SOS alert cancelled');
+    if (SafeHer.router && SafeHer.router.go) {
+      SafeHer.router.go('home');
+    }
   }
 
   function onOverlayTap(e) {
