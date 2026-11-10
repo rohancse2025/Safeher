@@ -5,7 +5,7 @@ import secrets
 import datetime
 import math
 import json
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.security import check_password_hash
 
 from db import get_db
@@ -2638,3 +2638,310 @@ def end_ride_safety():
         "ok": True,
         "message": "Ride ended safely. Arrival notification dispatched via WhatsApp & Email."
     }), 200
+
+
+# ─── Live Sentinel™: Real-Time Ambient Audio Monitoring ────────
+
+def get_sentinel_dir(alert_id):
+    """Returns local storage directory for Live Sentinel ambient audio chunks."""
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def resolve_alert_from_token(token, conn=None):
+    """
+    Resolves alert dict from an emergency contact token or public share token.
+    Works seamlessly for alert_contacts, alerts.share_token, escort_contacts, etc.
+    """
+    clean_token = (token or '').strip()
+    if not clean_token:
+        return None
+    close_conn = False
+    if conn is None:
+        conn = get_db()
+        close_conn = True
+    cursor = conn.cursor()
+
+    # 1. Check alert_contacts (individual contact link)
+    cursor.execute('''
+        SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
+               u.name AS owner_name, c.name AS contact_name
+        FROM alert_contacts ac
+        JOIN alerts a ON ac.alert_id = a.id
+        JOIN users u ON a.user_id = u.id
+        JOIN contacts c ON ac.contact_id = c.id
+        WHERE ac.token = ?;
+    ''', (clean_token,))
+    row = cursor.fetchone()
+
+    # 2. Check alerts.share_token (general share link)
+    if not row:
+        cursor.execute('''
+            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
+                   u.name AS owner_name
+            FROM alerts a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.share_token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 3. Check escort_contacts linked alerts
+    if not row:
+        cursor.execute('''
+            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
+                   u.name AS owner_name
+            FROM escort_contacts ec
+            JOIN escorts e ON ec.escort_id = e.id
+            JOIN alerts a ON e.alert_id = a.id
+            JOIN users u ON a.user_id = u.id
+            WHERE ec.token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    if close_conn:
+        conn.close()
+
+    return dict(row) if row else None
+
+
+@alerts_bp.route('/api/alerts/<alert_id>/live-audio', methods=['POST'])
+def upload_sentinel_audio(alert_id):
+    """
+    Uplink endpoint for the victim's phone to stream standalone ambient audio chunks.
+    Accepts multipart/form-data or application/json (base64 audio).
+    """
+    try:
+        aid = int(alert_id)
+    except (ValueError, TypeError):
+        aid = str(alert_id).strip()
+
+    s_dir = get_sentinel_dir(aid)
+
+    sequence = 0
+    amplitude_db = 35.0
+    noise_level = "Ambient sound"
+    mime_type = "audio/webm"
+    duration_ms = 4000
+    ext = ".webm"
+
+    if request.files and ('audio' in request.files or 'file' in request.files):
+        f = request.files.get('audio') or request.files.get('file')
+        try: sequence = int(request.form.get('sequence', 0))
+        except Exception: sequence = 0
+        try: amplitude_db = float(request.form.get('amplitude_db', 35.0))
+        except Exception: amplitude_db = 35.0
+        noise_level = request.form.get('noise_level', 'Ambient sound')
+        mime_type = request.form.get('mime_type', 'audio/webm')
+        try: duration_ms = int(request.form.get('duration_ms', 4000))
+        except Exception: duration_ms = 4000
+
+        if 'mp4' in mime_type: ext = '.mp4'
+        elif 'ogg' in mime_type: ext = '.ogg'
+        elif 'aac' in mime_type: ext = '.aac'
+
+        f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
+        f.save(f_path)
+    elif request.is_json:
+        data = request.get_json(silent=True) or {}
+        sequence = int(data.get('sequence', 0))
+        amplitude_db = float(data.get('amplitude_db', 35.0))
+        noise_level = data.get('noise_level', 'Ambient sound')
+        mime_type = data.get('mime_type', 'audio/webm')
+        duration_ms = int(data.get('duration_ms', 4000))
+
+        if 'mp4' in mime_type: ext = '.mp4'
+        elif 'ogg' in mime_type: ext = '.ogg'
+        elif 'aac' in mime_type: ext = '.aac'
+
+        b64 = data.get('audio_base64')
+        if b64:
+            import base64
+            if ',' in b64:
+                b64 = b64.split(',', 1)[1]
+            audio_bytes = base64.b64decode(b64)
+            f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
+            with open(f_path, 'wb') as f_out:
+                f_out.write(audio_bytes)
+    else:
+        raw_body = request.get_data()
+        if raw_body and len(raw_body) > 64:
+            try: sequence = int(request.args.get('sequence', 0))
+            except Exception: sequence = 0
+            f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
+            with open(f_path, 'wb') as f_out:
+                f_out.write(raw_body)
+
+    # Save latest status metadata
+    now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    latest_meta = {
+        "alert_id": aid,
+        "sequence": sequence,
+        "timestamp": now_utc,
+        "amplitude_db": round(amplitude_db, 1),
+        "noise_level": noise_level,
+        "mime_type": mime_type,
+        "duration_ms": duration_ms,
+        "filename": f"chunk_{sequence}{ext}"
+    }
+    with open(os.path.join(s_dir, 'latest.json'), 'w', encoding='utf-8') as f_meta:
+        json.dump(latest_meta, f_meta)
+
+    # Rolling window: keep latest 15 chunks, remove older ones to save disk
+    try:
+        all_chunks = sorted(
+            [fn for fn in os.listdir(s_dir) if fn.startswith('chunk_') and not fn.endswith('.json')],
+            key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
+        )
+        if len(all_chunks) > 15:
+            for old_fn in all_chunks[:-15]:
+                try: os.remove(os.path.join(s_dir, old_fn))
+                except Exception: pass
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok": True,
+        "sequence": sequence,
+        "alert_id": aid,
+        "message": "Sentinel ambient audio chunk saved"
+    }), 200
+
+
+@alerts_bp.route('/api/track/<token>/live-audio', methods=['GET'])
+def get_sentinel_live_audio(token):
+    """
+    Public live audio metadata endpoint for emergency contacts on track.html.
+    Returns latest noise level, decibel measurement, active stream status, and chunk info.
+    """
+    alert = resolve_alert_from_token(token)
+    if not alert:
+        return jsonify({"ok": False, "error": "Tracking token invalid or expired"}), 404
+
+    alert_id = alert['id']
+    status = alert['status']
+    is_active = (status == 'active')
+
+    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
+    latest_file = os.path.join(s_dir, 'latest.json')
+
+    latest_data = None
+    if os.path.exists(latest_file):
+        try:
+            with open(latest_file, 'r', encoding='utf-8') as f:
+                latest_data = json.load(f)
+        except Exception:
+            latest_data = None
+
+    recent_chunks = []
+    if os.path.exists(s_dir):
+        try:
+            files = sorted(
+                [f for f in os.listdir(s_dir) if f.startswith('chunk_') and not f.endswith('.json')],
+                key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
+            )
+            for f in files[-5:]:
+                m = re.search(r'chunk_(\d+)', f)
+                seq_num = int(m.group(1)) if m else 0
+                recent_chunks.append({
+                    "sequence": seq_num,
+                    "filename": f,
+                    "url": f"/api/track/{token}/live-audio/chunks/{seq_num}"
+                })
+        except Exception:
+            pass
+
+    owner_first_name = (alert.get('owner_name') or 'User').split()[0]
+    return jsonify({
+        "ok": True,
+        "active": is_active,
+        "alert_status": status,
+        "alert_id": alert_id,
+        "first_name": owner_first_name,
+        "has_audio": bool(latest_data),
+        "latest_seq": latest_data.get('sequence', 0) if latest_data else 0,
+        "amplitude_db": latest_data.get('amplitude_db', 0) if latest_data else 0,
+        "noise_level": latest_data.get('noise_level', 'Ambient listening') if latest_data else 'Listening for audio stream...',
+        "timestamp": latest_data.get('timestamp') if latest_data else None,
+        "mime_type": latest_data.get('mime_type', 'audio/webm') if latest_data else 'audio/webm',
+        "chunk_url": f"/api/track/{token}/live-audio/chunks/{latest_data.get('sequence')}" if (latest_data and latest_data.get('sequence') is not None) else None,
+        "recent_chunks": recent_chunks
+    }), 200
+
+
+@alerts_bp.route('/api/track/<token>/live-audio/chunks/<int:sequence>', methods=['GET'])
+def get_sentinel_chunk_file(token, sequence):
+    """
+    Serves a specific audio chunk for playback in emergency contact's browser.
+    """
+    alert = resolve_alert_from_token(token)
+    if not alert:
+        return jsonify({"ok": False, "error": "Tracking token invalid or expired"}), 404
+
+    alert_id = alert['id']
+    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
+
+    match_file = None
+    for ext in ['.webm', '.mp4', '.ogg', '.aac', '.wav']:
+        fn = os.path.join(s_dir, f"chunk_{sequence}{ext}")
+        if os.path.exists(fn):
+            match_file = fn
+            break
+
+    if not match_file and os.path.exists(s_dir):
+        for f in os.listdir(s_dir):
+            if f.startswith(f"chunk_{sequence}."):
+                match_file = os.path.join(s_dir, f)
+                break
+
+    if not match_file or not os.path.exists(match_file):
+        return jsonify({"ok": False, "error": "Audio chunk not found"}), 404
+
+    mime = 'audio/webm'
+    if match_file.endswith('.mp4'): mime = 'audio/mp4'
+    elif match_file.endswith('.ogg'): mime = 'audio/ogg'
+    elif match_file.endswith('.aac'): mime = 'audio/aac'
+    elif match_file.endswith('.wav'): mime = 'audio/wav'
+
+    resp = send_file(match_file, mimetype=mime, as_attachment=False)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['Accept-Ranges'] = 'bytes'
+    return resp
+
+
+@alerts_bp.route('/api/track/<token>/live-audio/download', methods=['GET'])
+def download_sentinel_audio(token):
+    """
+    Allows emergency contacts to download the ambient audio clip as police evidence.
+    """
+    alert = resolve_alert_from_token(token)
+    if not alert:
+        return jsonify({"ok": False, "error": "Tracking token invalid or expired"}), 404
+
+    alert_id = alert['id']
+    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
+
+    if not os.path.exists(s_dir):
+        return jsonify({"ok": False, "error": "No live audio recorded for this alert"}), 404
+
+    files = sorted(
+        [f for f in os.listdir(s_dir) if f.startswith('chunk_') and not f.endswith('.json')],
+        key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
+    )
+    if not files:
+        return jsonify({"ok": False, "error": "No audio files available"}), 404
+
+    target_file = os.path.join(s_dir, files[-1])
+    mime = 'audio/mp4' if target_file.endswith('.mp4') else 'audio/webm'
+    ext = '.mp4' if target_file.endswith('.mp4') else '.webm'
+
+    resp = send_file(
+        target_file,
+        mimetype=mime,
+        as_attachment=True,
+        download_name=f"SafeHer_Sentinel_Evidence_{alert_id}{ext}"
+    )
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+

@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=16" />
+  <link rel="stylesheet" href="./css/style.css?v=70" />
   <style>
     body {
       background: #FCEFF3;
@@ -390,6 +390,235 @@
       color: #A80F3C;
       margin-bottom: 10px;
     }
+
+    /* ─── Live Sentinel™ Ambient Audio Monitor Card ─── */
+    .track-sentinel-card {
+      background: #FFFFFF;
+      border: 1.5px solid #A80F3C;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 14px rgba(168, 15, 60, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+    .track-sentinel-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #A80F3C, #FF6F91, #A80F3C);
+      background-size: 200% 100%;
+      animation: sentinelGrad 3s linear infinite;
+    }
+    @keyframes sentinelGrad {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+    .sentinel-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .sentinel-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sentinel-pulse-dot {
+      width: 10px;
+      height: 10px;
+      background: #E53935;
+      border-radius: 50%;
+      display: inline-block;
+      box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7);
+      animation: sentinelPulse 1.6s infinite;
+    }
+    @keyframes sentinelPulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7); }
+      70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(229, 57, 53, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); }
+    }
+    .sentinel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #A80F3C;
+      margin: 0;
+      letter-spacing: 0.5px;
+    }
+    .sentinel-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sentinel-badge.badge-active {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #FFCDD2;
+    }
+    .sentinel-badge.badge-listening {
+      background: #E8F5E9;
+      color: #1B5E20;
+      border: 1px solid #C8E6C9;
+      animation: listeningGlow 1.2s infinite alternate;
+    }
+    @keyframes listeningGlow {
+      from { box-shadow: 0 0 2px #4CAF50; }
+      to { box-shadow: 0 0 8px #4CAF50; }
+    }
+    .sentinel-badge.badge-ended {
+      background: #EEEEEE;
+      color: #777;
+      border: 1px solid #DDD;
+    }
+    .sentinel-subtext {
+      font-size: 11px;
+      color: #666;
+      margin: 0 0 12px;
+      line-height: 1.4;
+    }
+    .sentinel-meter-box {
+      background: #FDF4F6;
+      border: 1px solid #EAD3DA;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .sentinel-meter-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .sentinel-decibel-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #A80F3C;
+    }
+    .sentinel-threat-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .threat-ambient {
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+    .threat-speech {
+      background: #FFF3CD;
+      color: #856404;
+    }
+    .threat-high {
+      background: #FFEBEE;
+      color: #C62828;
+      font-weight: 700;
+      animation: highThreatBlink 1s infinite alternate;
+    }
+    @keyframes highThreatBlink {
+      from { opacity: 0.8; }
+      to { opacity: 1; }
+    }
+    .sentinel-waveform-bars {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 3px;
+      height: 32px;
+      padding: 2px 4px;
+      background: #FFFFFF;
+      border-radius: 6px;
+      border: 1px solid #EAD3DA;
+    }
+    .sentinel-waveform-bars .s-bar {
+      flex: 1;
+      background: #A80F3C;
+      border-radius: 2px;
+      min-height: 4px;
+      height: 6px;
+      transition: height 0.18s ease-in-out;
+      opacity: 0.8;
+    }
+    .sentinel-waveform-bars.is-live .s-bar {
+      opacity: 1;
+      animation: soundBarPulse 1s ease-in-out infinite alternate;
+    }
+    .sentinel-waveform-bars.is-live .s-bar:nth-child(2n) { animation-delay: 0.2s; }
+    .sentinel-waveform-bars.is-live .s-bar:nth-child(3n) { animation-delay: 0.4s; }
+    .sentinel-waveform-bars.is-live .s-bar:nth-child(4n) { animation-delay: 0.1s; }
+    .sentinel-waveform-bars.is-live .s-bar:nth-child(5n) { animation-delay: 0.3s; }
+    @keyframes soundBarPulse {
+      0% { height: 6px; }
+      100% { height: 26px; }
+    }
+    .sentinel-controls-row {
+      margin-bottom: 10px;
+    }
+    .btn-sentinel-listen {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      background: #A80F3C;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      box-shadow: 0 3px 8px rgba(168, 15, 60, 0.25);
+    }
+    .btn-sentinel-listen:active {
+      transform: scale(0.98);
+    }
+    .btn-sentinel-listen.is-listening {
+      background: #1B5E20;
+      box-shadow: 0 3px 8px rgba(27, 94, 32, 0.35);
+    }
+    .sentinel-aux-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: #777;
+    }
+    .sentinel-time-info {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-sentinel-clip {
+      padding: 6px 12px;
+      background: #FFFFFF;
+      border: 1px solid #EAD3DA;
+      color: #A80F3C;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-sentinel-clip:hover {
+      background: #FCEFF3;
+    }
   </style>
   <link rel="icon" type="image/png" href="./assets/icon-192.png?v=2" />
 </head>
@@ -490,6 +719,65 @@
 
       <!-- Leaflet Live Map -->
       <div id="track-map"></div>
+
+      <!-- Live Sentinel™ Ambient Audio Monitor Card -->
+      <div id="track-sentinel-card" class="track-card track-sentinel-card">
+        <div class="sentinel-header-row">
+          <div class="sentinel-title-wrap">
+            <span class="sentinel-pulse-dot"></span>
+            <h3 class="sentinel-title">LIVE SENTINEL™ AMBIENT AUDIO</h3>
+          </div>
+          <span id="sentinel-status-badge" class="sentinel-badge badge-active">Live Uplink</span>
+        </div>
+
+        <p class="sentinel-subtext">
+          Encrypted real-time ambient listen-in from her device. No app required.
+        </p>
+
+        <!-- Noise Threat Level Meter & Waveform Bar -->
+        <div class="sentinel-meter-box">
+          <div class="sentinel-meter-top">
+            <div class="sentinel-decibel-wrap">
+              <span class="material-symbols-rounded" style="font-size:16px;">graphic_eq</span>
+              <span id="sentinel-db-val">-- dB</span>
+            </div>
+            <span id="sentinel-threat-label" class="sentinel-threat-badge threat-ambient">Listening for audio...</span>
+          </div>
+
+          <!-- Live Animated Waveform Bars -->
+          <div class="sentinel-waveform-bars" id="sentinel-waveform">
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+            <div class="s-bar"></div><div class="s-bar"></div><div class="s-bar"></div>
+          </div>
+        </div>
+
+        <!-- Primary 1-Tap Ambient Listen-In Button -->
+        <div class="sentinel-controls-row">
+          <button type="button" id="btn-sentinel-listen" class="btn-sentinel-listen" onclick="toggleSentinelAudio()">
+            <span class="material-symbols-rounded" id="sentinel-listen-icon">volume_up</span>
+            <span id="sentinel-listen-text">Tap to Listen In (Ambient Sound)</span>
+          </button>
+        </div>
+
+        <!-- Audio Player element for streaming audio chunks -->
+        <audio id="sentinel-audio-player" preload="none" playsinline style="display:none;"></audio>
+
+        <!-- Auxiliary Actions: Save Evidence Clip & Audio Time -->
+        <div class="sentinel-aux-row">
+          <div class="sentinel-time-info">
+            <span class="material-symbols-rounded" style="font-size:13px;">history</span>
+            <span id="sentinel-last-heard">Waiting for audio buffer...</span>
+          </div>
+          <button type="button" id="btn-sentinel-save-clip" class="btn-sentinel-clip" onclick="downloadSentinelClip()">
+            <span class="material-symbols-rounded" style="font-size:15px;">download</span>
+            <span>Save Clip</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Contact Response Controls -->
       <div id="track-contact-actions-section" style="margin-bottom: 16px; background: #FFFFFF; border: 1px solid #EAD3DA; border-radius: 8px; padding: 14px;">
@@ -1010,7 +1298,173 @@
         });
       };
 
+      // ─── Live Sentinel™: Real-Time Ambient Listen-In ───────────
+      var sentinelPollTimer = null;
+      var sentinelAudioEl = null;
+      var isSentinelListening = false;
+      var lastPlayedSeq = 0;
+      var queuedChunks = [];
+      var isAudioPlaying = false;
+
+      function getSentinelAudioEl() {
+        if (!sentinelAudioEl) {
+          sentinelAudioEl = document.getElementById('sentinel-audio-player');
+          if (sentinelAudioEl) {
+            sentinelAudioEl.onended = function() {
+              isAudioPlaying = false;
+              playNextQueuedChunk();
+            };
+            sentinelAudioEl.onerror = function() {
+              isAudioPlaying = false;
+              playNextQueuedChunk();
+            };
+          }
+        }
+        return sentinelAudioEl;
+      }
+
+      function playNextQueuedChunk() {
+        if (!isSentinelListening || isAudioPlaying || queuedChunks.length === 0) return;
+        var nextUrl = queuedChunks.shift();
+        var audio = getSentinelAudioEl();
+        if (!audio || !nextUrl) return;
+        isAudioPlaying = true;
+        audio.src = nextUrl;
+        audio.play().catch(function(err) {
+          console.warn('[Sentinel] Autoplay deferred:', err);
+          isAudioPlaying = false;
+        });
+      }
+
+      window.toggleSentinelAudio = function() {
+        var token = getToken();
+        if (!token) return;
+
+        var btn = document.getElementById('btn-sentinel-listen');
+        var icon = document.getElementById('sentinel-listen-icon');
+        var text = document.getElementById('sentinel-listen-text');
+        var badge = document.getElementById('sentinel-status-badge');
+        var wave = document.getElementById('sentinel-waveform');
+
+        isSentinelListening = !isSentinelListening;
+
+        if (isSentinelListening) {
+          if (btn) btn.classList.add('is-listening');
+          if (icon) icon.textContent = 'pause_circle';
+          if (text) text.textContent = 'Listening Live... (Tap to Mute)';
+          if (badge) {
+            badge.className = 'sentinel-badge badge-listening';
+            badge.textContent = 'Streaming Live';
+          }
+          if (wave) wave.classList.add('is-live');
+
+          // Trigger immediate fetch
+          fetchSentinelStatus(token);
+
+          if (sentinelPollTimer) clearInterval(sentinelPollTimer);
+          sentinelPollTimer = setInterval(function() {
+            if (isSentinelListening) fetchSentinelStatus(token);
+          }, 3000);
+
+        } else {
+          if (btn) btn.classList.remove('is-listening');
+          if (icon) icon.textContent = 'volume_up';
+          if (text) text.textContent = 'Tap to Listen In (Ambient Sound)';
+          if (badge) {
+            badge.className = 'sentinel-badge badge-active';
+            badge.textContent = 'Live Uplink';
+          }
+          if (wave) wave.classList.remove('is-live');
+
+          if (sentinelPollTimer) {
+            clearInterval(sentinelPollTimer);
+            sentinelPollTimer = null;
+          }
+          var audio = getSentinelAudioEl();
+          if (audio) {
+            try { audio.pause(); } catch(e) {}
+          }
+          isAudioPlaying = false;
+          queuedChunks = [];
+        }
+      };
+
+      function fetchSentinelStatus(token) {
+        var url = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio';
+        fetch(url)
+          .then(function(res) { return res.json(); })
+          .then(function(res) {
+            if (!res || !res.ok) return;
+
+            var dbEl = document.getElementById('sentinel-db-val');
+            var threatEl = document.getElementById('sentinel-threat-label');
+            var timeEl = document.getElementById('sentinel-last-heard');
+            var badgeEl = document.getElementById('sentinel-status-badge');
+
+            if (!res.active) {
+              if (badgeEl) {
+                badgeEl.className = 'sentinel-badge badge-ended';
+                badgeEl.textContent = 'Stream Ended';
+              }
+              if (threatEl) {
+                threatEl.className = 'sentinel-threat-badge threat-ambient';
+                threatEl.textContent = 'Alert Safe / Ended';
+              }
+              if (timeEl) timeEl.textContent = 'Ambient audio closed';
+              if (isSentinelListening) window.toggleSentinelAudio();
+              return;
+            }
+
+            var db = res.amplitude_db || 35;
+            if (dbEl) dbEl.textContent = db + ' dB';
+
+            if (threatEl) {
+              var noise = res.noise_level || 'Ambient listening';
+              threatEl.textContent = noise;
+              if (db >= 70 || noise.indexOf('⚠️') !== -1 || noise.indexOf('Loud') !== -1) {
+                threatEl.className = 'sentinel-threat-badge threat-high';
+              } else if (db >= 55 || noise.indexOf('Speech') !== -1 || noise.indexOf('Voices') !== -1) {
+                threatEl.className = 'sentinel-threat-badge threat-speech';
+              } else {
+                threatEl.className = 'sentinel-threat-badge threat-ambient';
+              }
+            }
+
+            if (timeEl && res.timestamp) {
+              try {
+                var d = new Date(res.timestamp);
+                timeEl.textContent = 'Heard at ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              } catch (e) {
+                timeEl.textContent = 'Live audio active';
+              }
+            }
+
+            // Queue new audio chunk if sequence changed
+            if (res.chunk_url && res.latest_seq && res.latest_seq > lastPlayedSeq) {
+              lastPlayedSeq = res.latest_seq;
+              var fullChunkUrl = getApiBase() + res.chunk_url;
+              if (isSentinelListening) {
+                queuedChunks.push(fullChunkUrl);
+                if (!isAudioPlaying) {
+                  playNextQueuedChunk();
+                }
+              }
+            }
+          })
+          .catch(function(err) {
+            console.warn('[Sentinel] Track fetch error:', err);
+          });
+      }
+
+      window.downloadSentinelClip = function() {
+        var token = getToken();
+        if (!token) return;
+        var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
+        window.open(downloadUrl, '_blank');
+      };
+
       function fetchTrackData(token) {
+        fetchSentinelStatus(token);
         var url = getApiBase() + '/api/track/' + encodeURIComponent(token);
         fetch(url)
           .then(function(res) {

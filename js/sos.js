@@ -481,6 +481,9 @@ SafeHer.sos = (function() {
           if (created.shareToken) active.shareToken = created.shareToken;
           SafeHer.api.setActiveSos(active);
         }
+        if (SafeHer.sentinel && typeof SafeHer.sentinel.updateAlertId === 'function') {
+          try { SafeHer.sentinel.updateAlertId(created.id, created.shareToken); } catch(e) {}
+        }
         startVolunteerStatusPolling();
       }
     });
@@ -557,6 +560,11 @@ SafeHer.sos = (function() {
           try { SafeHer.vault.startSession('audio', currentAlertId); } catch(e) {}
         }
       }
+    }
+
+    // Live Sentinel™: Start 1-way real-time ambient audio uplink for emergency contacts
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
+      try { SafeHer.sentinel.start(currentAlertId, currentShareToken); } catch(e) {}
     }
 
     // Now resolve real location in the background
@@ -855,6 +863,9 @@ SafeHer.sos = (function() {
     releaseWakeLock();
     if (SafeHer.vault && SafeHer.vault.endSession) {
       try { SafeHer.vault.endSession(); } catch(e) {}
+    }
+    if (SafeHer.sentinel && SafeHer.sentinel.stop) {
+      try { SafeHer.sentinel.stop(); } catch(e) {}
     }
 
     if (document.fullscreenElement && document.exitFullscreen) {
@@ -1263,6 +1274,9 @@ SafeHer.sos = (function() {
     releaseWakeLock();
     if (SafeHer.vault && SafeHer.vault.endSession) {
       SafeHer.vault.endSession();
+    }
+    if (SafeHer.sentinel && SafeHer.sentinel.stop) {
+      try { SafeHer.sentinel.stop(); } catch(e) {}
     }
 
     var endTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
