@@ -32,17 +32,14 @@ SafeHer.pin = (function() {
     activeSuccessCb = onSuccess || null;
     activeFailCb = onFail || null;
     currentInput = '';
-    isSilentMode = !!(options && options.silentMode);
-    isBlackTheme = !!(options && (options.blackTheme || options.silentMode));
+    isSilentMode = !!(options && (options.silentMode || options.isSilent));
+    isBlackTheme = !!(options && (options.blackTheme || options.silentMode || options.isSilent));
 
     var overlay = document.getElementById('pin-pad-overlay');
     if (!overlay) return;
 
-    if (isSilentMode) {
+    if (isSilentMode || isBlackTheme) {
       overlay.classList.add('pin-silent-mode');
-      overlay.classList.add('pin-black-theme');
-    } else if (isBlackTheme) {
-      overlay.classList.remove('pin-silent-mode');
       overlay.classList.add('pin-black-theme');
     } else {
       overlay.classList.remove('pin-silent-mode');
@@ -52,6 +49,13 @@ SafeHer.pin = (function() {
     renderDots();
     updateBlockState();
     overlay.classList.add('active');
+
+    // Guarantee silent overlay never captures clicks while PIN pad is open
+    var silentOverlay = document.getElementById('silent-overlay');
+    if (silentOverlay) {
+      silentOverlay.style.pointerEvents = 'none';
+    }
+
     resetInactivityTimer();
   }
 
@@ -64,12 +68,18 @@ SafeHer.pin = (function() {
     if (overlay) overlay.classList.remove('active');
     currentInput = '';
     renderDots();
+
+    // Re-enable pointer events on silent overlay if still in silent mode
+    var silentOverlay = document.getElementById('silent-overlay');
+    if (silentOverlay) {
+      silentOverlay.style.pointerEvents = '';
+    }
   }
 
   var lastDigitTime = 0;
   function handleDigit(digit) {
     var now = Date.now();
-    if (now - lastDigitTime < 80) return;
+    if (now - lastDigitTime < 50) return;
     lastDigitTime = now;
 
     if (isBlocked) return;
@@ -86,7 +96,7 @@ SafeHer.pin = (function() {
 
   function handleDelete() {
     var now = Date.now();
-    if (now - lastDigitTime < 80) return;
+    if (now - lastDigitTime < 50) return;
     lastDigitTime = now;
 
     if (isBlocked) return;

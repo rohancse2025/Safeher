@@ -2522,11 +2522,9 @@ html.silent-active #app,
 html.silent-active .screen,
 html.silent-active .page-wrap,
 html.silent-active .modal-sheet,
-html.silent-active .modal-backdrop,
-html.silent-active .pin-pad-overlay {
+html.silent-active .modal-backdrop {
   background: #000000 !important;
   background-color: #000000 !important;
-  color: #000000 !important;
   overflow: hidden !important;
 }
 
@@ -2578,8 +2576,10 @@ body:has(.pin-pad-overlay.active) #silent-overlay {
   pointer-events: none !important;
 }
 
-/* Crisp, High-Contrast Black Keypad for Silent Mode */
-.pin-pad-overlay.pin-silent-mode {
+/* Crisp, High-Contrast Black Keypad for Silent & Black Mode */
+.pin-pad-overlay.pin-silent-mode,
+.pin-pad-overlay.pin-black-theme,
+html.silent-active .pin-pad-overlay {
   background: #000000 !important;
   background-color: #000000 !important;
   color: #FFFFFF !important;
@@ -2596,19 +2596,27 @@ body:has(.pin-pad-overlay.active) #silent-overlay {
   -webkit-transform: translateZ(0) !important;
   transform: translateZ(0) !important;
 }
-.pin-pad-overlay.pin-silent-mode * {
+.pin-pad-overlay.pin-silent-mode *,
+.pin-pad-overlay.pin-black-theme *,
+html.silent-active .pin-pad-overlay * {
   box-shadow: none !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-pad-header {
+.pin-pad-overlay.pin-silent-mode .pin-pad-header,
+.pin-pad-overlay.pin-black-theme .pin-pad-header,
+html.silent-active .pin-pad-overlay .pin-pad-header {
   margin-bottom: 22px !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-pad-title {
+.pin-pad-overlay.pin-silent-mode .pin-pad-title,
+.pin-pad-overlay.pin-black-theme .pin-pad-title,
+html.silent-active .pin-pad-overlay .pin-pad-title {
   color: #FFFFFF !important;
   font-size: 20px !important;
   font-weight: 700 !important;
   letter-spacing: 0.5px !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-dot {
+.pin-pad-overlay.pin-silent-mode .pin-dot,
+.pin-pad-overlay.pin-black-theme .pin-dot,
+html.silent-active .pin-pad-overlay .pin-dot {
   border: 2px solid #6B7280 !important;
   background: transparent !important;
   width: 16px !important;
@@ -2616,19 +2624,25 @@ body:has(.pin-pad-overlay.active) #silent-overlay {
   border-radius: 50% !important;
   margin: 0 10px !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-dot.filled {
+.pin-pad-overlay.pin-silent-mode .pin-dot.filled,
+.pin-pad-overlay.pin-black-theme .pin-dot.filled,
+html.silent-active .pin-pad-overlay .pin-dot.filled {
   background: #FFFFFF !important;
   border-color: #FFFFFF !important;
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.8) !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-keypad {
+.pin-pad-overlay.pin-silent-mode .pin-keypad,
+.pin-pad-overlay.pin-black-theme .pin-keypad,
+html.silent-active .pin-pad-overlay .pin-keypad {
   display: grid !important;
   grid-template-columns: repeat(3, 1fr) !important;
   gap: 16px !important;
   max-width: 290px !important;
   margin: 0 auto !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key {
+.pin-pad-overlay.pin-silent-mode .pin-key,
+.pin-pad-overlay.pin-black-theme .pin-key,
+html.silent-active .pin-pad-overlay .pin-key {
   color: #FFFFFF !important;
   background: #1F2937 !important;
   border: 1.5px solid #374151 !important;
@@ -2646,24 +2660,35 @@ body:has(.pin-pad-overlay.active) #silent-overlay {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key:active {
+.pin-pad-overlay.pin-silent-mode .pin-key:active,
+.pin-pad-overlay.pin-black-theme .pin-key:active,
+html.silent-active .pin-pad-overlay .pin-key:active {
   background: #374151 !important;
   color: #FFFFFF !important;
   transform: scale(0.94) !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key-action {
+.pin-pad-overlay.pin-silent-mode .pin-key-action,
+.pin-pad-overlay.pin-black-theme .pin-key-action,
+html.silent-active .pin-pad-overlay .pin-key-action {
   background: #111827 !important;
-  color: #D1D5DB !important;
+  color: #FFFFFF !important;
   border: 1.5px solid #374151 !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key-action:active {
+.pin-pad-overlay.pin-silent-mode .pin-key-action:active,
+.pin-pad-overlay.pin-black-theme .pin-key-action:active,
+html.silent-active .pin-pad-overlay .pin-key-action:active {
   background: #374151 !important;
   color: #FFFFFF !important;
 }
-.pin-pad-overlay.pin-silent-mode .pin-key-action .material-symbols-rounded {
+.pin-pad-overlay.pin-silent-mode .pin-key-action .material-symbols-rounded,
+.pin-pad-overlay.pin-black-theme .pin-key-action .material-symbols-rounded,
+html.silent-active .pin-pad-overlay .pin-key-action .material-symbols-rounded {
   font-size: 28px !important;
+  color: #FFFFFF !important;
 }
-.pin-pad-overlay.pin-silent-mode #pin-block-msg {
+.pin-pad-overlay.pin-silent-mode #pin-block-msg,
+.pin-pad-overlay.pin-black-theme #pin-block-msg,
+html.silent-active .pin-pad-overlay #pin-block-msg {
   color: #EF4444 !important;
   font-size: 13px !important;
   font-weight: 600 !important;

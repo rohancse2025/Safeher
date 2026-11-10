@@ -785,7 +785,7 @@ SafeHer.sos = (function() {
           console.log('[SafeHer SOS] Duress PIN entered -> returning Home while alert keeps running');
           hideSilentOverlay();
           setState('idle');
-          SafeHer.router.go('home');
+          SafeHer.router.go('home', true);
           return;
         }
 
@@ -796,7 +796,7 @@ SafeHer.sos = (function() {
         console.log('[SafeHer SOS] Silent PIN pad closed/failed (' + reason + ') -> returning silently to black');
         setState('silent');
       },
-      { silentMode: true }
+      { isSilent: true, silentMode: true, blackTheme: true }
     );
   }
 
@@ -884,7 +884,7 @@ SafeHer.sos = (function() {
       startFeedbackQueue(alertIdForFeedback, respondersForFeedback);
     } else {
       SafeHer.toast('SOS ended');
-      SafeHer.router.go('home');
+      SafeHer.router.go('home', true);
     }
   }
 
@@ -1289,7 +1289,7 @@ SafeHer.sos = (function() {
       startFeedbackQueue(alertIdForFeedback, respondersForFeedback);
     } else {
       SafeHer.toast('SOS ended');
-      SafeHer.router.go('home');
+      SafeHer.router.go('home', true);
     }
   }
 
