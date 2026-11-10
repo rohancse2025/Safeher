@@ -74,7 +74,9 @@ SafeHer.sos = (function() {
         localStorage.setItem('safeher_silent_sos_active', 'true');
         if (currentAlertId) localStorage.setItem('safeher_silent_alert_id', String(currentAlertId));
       } catch(e) {}
-    } else if (to === 'idle' || (from === 'silent' && to !== 'pin')) {
+    } else if (to === 'pin') {
+      hideSilentOverlay();
+    } else if (to === 'idle') {
       hideSilentOverlay();
       try {
         localStorage.removeItem('safeher_silent_sos_active');
@@ -208,6 +210,11 @@ SafeHer.sos = (function() {
     }
 
     if (count >= 3) {
+      // STOP COUNTDOWN INTERVAL IMMEDIATELY so it can NEVER tick or trigger normal SOS
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
       if (silentPendingTimer) {
         clearTimeout(silentPendingTimer);
       }
@@ -215,15 +222,11 @@ SafeHer.sos = (function() {
         silentPendingTimer = null;
         if (currentState === 'countdown') {
           tapTimes = [];
-          if (countdownInterval) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
-          }
           var overlay = document.getElementById('sos-countdown-overlay');
           if (overlay) overlay.classList.remove('active');
           startSilentMode();
         }
-      }, 400);
+      }, 300);
     }
   }
 
@@ -652,6 +655,17 @@ SafeHer.sos = (function() {
   }
 
   function startSilentMode() {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+    if (silentPendingTimer) {
+      clearTimeout(silentPendingTimer);
+      silentPendingTimer = null;
+    }
+    var cdOverlay = document.getElementById('sos-countdown-overlay');
+    if (cdOverlay) cdOverlay.classList.remove('active');
+
     // Show black overlay FIRST synchronously
     setState('silent');
     showSilentOverlay();

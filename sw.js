@@ -1,5 +1,5 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v61';
+var CACHE_NAME = 'safeher-v62';
 
 var ASSETS = [
   './',
@@ -76,6 +76,12 @@ self.addEventListener('activate', function(event) {
       );
     }).then(function() {
       return self.clients.claim();
+    }).then(function() {
+      return self.clients.matchAll({ type: 'window' });
+    }).then(function(clients) {
+      clients.forEach(function(c) {
+        c.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME });
+      });
     })
   );
 });
@@ -95,10 +101,19 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // Navigation requests: try network, fall back to cached shell or offline fallback page
+  // Navigation requests: Network-first to always load latest index.html on mobile
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(function() {
+      fetch(event.request).then(function(response) {
+        if (response && response.status === 200) {
+          var copy = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, copy);
+            cache.put('./index.html', copy.clone());
+          });
+        }
+        return response;
+      }).catch(function() {
         return caches.match(event.request).then(function(response) {
           if (response) return response;
           return caches.match('./index.html').then(function(indexMatch) {

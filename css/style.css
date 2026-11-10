@@ -2515,19 +2515,31 @@ input:checked + .slider:before {
   border-color: #333;
 }
 
-/* Silent Mode HTML / Body Lock */
+/* Silent Mode HTML / Body / App / Screen Lock */
 html.silent-active,
-html.silent-active body {
+html.silent-active body,
+html.silent-active #app,
+html.silent-active .screen,
+html.silent-active .page-wrap,
+html.silent-active .modal-sheet,
+html.silent-active .modal-backdrop {
   background: #000000 !important;
+  background-color: #000000 !important;
+  color: #000000 !important;
   overflow: hidden !important;
 }
 
 #silent-overlay {
   position: fixed !important;
   inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
   background: #000000 !important;
+  background-color: #000000 !important;
   z-index: 2147483647 !important;
   cursor: none !important;
   touch-action: manipulation !important;
@@ -2538,8 +2550,11 @@ html.silent-active body {
 /* Pure Black Silent Mode PIN Pad: #000 background, dim gray digits #555, no white */
 .pin-pad-overlay.pin-silent-mode {
   background: #000000 !important;
+  background-color: #000000 !important;
   color: #555555 !important;
   z-index: 2147483647 !important;
+  position: fixed !important;
+  inset: 0 !important;
 }
 .pin-pad-overlay.pin-silent-mode * {
   box-shadow: none !important;
