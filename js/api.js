@@ -3083,12 +3083,6 @@ SafeHer.api = (function() {
       });
     },
 
-      });
-
-    },
-
-
-
     // ─── Share Location Endpoints ────────────────────────────
 
     shareLocation: function(data, callback) {
