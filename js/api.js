@@ -269,23 +269,17 @@ SafeHer.api = (function() {
 
 
     var isBackground = !!(options._silent ||
-
                        endpoint.indexOf('/evidence') !== -1 ||
-
                        endpoint.indexOf('/chunk') !== -1 ||
-
                        endpoint.indexOf('/contacts') !== -1 ||
-
                        endpoint.indexOf('/escorts/active') !== -1 ||
-
                        endpoint.indexOf('/nearby-alerts') !== -1 ||
-
                        endpoint.indexOf('/volunteers/count') !== -1 ||
-
                        endpoint.indexOf('/volunteers/profile') !== -1 ||
-
                        endpoint.indexOf('/timers/active') !== -1 ||
-
+                       endpoint.indexOf('/shares/active') !== -1 ||
+                       endpoint.indexOf('/position') !== -1 ||
+                       endpoint.indexOf('/track') !== -1 ||
                        (endpoint.indexOf('/status') !== -1 && endpoint.indexOf('/api/alerts/') !== -1));
 
 
@@ -3113,6 +3107,7 @@ SafeHer.api = (function() {
       if (!useBackend() || !shareId) return;
       apiFetch('/api/shares/' + shareId + '/position', {
         method: 'POST',
+        _silent: true,
         body: JSON.stringify({ lat: lat, lng: lng })
       })
       .then(function(res) {
