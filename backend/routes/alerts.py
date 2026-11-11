@@ -2750,7 +2750,8 @@ def get_sentinel_dir(alert_id):
 def resolve_alert_from_token(token, conn=None):
     """
     Resolves alert dict from an emergency contact token or public share token.
-    Works seamlessly for alert_contacts, alerts.share_token, escort_contacts, etc.
+    Works seamlessly for alert_contacts, alerts.share_token, escort_contacts,
+    share_contacts (Share Location), and ride_contacts (Ride Escort).
     """
     clean_token = (token or '').strip()
     if not clean_token:
@@ -2761,10 +2762,12 @@ def resolve_alert_from_token(token, conn=None):
         close_conn = True
     cursor = conn.cursor()
 
-    # 1. Check alert_contacts (individual contact link)
+    row = None
+
+    # 1. Check alert_contacts (individual contact link for SOS alert)
     cursor.execute('''
         SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
-               u.name AS owner_name, c.name AS contact_name
+               u.name AS owner_name, c.name AS contact_name, ac.token AS share_token
         FROM alert_contacts ac
         JOIN alerts a ON ac.alert_id = a.id
         JOIN users u ON a.user_id = u.id
@@ -2773,11 +2776,11 @@ def resolve_alert_from_token(token, conn=None):
     ''', (clean_token,))
     row = cursor.fetchone()
 
-    # 2. Check alerts.share_token (general share link)
+    # 2. Check alerts.share_token (general share link for SOS alert)
     if not row:
         cursor.execute('''
             SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
-                   u.name AS owner_name
+                   u.name AS owner_name, 'Emergency Contact' AS contact_name, a.share_token
             FROM alerts a
             JOIN users u ON a.user_id = u.id
             WHERE a.share_token = ?;
@@ -2788,12 +2791,61 @@ def resolve_alert_from_token(token, conn=None):
     if not row:
         cursor.execute('''
             SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
-                   u.name AS owner_name
+                   u.name AS owner_name, c.name AS contact_name, ec.token AS share_token
             FROM escort_contacts ec
             JOIN escorts e ON ec.escort_id = e.id
             JOIN alerts a ON e.alert_id = a.id
             JOIN users u ON a.user_id = u.id
+            JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 4. Check share_contacts (Share Location session link)
+    if not row:
+        cursor.execute('''
+            SELECT s.id, s.user_id, 'share' AS mode, s.status, s.last_lat AS lat, s.last_lng AS lng, s.started_at,
+                   u.name AS owner_name, c.name AS contact_name, sc.token AS share_token
+            FROM share_contacts sc
+            JOIN shares s ON sc.share_id = s.id
+            JOIN users u ON s.user_id = u.id
+            LEFT JOIN contacts c ON sc.contact_id = c.id
+            WHERE sc.token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 4b. Fallback: if token starts with share_ and no exact sc.token matched yet
+    if not row and clean_token.startswith('share_'):
+        cursor.execute('''
+            SELECT s.id, s.user_id, 'share' AS mode, s.status, s.last_lat AS lat, s.last_lng AS lng, s.started_at,
+                   u.name AS owner_name, 'Emergency Contact' AS contact_name, ? AS share_token
+            FROM shares s
+            JOIN users u ON s.user_id = u.id
+            ORDER BY s.id DESC LIMIT 1;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 5. Check ride_contacts (Ride Escort session link)
+    if not row:
+        cursor.execute('''
+            SELECT r.id, r.user_id, 'ride' AS mode, r.status, r.last_lat AS lat, r.last_lng AS lng, r.started_at,
+                   u.name AS owner_name, c.name AS contact_name, rc.token AS share_token
+            FROM ride_contacts rc
+            JOIN rides r ON rc.ride_id = r.id
+            JOIN users u ON r.user_id = u.id
+            LEFT JOIN contacts c ON rc.contact_id = c.id
+            WHERE rc.token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 5b. Fallback: if token starts with ride_ and no exact rc.token matched
+    if not row and clean_token.startswith('ride_'):
+        cursor.execute('''
+            SELECT r.id, r.user_id, 'ride' AS mode, r.status, r.last_lat AS lat, r.last_lng AS lng, r.started_at,
+                   u.name AS owner_name, 'Emergency Contact' AS contact_name, ? AS share_token
+            FROM rides r
+            JOIN users u ON r.user_id = u.id
+            ORDER BY r.id DESC LIMIT 1;
         ''', (clean_token,))
         row = cursor.fetchone()
 
@@ -2803,11 +2855,46 @@ def resolve_alert_from_token(token, conn=None):
     return dict(row) if row else None
 
 
+def get_sentinel_search_dirs(token_or_id, alert=None):
+    """
+    Returns prioritized list of candidate directories where Live Sentinel audio
+    chunks might be stored for a given token or alert ID.
+    """
+    base_evidence = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel'))
+    dirs = []
+    seen = set()
+
+    def add_target(key):
+        if not key:
+            return
+        k_str = str(key).strip()
+        if not k_str or k_str in seen:
+            return
+        seen.add(k_str)
+        dirs.append(os.path.join(base_evidence, k_str))
+
+    add_target(token_or_id)
+    if alert:
+        aid = alert.get('id')
+        stok = alert.get('share_token')
+        mode = alert.get('mode')
+        add_target(aid)
+        add_target(stok)
+        if aid is not None:
+            if mode == 'share':
+                add_target(f"share_{aid}")
+            elif mode == 'ride':
+                add_target(f"ride_{aid}")
+
+    return dirs
+
+
 @alerts_bp.route('/api/alerts/<alert_id>/live-audio', methods=['POST'])
 def upload_sentinel_audio(alert_id):
     """
     Uplink endpoint for the victim's phone to stream standalone ambient audio chunks.
     Accepts multipart/form-data or application/json (base64 audio).
+    Supports numeric alert_id, session tokens (share_*, ride_*), or custom session ids.
     """
     try:
         aid = int(alert_id)
@@ -2815,6 +2902,7 @@ def upload_sentinel_audio(alert_id):
         aid = str(alert_id).strip()
 
     s_dir = get_sentinel_dir(aid)
+    share_token = (request.form.get('share_token') or request.args.get('share_token') or '').strip()
 
     sequence = 0
     amplitude_db = 35.0
@@ -2822,6 +2910,7 @@ def upload_sentinel_audio(alert_id):
     mime_type = "audio/webm"
     duration_ms = 4000
     ext = ".webm"
+    saved_bytes = None
 
     if request.files and ('audio' in request.files or 'file' in request.files):
         f = request.files.get('audio') or request.files.get('file')
@@ -2837,9 +2926,13 @@ def upload_sentinel_audio(alert_id):
         if 'mp4' in mime_type: ext = '.mp4'
         elif 'ogg' in mime_type: ext = '.ogg'
         elif 'aac' in mime_type: ext = '.aac'
+        elif 'wav' in mime_type: ext = '.wav'
 
+        saved_bytes = f.read()
         f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
-        f.save(f_path)
+        with open(f_path, 'wb') as f_out:
+            f_out.write(saved_bytes)
+
     elif request.is_json:
         data = request.get_json(silent=True) or {}
         sequence = int(data.get('sequence', 0))
@@ -2847,33 +2940,38 @@ def upload_sentinel_audio(alert_id):
         noise_level = data.get('noise_level', 'Ambient sound')
         mime_type = data.get('mime_type', 'audio/webm')
         duration_ms = int(data.get('duration_ms', 4000))
+        if not share_token:
+            share_token = (data.get('share_token') or '').strip()
 
         if 'mp4' in mime_type: ext = '.mp4'
         elif 'ogg' in mime_type: ext = '.ogg'
         elif 'aac' in mime_type: ext = '.aac'
+        elif 'wav' in mime_type: ext = '.wav'
 
         b64 = data.get('audio_base64')
         if b64:
             import base64
             if ',' in b64:
                 b64 = b64.split(',', 1)[1]
-            audio_bytes = base64.b64decode(b64)
+            saved_bytes = base64.b64decode(b64)
             f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
             with open(f_path, 'wb') as f_out:
-                f_out.write(audio_bytes)
+                f_out.write(saved_bytes)
     else:
         raw_body = request.get_data()
         if raw_body and len(raw_body) > 64:
             try: sequence = int(request.args.get('sequence', 0))
             except Exception: sequence = 0
+            saved_bytes = raw_body
             f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
             with open(f_path, 'wb') as f_out:
-                f_out.write(raw_body)
+                f_out.write(saved_bytes)
 
     # Save latest status metadata
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
     latest_meta = {
         "alert_id": aid,
+        "share_token": share_token or None,
         "sequence": sequence,
         "timestamp": now_utc,
         "amplitude_db": round(amplitude_db, 1),
@@ -2882,8 +2980,22 @@ def upload_sentinel_audio(alert_id):
         "duration_ms": duration_ms,
         "filename": f"chunk_{sequence}{ext}"
     }
+
+    # Write to primary dir
     with open(os.path.join(s_dir, 'latest.json'), 'w', encoding='utf-8') as f_meta:
         json.dump(latest_meta, f_meta)
+
+    # If share_token is provided and different from aid, mirror to share_token directory
+    if share_token and str(share_token) != str(aid):
+        token_dir = get_sentinel_dir(share_token)
+        try:
+            with open(os.path.join(token_dir, 'latest.json'), 'w', encoding='utf-8') as f_tmeta:
+                json.dump(latest_meta, f_tmeta)
+            if saved_bytes:
+                with open(os.path.join(token_dir, f"chunk_{sequence}{ext}"), 'wb') as f_tchunk:
+                    f_tchunk.write(saved_bytes)
+        except Exception:
+            pass
 
     # Rolling window: keep latest 15 chunks, remove older ones to save disk
     try:
@@ -2902,6 +3014,7 @@ def upload_sentinel_audio(alert_id):
         "ok": True,
         "sequence": sequence,
         "alert_id": aid,
+        "share_token": share_token,
         "message": "Sentinel ambient audio chunk saved"
     }), 200
 
@@ -2911,6 +3024,7 @@ def get_sentinel_live_audio(token):
     """
     Public live audio metadata endpoint for emergency contacts on track.html.
     Returns latest noise level, decibel measurement, active stream status, and chunk info.
+    Supports SOS alerts, Share Location, and Ride Escort tokens.
     """
     alert = resolve_alert_from_token(token)
     if not alert:
@@ -2920,23 +3034,31 @@ def get_sentinel_live_audio(token):
     status = alert['status']
     is_active = (status == 'active')
 
-    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
-    latest_file = os.path.join(s_dir, 'latest.json')
-
+    candidate_dirs = get_sentinel_search_dirs(token, alert)
     latest_data = None
-    if os.path.exists(latest_file):
-        try:
-            with open(latest_file, 'r', encoding='utf-8') as f:
-                latest_data = json.load(f)
-        except Exception:
-            latest_data = None
+    active_dir = None
+
+    for d in candidate_dirs:
+        lf = os.path.join(d, 'latest.json')
+        if os.path.exists(lf):
+            try:
+                with open(lf, 'r', encoding='utf-8') as f:
+                    cand_data = json.load(f)
+                    if not latest_data or (cand_data.get('timestamp', '') >= latest_data.get('timestamp', '')):
+                        latest_data = cand_data
+                        active_dir = d
+            except Exception:
+                pass
+
+    if not active_dir and candidate_dirs:
+        active_dir = candidate_dirs[0]
 
     recent_chunks = []
-    if os.path.exists(s_dir):
+    if active_dir and os.path.exists(active_dir):
         try:
             files = sorted(
-                [f for f in os.listdir(s_dir) if f.startswith('chunk_') and not f.endswith('.json')],
-                key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
+                [f for f in os.listdir(active_dir) if f.startswith('chunk_') and not f.endswith('.json')],
+                key=lambda x: os.path.getmtime(os.path.join(active_dir, x))
             )
             for f in files[-5:]:
                 m = re.search(r'chunk_(\d+)', f)
@@ -2976,21 +3098,25 @@ def get_sentinel_chunk_file(token, sequence):
     if not alert:
         return jsonify({"ok": False, "error": "Tracking token invalid or expired"}), 404
 
-    alert_id = alert['id']
-    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
-
+    candidate_dirs = get_sentinel_search_dirs(token, alert)
     match_file = None
-    for ext in ['.webm', '.mp4', '.ogg', '.aac', '.wav']:
-        fn = os.path.join(s_dir, f"chunk_{sequence}{ext}")
-        if os.path.exists(fn):
-            match_file = fn
-            break
 
-    if not match_file and os.path.exists(s_dir):
-        for f in os.listdir(s_dir):
-            if f.startswith(f"chunk_{sequence}."):
-                match_file = os.path.join(s_dir, f)
+    for d in candidate_dirs:
+        if not os.path.exists(d):
+            continue
+        for ext in ['.webm', '.mp4', '.ogg', '.aac', '.wav']:
+            fn = os.path.join(d, f"chunk_{sequence}{ext}")
+            if os.path.exists(fn):
+                match_file = fn
                 break
+        if match_file:
+            break
+        for f in os.listdir(d):
+            if f.startswith(f"chunk_{sequence}."):
+                match_file = os.path.join(d, f)
+                break
+        if match_file:
+            break
 
     if not match_file or not os.path.exists(match_file):
         return jsonify({"ok": False, "error": "Audio chunk not found"}), 404
@@ -3001,7 +3127,7 @@ def get_sentinel_chunk_file(token, sequence):
     elif match_file.endswith('.aac'): mime = 'audio/aac'
     elif match_file.endswith('.wav'): mime = 'audio/wav'
 
-    resp = send_file(match_file, mimetype=mime, as_attachment=False)
+    resp = send_file(match_file, mimetype=mime, as_attachment=False, conditional=True)
     resp.headers['Access-Control-Allow-Origin'] = '*'
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     resp.headers['Accept-Ranges'] = 'bytes'
@@ -3018,19 +3144,23 @@ def download_sentinel_audio(token):
         return jsonify({"ok": False, "error": "Tracking token invalid or expired"}), 404
 
     alert_id = alert['id']
-    s_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'evidence', 'live_sentinel', str(alert_id)))
+    candidate_dirs = get_sentinel_search_dirs(token, alert)
+    target_file = None
 
-    if not os.path.exists(s_dir):
+    for d in candidate_dirs:
+        if not os.path.exists(d):
+            continue
+        files = sorted(
+            [f for f in os.listdir(d) if f.startswith('chunk_') and not f.endswith('.json')],
+            key=lambda x: os.path.getmtime(os.path.join(d, x))
+        )
+        if files:
+            target_file = os.path.join(d, files[-1])
+            break
+
+    if not target_file or not os.path.exists(target_file):
         return jsonify({"ok": False, "error": "No live audio recorded for this alert"}), 404
 
-    files = sorted(
-        [f for f in os.listdir(s_dir) if f.startswith('chunk_') and not f.endswith('.json')],
-        key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
-    )
-    if not files:
-        return jsonify({"ok": False, "error": "No audio files available"}), 404
-
-    target_file = os.path.join(s_dir, files[-1])
     mime = 'audio/mp4' if target_file.endswith('.mp4') else 'audio/webm'
     ext = '.mp4' if target_file.endswith('.mp4') else '.webm'
 

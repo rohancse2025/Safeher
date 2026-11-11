@@ -623,6 +623,15 @@ SafeHer.shareLocation = (function() {
     renderActiveView(session);
     startTrackingLoop();
 
+    // Start Live Sentinel™ ambient audio uplink for trusted contacts
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
+      try {
+        SafeHer.sentinel.start(shareToken, shareToken);
+      } catch(e) {
+        console.warn('[ShareLocation] Live Sentinel start non-fatal:', e);
+      }
+    }
+
     if (startBtn) {
       startBtn.disabled = false;
       startBtn.innerHTML = '<span class="material-symbols-rounded">share_location</span>Start Sharing (Auto WhatsApp)';
@@ -702,6 +711,11 @@ SafeHer.shareLocation = (function() {
           session.shareToken = shareData.tokens[0].token;
           session.trackUrl = shareData.tokens[0].track_url;
         }
+        if (SafeHer.sentinel && typeof SafeHer.sentinel.updateAlertId === 'function') {
+          try {
+            SafeHer.sentinel.updateAlertId(shareData.id, session.shareToken);
+          } catch(e) {}
+        }
         session.isOffline = false;
         saveActiveSession(session);
         updateLiveLinkDisplay(session);
@@ -714,6 +728,12 @@ SafeHer.shareLocation = (function() {
 
   // ─── Stop Sharing Action ──────────────────────────────────
   function stopSharing(isTimeout) {
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.stop === 'function') {
+      try {
+        SafeHer.sentinel.stop();
+      } catch(e) {}
+    }
+
     var activeSession = getActiveSession();
     var allContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
     if ((!allContacts || allContacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {

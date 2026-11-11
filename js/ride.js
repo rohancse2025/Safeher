@@ -1154,26 +1154,32 @@ SafeHer.ride = (function() {
           activeRide.shareToken = rideData.tokens[0].token;
           activeRide.trackUrl = rideData.tokens[0].track_url;
         }
+        if (SafeHer.sentinel && typeof SafeHer.sentinel.updateAlertId === 'function') {
+          try {
+            SafeHer.sentinel.updateAlertId(activeRide.backendRideId, activeRide.shareToken);
+          } catch(e) {}
+        }
         activeRide.isOffline = false;
         try { localStorage.setItem('safeher_active_ride', JSON.stringify(activeRide)); } catch(e) {}
         renderActiveRideView();
       });
     }
 
-
-
     if (SafeHer.toast) SafeHer.toast('🚖 Ride started! Contacts alerted automatically via WhatsApp.');
 
-
-
     // Switch view to active ride screen
-
     renderActiveRideView();
-
     updateHomeBanner();
-
     startMonitoring();
 
+    // Start Live Sentinel™ ambient audio uplink for active ride
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
+      try {
+        SafeHer.sentinel.start(activeRide.backendRideId || activeRide.shareToken, activeRide.shareToken);
+      } catch(e) {
+        console.warn('[RideSafety] Live Sentinel start non-fatal:', e);
+      }
+    }
   }
 
 
@@ -1419,8 +1425,11 @@ SafeHer.ride = (function() {
   // ─── End Ride & Reached Safely ────────────────────────────
 
   function endRide() {
-
     if (!activeRide) return;
+
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.stop === 'function') {
+      try { SafeHer.sentinel.stop(); } catch(e) {}
+    }
 
 
 

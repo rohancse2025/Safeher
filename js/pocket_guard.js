@@ -11,13 +11,13 @@ SafeHer.pocketGuard = (function() {
   var STORAGE_KEY = 'safeher_pocketguard_enabled';
   var TRIGGER_MODE_KEY = 'safeher_pocketguard_action'; // 'silent' | 'emergency'
 
-  // Generate 1-second inaudible silent WAV audio blob URL
+  // Generate 10-second inaudible silent WAV audio blob URL (keeps background audio channel open reliably)
   function createSilentAudioUrl() {
     if (audioObjectUrl) return audioObjectUrl;
 
     try {
       var sampleRate = 8000;
-      var numSamples = sampleRate; // 1 second of silence
+      var numSamples = sampleRate * 10; // 10 seconds of silence to prevent OS task killing
       var buffer = new ArrayBuffer(44 + numSamples);
       var view = new DataView(buffer);
 
@@ -61,7 +61,24 @@ SafeHer.pocketGuard = (function() {
       silentAudio = new Audio();
       silentAudio.src = createSilentAudioUrl();
       silentAudio.loop = true;
-      silentAudio.volume = 0.01; // inaudible
+      silentAudio.volume = 0.05; // Inaudible PCM silence, but above 0 to prevent OS battery killing
+
+      // Keep alive if paused by mobile OS power manager
+      silentAudio.addEventListener('pause', function() {
+        if (isEnabled && !isTesting) {
+          setTimeout(function() {
+            if (isEnabled && silentAudio && silentAudio.paused) {
+              silentAudio.play().catch(function() {});
+            }
+          }, 400);
+        }
+      });
+
+      silentAudio.addEventListener('ended', function() {
+        if (isEnabled && silentAudio) {
+          silentAudio.play().catch(function() {});
+        }
+      });
     }
 
     var playPromise = silentAudio.play();
@@ -94,8 +111,8 @@ SafeHer.pocketGuard = (function() {
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: 'PocketGuard Active',
-        artist: 'Triple-click headset button for Silent SOS',
+        title: 'PocketGuard™ Active',
+        artist: 'Earphone SOS Armed • Press button 3x',
         album: 'SafeHer Remote Guard',
         artwork: [
           { src: './assets/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -105,10 +122,12 @@ SafeHer.pocketGuard = (function() {
 
       navigator.mediaSession.playbackState = 'playing';
 
-      navigator.mediaSession.setActionHandler('play', onRemoteAction);
-      navigator.mediaSession.setActionHandler('pause', onRemoteAction);
-      navigator.mediaSession.setActionHandler('nexttrack', onRemoteAction);
-      navigator.mediaSession.setActionHandler('previoustrack', onRemoteAction);
+      var actions = ['play', 'pause', 'stop', 'nexttrack', 'previoustrack', 'seekforward', 'seekbackward'];
+      actions.forEach(function(act) {
+        try {
+          navigator.mediaSession.setActionHandler(act, onRemoteAction);
+        } catch(e) {}
+      });
     } catch(e) {
       console.warn('[SafeHer PocketGuard] MediaSession configuration error:', e);
     }
@@ -118,10 +137,12 @@ SafeHer.pocketGuard = (function() {
     if (!('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.playbackState = 'none';
-      navigator.mediaSession.setActionHandler('play', null);
-      navigator.mediaSession.setActionHandler('pause', null);
-      navigator.mediaSession.setActionHandler('nexttrack', null);
-      navigator.mediaSession.setActionHandler('previoustrack', null);
+      var actions = ['play', 'pause', 'stop', 'nexttrack', 'previoustrack', 'seekforward', 'seekbackward'];
+      actions.forEach(function(act) {
+        try {
+          navigator.mediaSession.setActionHandler(act, null);
+        } catch(e) {}
+      });
     } catch(e) {}
   }
 
@@ -133,6 +154,9 @@ SafeHer.pocketGuard = (function() {
     if (silentAudio && silentAudio.paused) {
       silentAudio.play().catch(function() {});
     }
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
 
     var now = Date.now();
 
@@ -143,17 +167,33 @@ SafeHer.pocketGuard = (function() {
     }
 
     // 2. Direct firmware triple-press:
-    // Many Bluetooth headsets (AirPods, Galaxy Buds, Sony, OnePlus) map a triple-tap to 'previoustrack'
+    // Many Bluetooth headsets (AirPods, Galaxy Buds, Sony, OnePlus, boAt) map a triple-tap to 'previoustrack'
     if (action === 'previoustrack') {
       actionHistory = [];
+      if ('vibrate' in navigator) {
+        navigator.vibrate([120, 60, 200]);
+      }
       executeEmergencyTrigger('Triple-tap previoustrack');
       return;
     }
 
     // 3. Multi-press rolling window:
-    // User presses earphone button (play, pause, or nexttrack) 3 times within 2.5 seconds
-    actionHistory.push(now);
-    actionHistory = actionHistory.filter(function(t) { return now - t <= 2500; });
+    // If headset sends 'nexttrack' (standard double-tap on most earphones), count as 2 clicks!
+    if (action === 'nexttrack') {
+      actionHistory.push(now, now);
+    } else {
+      actionHistory.push(now);
+    }
+
+    // Generous 5.0-second rolling window to accommodate physical button debounce and Bluetooth latency
+    actionHistory = actionHistory.filter(function(t) { return now - t <= 5000; });
+
+    // Haptic feedback on EVERY single click so user feels confirmation through pocket clothing!
+    if (actionHistory.length === 1) {
+      if ('vibrate' in navigator) navigator.vibrate(80);
+    } else if (actionHistory.length === 2) {
+      if ('vibrate' in navigator) navigator.vibrate([80, 50, 80]);
+    }
 
     if (actionHistory.length >= 3) {
       actionHistory = [];
@@ -193,6 +233,12 @@ SafeHer.pocketGuard = (function() {
   function startTestMode() {
     isTesting = true;
     testClicks = 0;
+    // Always arm background silent audio and mediaSession before starting test
+    if (!isEnabled) {
+      enable();
+    } else {
+      startSilentAudio();
+    }
     updateTestUi();
 
     if (testTimer) clearTimeout(testTimer);
@@ -200,7 +246,7 @@ SafeHer.pocketGuard = (function() {
       if (isTesting && testClicks === 0) {
         stopTestMode();
       }
-    }, 20000); // 20s timeout
+    }, 25000); // 25s timeout
   }
 
   function stopTestMode() {
@@ -214,7 +260,12 @@ SafeHer.pocketGuard = (function() {
   }
 
   function handleTestPress(action) {
-    testClicks++;
+    if (action === 'nexttrack') {
+      testClicks += 2;
+    } else {
+      testClicks++;
+    }
+
     if ('vibrate' in navigator) {
       navigator.vibrate(80);
     }
@@ -228,11 +279,17 @@ SafeHer.pocketGuard = (function() {
       }
       var statusEl = document.getElementById('pg-test-status');
       if (statusEl) {
-        statusEl.innerHTML = '<span style="color:#059669; font-weight:700;">✅ Success! Headset remote trigger verified.</span>';
+        statusEl.innerHTML = '<span style="color:#059669; font-weight:700;">✅ Success! Headset verified &amp; PocketGuard is ARMED!</span>';
       }
+
+      // Keep PocketGuard permanently enabled after successful test
+      isEnabled = true;
+      try { localStorage.setItem(STORAGE_KEY, 'true'); } catch(e) {}
+      updateUi();
+
       setTimeout(function() {
         stopTestMode();
-      }, 3000);
+      }, 3500);
     }
   }
 
@@ -433,6 +490,16 @@ SafeHer.pocketGuard = (function() {
     } catch(e) {
       updateUi();
     }
+
+    // Keep MediaSession and silent audio keepalive active across tab switches & lock screen
+    document.addEventListener('visibilitychange', function() {
+      if (isEnabled && !document.hidden) {
+        if (silentAudio && silentAudio.paused) {
+          silentAudio.play().catch(function() {});
+        }
+        setupMediaSession();
+      }
+    });
   }
 
   return {

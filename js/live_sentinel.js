@@ -147,8 +147,10 @@
     formData.append('noise_level', category);
     formData.append('mime_type', mime);
     formData.append('duration_ms', 4000);
-    if (currentShareToken) {
-      formData.append('share_token', currentShareToken);
+
+    var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0) ? currentAlertId : null);
+    if (tok) {
+      formData.append('share_token', tok);
     }
 
     var uploadUrl = apiBase + '/api/alerts/' + encodeURIComponent(currentAlertId) + '/live-audio';
@@ -182,10 +184,25 @@
     }
 
     var mime = getBestAudioMime();
-    var recorderOptions = mime ? { mimeType: mime } : {};
+    var recorder = null;
 
     try {
-      var recorder = new MediaRecorder(currentStream, recorderOptions);
+      if (mime) {
+        recorder = new MediaRecorder(currentStream, { mimeType: mime });
+      } else {
+        recorder = new MediaRecorder(currentStream);
+      }
+    } catch (e1) {
+      try {
+        recorder = new MediaRecorder(currentStream);
+      } catch (e2) {
+        console.warn('[Sentinel] Recorder initialization error:', e2);
+        stop();
+        return;
+      }
+    }
+
+    try {
       currentRecorder = recorder;
       var chunkParts = [];
 

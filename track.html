@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=78" />
+  <link rel="stylesheet" href="./css/style.css?v=79" />
   <style>
     body {
       background: #FCEFF3;
@@ -847,7 +847,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=78"></script>
+  <script src="./js/config.js?v=79"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -1440,6 +1440,21 @@
           }
           if (wave) wave.classList.add('is-live');
 
+          // Prime/unlock audio element immediately on user tap to satisfy mobile browser autoplay policy
+          var audio = getSentinelAudioEl();
+          if (audio) {
+            try {
+              audio.play().then(function() {
+                if (!audio.src) audio.pause();
+              }).catch(function() {});
+            } catch(e) {}
+          }
+
+          // Reset lastPlayedSeq so the latest available chunk plays immediately
+          lastPlayedSeq = 0;
+          isAudioPlaying = false;
+          queuedChunks = [];
+
           // Trigger immediate fetch
           fetchSentinelStatus(token);
 
@@ -1521,14 +1536,18 @@
               }
             }
 
-            // Queue new audio chunk if sequence changed
-            if (res.chunk_url && res.latest_seq && res.latest_seq > lastPlayedSeq) {
-              lastPlayedSeq = res.latest_seq;
-              var fullChunkUrl = getApiBase() + res.chunk_url;
+            // Queue new audio chunk if sequence changed or if contact just tapped Listen
+            if (res.chunk_url && res.latest_seq) {
               if (isSentinelListening) {
-                queuedChunks.push(fullChunkUrl);
-                if (!isAudioPlaying) {
-                  playNextQueuedChunk();
+                var fullChunkUrl = getApiBase() + res.chunk_url;
+                if (res.latest_seq > lastPlayedSeq || (lastPlayedSeq === 0 && !isAudioPlaying && queuedChunks.length === 0)) {
+                  lastPlayedSeq = res.latest_seq;
+                  if (queuedChunks.indexOf(fullChunkUrl) === -1) {
+                    queuedChunks.push(fullChunkUrl);
+                  }
+                  if (!isAudioPlaying) {
+                    playNextQueuedChunk();
+                  }
                 }
               }
             }
@@ -1546,9 +1565,7 @@
       };
 
       function fetchTrackData(token) {
-        if (!token.startsWith('share_')) {
-          fetchSentinelStatus(token);
-        }
+        fetchSentinelStatus(token);
         var url = getApiBase() + '/api/track/' + encodeURIComponent(token);
         fetch(url)
           .then(function(res) {
