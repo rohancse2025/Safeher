@@ -3776,7 +3776,24 @@ SafeHer.escort = (function() {
 
 
 
-    SafeHer.api.endEscort(escortId, arrived, function(err, res) {
+    var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : (SafeHer.storage.get('contacts') || []);
+    var phones = [];
+    if (Array.isArray(contacts)) {
+      contacts.forEach(function(c) {
+        if (c && c.phone) phones.push(c.phone);
+      });
+    }
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : null;
+    var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'SafeHer User';
+
+    var endPayload = {
+      arrived: !!arrived,
+      contacts: contacts,
+      phones: phones,
+      user_name: userName
+    };
+
+    SafeHer.api.endEscort(escortId, endPayload, function(err, res) {
 
       stopActiveTracking();
 
@@ -3919,19 +3936,15 @@ SafeHer.escort = (function() {
 
 
     var statusMsg = document.getElementById('escort-summary-notify-status');
-
-    if (statusMsg) statusMsg.style.display = 'none';
-
-
+    if (statusMsg) {
+      statusMsg.style.display = 'flex';
+      statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;color:#10B981;margin-right:4px;">check_circle</span> Contacts notified automatically via WhatsApp!';
+    }
 
     var notifyBtn = document.getElementById('escort-summary-notify-btn');
-
     if (notifyBtn) {
-
       notifyBtn.disabled = false;
-
-      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">send</span>Send “Arrived safely” to contacts';
-
+      notifyBtn.innerHTML = '<span class="material-symbols-rounded" style="margin-right:6px;">check_circle</span>Contacts Notified via WhatsApp';
     }
 
   }
@@ -3964,16 +3977,16 @@ SafeHer.escort = (function() {
       statusMsg.style.display = 'flex';
       statusMsg.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">check_circle</span> Safe arrival update sent!';
     }
-    if (SafeHer.toast) SafeHer.toast("Opening WhatsApp to notify contacts of safe arrival!");
+    if (SafeHer.toast) SafeHer.toast("Contacts notified of safe arrival via WhatsApp!");
 
     if (lastEndedEscortId && SafeHer.api && SafeHer.api.notifyEscortArrived) {
       try { SafeHer.api.notifyEscortArrived(lastEndedEscortId); } catch(e) {}
     }
 
     try {
-      window.location.href = waUrl;
-    } catch(e) {
       window.open(waUrl, '_blank');
+    } catch(e) {
+      window.location.href = waUrl;
     }
   }
 

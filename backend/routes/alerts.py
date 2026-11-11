@@ -1673,13 +1673,6 @@ def respond_contact_track(token):
         ''', (clean_token,))
         escort_row = cursor.fetchone()
         if escort_row:
-            if escort_row['escort_status'] in ('arrived', 'ended'):
-                conn.close()
-                return jsonify({
-                    "ok": False,
-                    "error": "This journey has ended"
-                }), 400
-
             escort_aid = escort_row['alert_id']
             escort_id = escort_row['escort_id']
             contact_id = escort_row['contact_id']
@@ -1709,7 +1702,7 @@ def respond_contact_track(token):
                 user_id=owner_user_id,
                 type='contact_responded',
                 actor='contact',
-                detail={'contact': first_name, 'status': status},
+                detail={'contact': first_name, 'status': status, 'escort_id': escort_id},
                 alert_id=escort_aid,
                 escort_id=escort_id,
                 cursor=cursor
@@ -1728,7 +1721,8 @@ def respond_contact_track(token):
                 "message": f"Response recorded: {status}",
                 "data": {
                     "contact_first_name": first_name,
-                    "status": status
+                    "status": status,
+                    "alert_status": escort_row['escort_status']
                 }
             }), 200
 
@@ -1807,6 +1801,64 @@ def respond_contact_track(token):
                     type='contact_responded',
                     actor='contact',
                     detail={'contact': first_name, 'status': status, 'share_id': sc_row['share_id']},
+                    cursor=cursor
+                )
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "ok": True,
+                    "message": f"Response recorded: {status}",
+                    "data": {
+                        "contact_first_name": first_name,
+                        "status": status
+                    }
+                }), 200
+
+            # Check ride_contacts for Ride Safety tracking link
+            cursor.execute('''
+                SELECT rc.id AS rc_id, rc.ride_id, rc.contact_id, rc.token,
+                       r.id AS ride_id, r.user_id, r.status AS ride_status,
+                       c.name AS contact_name
+                FROM ride_contacts rc
+                JOIN rides r ON rc.ride_id = r.id
+                LEFT JOIN contacts c ON rc.contact_id = c.id
+                WHERE rc.token = ?;
+            ''', (clean_token,))
+            rc_row = cursor.fetchone()
+
+            if not rc_row and (clean_token.startswith('ride_') or 'ride' in clean_token):
+                cursor.execute("SELECT id, user_id, status FROM rides WHERE status = 'active' ORDER BY id DESC LIMIT 1;")
+                fb_ride = cursor.fetchone()
+                if fb_ride:
+                    owner_user_id = fb_ride['user_id']
+                    first_name = 'Contact'
+                    log_event(
+                        user_id=owner_user_id,
+                        type='contact_responded',
+                        actor='contact',
+                        detail={'contact': first_name, 'status': status, 'ride_id': fb_ride['id']},
+                        cursor=cursor
+                    )
+                    conn.commit()
+                    conn.close()
+                    return jsonify({
+                        "ok": True,
+                        "message": f"Response recorded: {status}",
+                        "data": {
+                            "contact_first_name": first_name,
+                            "status": status
+                        }
+                    }), 200
+
+            if rc_row:
+                owner_user_id = rc_row['user_id']
+                contact_name_val = (rc_row['contact_name'] or 'Contact').strip()
+                first_name = contact_name_val.split()[0] if contact_name_val else 'Contact'
+                log_event(
+                    user_id=owner_user_id,
+                    type='contact_responded',
+                    actor='contact',
+                    detail={'contact': first_name, 'status': status, 'ride_id': rc_row['ride_id']},
                     cursor=cursor
                 )
                 conn.commit()
@@ -1928,71 +1980,152 @@ def respond_contact_track_get(token):
     track_url = f"{frontend_url}/track.html?t={clean_token}"
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Verify contact token
-    cursor.execute('''
-        SELECT ac.id AS ac_id, ac.alert_id, ac.contact_id, ac.token,
-               a.id AS alert_id, a.user_id, a.status AS alert_status,
-               c.name AS contact_name, u.name AS user_name
-        FROM alert_contacts ac
-        JOIN alerts a ON ac.alert_id = a.id
-        JOIN contacts c ON ac.contact_id = c.id
-        LEFT JOIN users u ON a.user_id = u.id
-        WHERE ac.token = ?;
-    ''', (clean_token,))
-    row = cursor.fetchone()
-
     owner_name = "User"
     contact_name = "Contact"
 
-    if row:
-        alert_id = row['alert_id']
-        contact_id = row['contact_id']
-        owner_user_id = row['user_id']
-        contact_name = row['contact_name'] or 'Contact'
-        owner_name = row['user_name'] or 'the user'
-        first_name = contact_name.split()[0]
+    try:
+        cursor = conn.cursor()
 
+        # 1. Verify alert_contacts token
         cursor.execute('''
-            INSERT INTO contact_responses (alert_id, contact_id, status)
-            VALUES (?, ?, ?);
-        ''', (alert_id, contact_id, status))
-
-        log_event(
-            user_id=owner_user_id,
-            type='contact_responded',
-            actor='contact',
-            detail={'contact': first_name, 'status': status},
-            alert_id=alert_id,
-            cursor=cursor
-        )
-        conn.commit()
-    else:
-        # Check share_token match
-        cursor.execute('''
-            SELECT a.id AS alert_id, a.user_id, a.status AS alert_status, u.name AS user_name
-            FROM alerts a
+            SELECT ac.id AS ac_id, ac.alert_id, ac.contact_id, ac.token,
+                   a.id AS alert_id, a.user_id, a.status AS alert_status,
+                   c.name AS contact_name, u.name AS user_name
+            FROM alert_contacts ac
+            JOIN alerts a ON ac.alert_id = a.id
+            JOIN contacts c ON ac.contact_id = c.id
             LEFT JOIN users u ON a.user_id = u.id
-            WHERE a.share_token = ?
-            LIMIT 1;
+            WHERE ac.token = ?;
         ''', (clean_token,))
-        share_row = cursor.fetchone()
-        if share_row:
-            alert_id = share_row['alert_id']
-            owner_user_id = share_row['user_id']
-            owner_name = share_row['user_name'] or 'the user'
-            cursor.execute('SELECT id, name FROM contacts WHERE user_id = ? LIMIT 1;', (owner_user_id,))
-            c_row = cursor.fetchone()
-            cid = c_row['id'] if c_row else 1
-            contact_name = c_row['name'] if c_row else 'Emergency Contact'
+        row = cursor.fetchone()
+
+        if row:
+            alert_id = row['alert_id']
+            contact_id = row['contact_id']
+            owner_user_id = row['user_id']
+            contact_name = row['contact_name'] or 'Contact'
+            owner_name = row['user_name'] or 'the user'
+            first_name = contact_name.split()[0]
+
             cursor.execute('''
                 INSERT INTO contact_responses (alert_id, contact_id, status)
                 VALUES (?, ?, ?);
-            ''', (alert_id, cid, status))
-            conn.commit()
+            ''', (alert_id, contact_id, status))
 
-    conn.close()
+            log_event(
+                user_id=owner_user_id,
+                type='contact_responded',
+                actor='contact',
+                detail={'contact': first_name, 'status': status},
+                alert_id=alert_id,
+                cursor=cursor
+            )
+            conn.commit()
+        else:
+            # 2. Check escort_contacts
+            cursor.execute('''
+                SELECT ec.id AS ec_id, ec.escort_id, ec.contact_id, ec.token,
+                       e.id AS escort_id, e.user_id, e.status AS escort_status, e.alert_id,
+                       c.name AS contact_name, u.name AS user_name
+                FROM escort_contacts ec
+                JOIN escorts e ON ec.escort_id = e.id
+                LEFT JOIN contacts c ON ec.contact_id = c.id
+                LEFT JOIN users u ON e.user_id = u.id
+                WHERE ec.token = ?;
+            ''', (clean_token,))
+            esc_row = cursor.fetchone()
+            if esc_row:
+                owner_user_id = esc_row['user_id']
+                owner_name = esc_row['user_name'] or 'the user'
+                contact_name = esc_row['contact_name'] or 'Contact'
+                first_name = contact_name.split()[0]
+                log_event(
+                    user_id=owner_user_id,
+                    type='contact_responded',
+                    actor='contact',
+                    detail={'contact': first_name, 'status': status, 'escort_id': esc_row['escort_id']},
+                    alert_id=esc_row['alert_id'],
+                    escort_id=esc_row['escort_id'],
+                    cursor=cursor
+                )
+                conn.commit()
+            else:
+                # 3. Check share_contacts
+                cursor.execute('''
+                    SELECT sc.id AS sc_id, sc.share_id, sc.contact_id, sc.token,
+                           s.id AS share_id, s.user_id, s.status AS share_status,
+                           c.name AS contact_name, u.name AS user_name
+                    FROM share_contacts sc
+                    JOIN shares s ON sc.share_id = s.id
+                    LEFT JOIN contacts c ON sc.contact_id = c.id
+                    LEFT JOIN users u ON s.user_id = u.id
+                    WHERE sc.token = ?;
+                ''', (clean_token,))
+                sc_row = cursor.fetchone()
+                if sc_row:
+                    owner_user_id = sc_row['user_id']
+                    owner_name = sc_row['user_name'] or 'the user'
+                    contact_name = sc_row['contact_name'] or 'Contact'
+                    first_name = contact_name.split()[0]
+                    log_event(
+                        user_id=owner_user_id,
+                        type='contact_responded',
+                        actor='contact',
+                        detail={'contact': first_name, 'status': status, 'share_id': sc_row['share_id']},
+                        cursor=cursor
+                    )
+                    conn.commit()
+                else:
+                    # 4. Check ride_contacts
+                    cursor.execute('''
+                        SELECT rc.id AS rc_id, rc.ride_id, rc.contact_id, rc.token,
+                               r.id AS ride_id, r.user_id, r.status AS ride_status,
+                               c.name AS contact_name, u.name AS user_name
+                        FROM ride_contacts rc
+                        JOIN rides r ON rc.ride_id = r.id
+                        LEFT JOIN contacts c ON rc.contact_id = c.id
+                        LEFT JOIN users u ON r.user_id = u.id
+                        WHERE rc.token = ?;
+                    ''', (clean_token,))
+                    rc_row = cursor.fetchone()
+                    if rc_row:
+                        owner_user_id = rc_row['user_id']
+                        owner_name = rc_row['user_name'] or 'the user'
+                        contact_name = rc_row['contact_name'] or 'Contact'
+                        first_name = contact_name.split()[0]
+                        log_event(
+                            user_id=owner_user_id,
+                            type='contact_responded',
+                            actor='contact',
+                            detail={'contact': first_name, 'status': status, 'ride_id': rc_row['ride_id']},
+                            cursor=cursor
+                        )
+                        conn.commit()
+                    else:
+                        # 5. Check alerts.share_token match
+                        cursor.execute('''
+                            SELECT a.id AS alert_id, a.user_id, a.status AS alert_status, u.name AS user_name
+                            FROM alerts a
+                            LEFT JOIN users u ON a.user_id = u.id
+                            WHERE a.share_token = ?
+                            LIMIT 1;
+                        ''', (clean_token,))
+                        share_row = cursor.fetchone()
+                        if share_row:
+                            alert_id = share_row['alert_id']
+                            owner_user_id = share_row['user_id']
+                            owner_name = share_row['user_name'] or 'the user'
+                            cursor.execute('SELECT id, name FROM contacts WHERE user_id = ? LIMIT 1;', (owner_user_id,))
+                            c_row = cursor.fetchone()
+                            cid = c_row['id'] if c_row else 1
+                            contact_name = c_row['name'] if c_row else 'Emergency Contact'
+                            cursor.execute('''
+                                INSERT INTO contact_responses (alert_id, contact_id, status)
+                                VALUES (?, ?, ?);
+                            ''', (alert_id, cid, status))
+                            conn.commit()
+    finally:
+        conn.close()
 
     html = f"""<!DOCTYPE html>
 <html lang="en">

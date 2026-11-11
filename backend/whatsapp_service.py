@@ -232,6 +232,7 @@ def send_safe_update_whatsapp_notifications_background(alert_id, user_name, safe
 def send_escort_whatsapp_notifications_background(escort_id, user_name, dest_name, expected_end_str, recipient_phones, tokens_map=None):
     """
     Send WhatsApp notification to emergency contacts when user starts an Escort Mode journey.
+    Includes 1-tap quick response actions for contacts.
     """
     if not recipient_phones:
         return
@@ -240,14 +241,37 @@ def send_escort_whatsapp_notifications_background(escort_id, user_name, dest_nam
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         for phone in recipient_phones:
             tok = ''
+            clean_p = normalize_phone_number(phone)
+            digits = ''.join(c for c in phone if c.isdigit())
             if tokens_map and isinstance(tokens_map, dict):
-                tok = tokens_map.get(phone) or ''
+                tok = (tokens_map.get(phone) or
+                       tokens_map.get(clean_p) or
+                       tokens_map.get(digits) or
+                       tokens_map.get('+' + digits) or
+                       tokens_map.get(str(phone).strip()) or '')
+                if not tok:
+                    for k, v in tokens_map.items():
+                        if v and isinstance(v, str):
+                            tok = v
+                            break
+
             track_url = f"{frontend_url}/track.html?t={tok}" if tok else f"{frontend_url}/track.html"
+            sep = '&' if '?' in track_url else '?'
+            watch_url = f"{track_url}{sep}action=watching"
+            on_way_url = f"{track_url}{sep}action=on_my_way"
+            call_url = f"{track_url}{sep}action=called"
+            safe_url = f"{track_url}{sep}action=safe_with_me"
+
             message = (
                 f"🚶‍♀️ *SafeHer Escort Mode Started* 🚶‍♀️\n\n"
                 f"*{user_name}* has started an escorted journey to *{dest_name}*.\n\n"
                 f"🕒 *Expected Arrival*: {expected_end_str}\n"
                 f"🔴 *Live Journey Tracking*:\n{track_url}\n\n"
+                f"💬 *Tap to Respond to {user_name} Instantly:*\n"
+                f"👀 *I'm Watching*: {watch_url}\n"
+                f"🏃 *On My Way*: {on_way_url}\n"
+                f"📞 *I Called Her*: {call_url}\n"
+                f"✅ *Safe With Me*: {safe_url}\n\n"
                 f"SafeHer is actively monitoring her route and check-ins."
             )
             masked = mask_phone(phone)
@@ -260,26 +284,33 @@ def send_escort_whatsapp_notifications_background(escort_id, user_name, dest_nam
     threading.Thread(target=worker, daemon=True).start()
 
 
-def send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_name, recipient_phones):
+def send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_name, recipient_phones, arrived=True):
     """
-    Send WhatsApp notification to emergency contacts when user safely arrives at their destination.
+    Send WhatsApp notification to emergency contacts when user safely arrives or ends Escort Mode.
     """
     if not recipient_phones:
         return
 
     def worker():
-        message = (
-            f"✅ *JOURNEY COMPLETED - SafeHer* ✅\n\n"
-            f"*{user_name}* has arrived safely at *{dest_name}*.\n\n"
-            f"The live escort tracking session has ended. Thank you for your support!"
-        )
+        if arrived:
+            message = (
+                f"✅ *JOURNEY COMPLETED - SafeHer* ✅\n\n"
+                f"*{user_name}* has arrived safely at *{dest_name}*.\n\n"
+                f"The live escort tracking session has ended. Thank you for your support!"
+            )
+        else:
+            message = (
+                f"✅ *ESCORT MODE ENDED - SafeHer* ✅\n\n"
+                f"*{user_name}* has ended the escorted journey to *{dest_name}*.\n\n"
+                f"She has confirmed she is safe. All clear!"
+            )
         for phone in recipient_phones:
             masked = mask_phone(phone)
             success, err_msg = send_whatsapp(phone, message)
             if success:
-                app_logger.info(f"[ESCORT ARRIVED WHATSAPP SENT] escort_id={escort_id}, to={masked}")
+                app_logger.info(f"[ESCORT ARRIVED WHATSAPP SENT] escort_id={escort_id}, arrived={arrived}, to={masked}")
             else:
-                app_logger.error(f"[ESCORT ARRIVED WHATSAPP FAILED] escort_id={escort_id}, to={masked}, error={err_msg}")
+                app_logger.error(f"[ESCORT ARRIVED WHATSAPP FAILED] escort_id={escort_id}, arrived={arrived}, to={masked}, error={err_msg}")
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -382,6 +413,11 @@ def send_ride_started_whatsapp_notifications_background(ride_id, user_name, vehi
     def worker():
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         track_url = f"{frontend_url}/track.html?t={share_token}" if share_token else f"{frontend_url}/track.html"
+        sep = '&' if '?' in track_url else '?'
+        watch_url = f"{track_url}{sep}action=watching"
+        call_url = f"{track_url}{sep}action=called"
+        safe_url = f"{track_url}{sep}action=safe_with_me"
+
         driver_str = driver_name or 'Driver'
         if driver_phone:
             driver_str += f" (Tel: {driver_phone})"
@@ -395,6 +431,10 @@ def send_ride_started_whatsapp_notifications_background(ride_id, user_name, vehi
             f"• *To:* {destination}\n"
             f"• *ETA:* ~{eta_mins} mins\n\n"
             f"🔴 *Live GPS Location & Route*:\n{track_url}\n\n"
+            f"💬 *Tap to Respond to {user_name} Instantly:*\n"
+            f"👀 *I'm Watching*: {watch_url}\n"
+            f"📞 *I Called Her*: {call_url}\n"
+            f"✅ *Reached Safely / Safe*: {safe_url}\n\n"
             f"⚡ SafeHer is actively monitoring this ride. You will be alerted automatically if any emergency SOS occurs."
         )
 

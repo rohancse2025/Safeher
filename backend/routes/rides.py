@@ -124,120 +124,110 @@ def create_ride():
     expected_end_at = (now_utc + datetime.timedelta(minutes=expected_minutes)).strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Ensure user exists in users table to satisfy foreign keys
+    tokens_list = []
+    final_contact_ids = []
+    ride_id = 0
     try:
-        cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
-        if not cursor.fetchone():
-            cursor.execute('''
-                INSERT INTO users (id, name, phone, email, password_hash)
-                VALUES (?, ?, '917483245232', 'user@safeher.app', 'demo_hash');
-            ''', (user_id, user_name))
-            conn.commit()
-    except Exception:
-        pass
+        cursor = conn.cursor()
 
-    # Cancel previous active rides for this user
-    cursor.execute('''
-        UPDATE rides
-        SET status = 'ended', ended_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND status = 'active';
-    ''', (user_id,))
+        # Ensure user exists in users table to satisfy foreign keys
+        try:
+            cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
+            if not cursor.fetchone():
+                cursor.execute('''
+                    INSERT INTO users (id, name, phone, email, password_hash)
+                    VALUES (?, ?, '917483245232', 'user@safeher.app', 'demo_hash');
+                ''', (user_id, user_name))
+                conn.commit()
+        except Exception:
+            pass
 
-    cursor.execute('''
-        INSERT INTO rides (
+        # Cancel previous active rides for this user
+        cursor.execute('''
+            UPDATE rides
+            SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND status = 'active';
+        ''', (user_id,))
+
+        cursor.execute('''
+            INSERT INTO rides (
+                user_id, vehicle_type, vehicle_number, driver_name, driver_phone,
+                app_used, pickup, destination, expected_minutes, started_at, expected_end_at,
+                status, last_lat, last_lng, last_update_at, late_notified, alert_created
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'active', ?, ?, CURRENT_TIMESTAMP, 0, 0);
+        ''', (
             user_id, vehicle_type, vehicle_number, driver_name, driver_phone,
-            app_used, pickup, destination, expected_minutes, started_at, expected_end_at,
-            status, last_lat, last_lng, last_update_at, late_notified, alert_created
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'active', ?, ?, CURRENT_TIMESTAMP, 0, 0);
-    ''', (
-        user_id, vehicle_type, vehicle_number, driver_name, driver_phone,
-        app_used, pickup, destination, expected_minutes, expected_end_at,
-        lat, lng
-    ))
-    ride_id = cursor.lastrowid
+            app_used, pickup, destination, expected_minutes, expected_end_at,
+            lat, lng
+        ))
+        ride_id = cursor.lastrowid
 
-    # 1. Sync any client-provided contacts into contacts table
-    client_contacts = data.get('contacts') or []
-    synced_contact_ids = []
-    for cc in client_contacts:
-        if isinstance(cc, dict):
-            c_name = str(cc.get('name') or 'Emergency Contact').strip()
-            c_phone = str(cc.get('phone') or '').strip()
-            c_email = str(cc.get('email') or '').strip()
-            if c_phone or c_email:
-                cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));", (user_id, c_phone, c_email))
+        # 1. Sync any client-provided contacts into contacts table
+        client_contacts = data.get('contacts') or []
+        synced_contact_ids = []
+        for cc in client_contacts:
+            if isinstance(cc, dict):
+                c_name = str(cc.get('name') or 'Emergency Contact').strip()
+                c_phone = str(cc.get('phone') or '').strip()
+                c_email = str(cc.get('email') or '').strip()
+                if c_phone or c_email:
+                    cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));", (user_id, c_phone, c_email))
+                    row = cursor.fetchone()
+                    if row:
+                        synced_contact_ids.append(row['id'])
+                    else:
+                        cursor.execute('''
+                            INSERT INTO contacts (user_id, name, phone, email, relationship)
+                            VALUES (?, ?, ?, ?, 'Contact');
+                        ''', (user_id, c_name, c_phone, c_email or None))
+                        synced_contact_ids.append(cursor.lastrowid)
+
+        # 2. If client passed direct phones list
+        for p in (data.get('phones') or []):
+            p_str = str(p).strip()
+            if p_str:
+                cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND phone = ?;", (user_id, p_str))
                 row = cursor.fetchone()
                 if row:
-                    synced_contact_ids.append(row['id'])
+                    if row['id'] not in synced_contact_ids:
+                        synced_contact_ids.append(row['id'])
                 else:
                     cursor.execute('''
-                        INSERT INTO contacts (user_id, name, phone, email, relationship)
-                        VALUES (?, ?, ?, ?, 'Contact');
-                    ''', (user_id, c_name, c_phone, c_email or None))
+                        INSERT INTO contacts (user_id, name, phone, relationship)
+                        VALUES (?, 'Emergency Contact', ?, 'Contact');
+                    ''', (user_id, p_str))
                     synced_contact_ids.append(cursor.lastrowid)
 
-    # 2. If client passed direct phones list
-    for p in (data.get('phones') or []):
-        p_str = str(p).strip()
-        if p_str:
-            cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND phone = ?;", (user_id, p_str))
-            row = cursor.fetchone()
-            if row:
-                if row['id'] not in synced_contact_ids:
-                    synced_contact_ids.append(row['id'])
-            else:
-                cursor.execute('''
-                    INSERT INTO contacts (user_id, name, phone, relationship)
-                    VALUES (?, 'Emergency Contact', ?, 'Contact');
-                ''', (user_id, p_str))
-                synced_contact_ids.append(cursor.lastrowid)
+        # 3. Resolve valid contact IDs that actually exist in DB
+        raw_cids = data.get('contact_ids')
+        if raw_cids and isinstance(raw_cids, list):
+            for cid in raw_cids:
+                if str(cid).isdigit():
+                    cursor.execute("SELECT id FROM contacts WHERE id = ?;", (int(cid),))
+                    if cursor.fetchone():
+                        final_contact_ids.append(int(cid))
 
-    # 3. Resolve valid contact IDs that actually exist in DB
-    final_contact_ids = []
-    raw_cids = data.get('contact_ids')
-    if raw_cids and isinstance(raw_cids, list):
-        for cid in raw_cids:
-            if str(cid).isdigit():
-                cursor.execute("SELECT id FROM contacts WHERE id = ?;", (int(cid),))
-                if cursor.fetchone():
-                    final_contact_ids.append(int(cid))
+        for scid in synced_contact_ids:
+            if scid not in final_contact_ids:
+                final_contact_ids.append(scid)
 
-    for scid in synced_contact_ids:
-        if scid not in final_contact_ids:
-            final_contact_ids.append(scid)
+        if not final_contact_ids:
+            cursor.execute("SELECT id FROM contacts WHERE user_id = ?;", (user_id,))
+            final_contact_ids = [r['id'] for r in cursor.fetchall()]
 
-    if not final_contact_ids:
-        cursor.execute("SELECT id FROM contacts WHERE user_id = ?;", (user_id,))
-        final_contact_ids = [r['id'] for r in cursor.fetchall()]
-
-    if not final_contact_ids:
-        # Create a default emergency contact for user so foreign key never fails
-        cursor.execute('''
-            INSERT INTO contacts (user_id, name, phone, email, relationship)
-            VALUES (?, 'Primary Contact', '917483245232', 'contact@safeher.app', 'Contact');
-        ''', (user_id,))
-        final_contact_ids = [cursor.lastrowid]
-
-    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
-    tokens_list = []
-    client_token = (data.get('token') or data.get('share_token') or '').strip()
-
-    for idx, cid in enumerate(final_contact_ids):
-        tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
-        try:
+        if not final_contact_ids:
+            # Create a default emergency contact for user so foreign key never fails
             cursor.execute('''
-                INSERT INTO ride_contacts (ride_id, contact_id, token, created_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-            ''', (ride_id, cid, tok))
-            tokens_list.append({
-                "contact_id": cid,
-                "token": tok,
-                "track_url": f"{frontend_url}/track.html?t={tok}"
-            })
-        except Exception:
-            tok = secrets.token_urlsafe(32)
+                INSERT INTO contacts (user_id, name, phone, email, relationship)
+                VALUES (?, 'Primary Contact', '917483245232', 'contact@safeher.app', 'Contact');
+            ''', (user_id,))
+            final_contact_ids = [cursor.lastrowid]
+
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        client_token = (data.get('token') or data.get('share_token') or '').strip()
+
+        for idx, cid in enumerate(final_contact_ids):
+            tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
             try:
                 cursor.execute('''
                     INSERT INTO ride_contacts (ride_id, contact_id, token, created_at)
@@ -248,11 +238,24 @@ def create_ride():
                     "token": tok,
                     "track_url": f"{frontend_url}/track.html?t={tok}"
                 })
-            except Exception as e:
-                app_logger.warning(f"[RIDE CONTACT INSERT] cid={cid}: {e}")
+            except Exception:
+                tok = secrets.token_urlsafe(32)
+                try:
+                    cursor.execute('''
+                        INSERT INTO ride_contacts (ride_id, contact_id, token, created_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP);
+                    ''', (ride_id, cid, tok))
+                    tokens_list.append({
+                        "contact_id": cid,
+                        "token": tok,
+                        "track_url": f"{frontend_url}/track.html?t={tok}"
+                    })
+                except Exception as e:
+                    app_logger.warning(f"[RIDE CONTACT INSERT] cid={cid}: {e}")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     primary_tok = tokens_list[0]['token'] if tokens_list else (client_token or secrets.token_urlsafe(32))
     vehicle_desc = f"{vehicle_type} {vehicle_number}".strip()
@@ -385,41 +388,47 @@ def end_ride(ride_id):
     user_name = (data.get('user_name') or (user.get('name') if user else None) or 'SafeHer User').strip()
 
     conn = get_db()
-    cursor = conn.cursor()
+    c_ids = []
+    real_ride_id = 0
+    dest = 'Destination'
+    v_num = 'Cab'
+    try:
+        cursor = conn.cursor()
 
-    row = None
-    if str(ride_id).isdigit():
-        cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (int(ride_id),))
-        row = cursor.fetchone()
-
-    token = data.get('token') or data.get('share_token')
-    if not row and token:
-        cursor.execute("SELECT ride_id FROM ride_contacts WHERE token = ?;", (token,))
-        sc = cursor.fetchone()
-        if sc:
-            cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (sc['ride_id'],))
+        row = None
+        if str(ride_id).isdigit():
+            cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (int(ride_id),))
             row = cursor.fetchone()
 
-    if not row:
-        cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
-        row = cursor.fetchone()
+        token = data.get('token') or data.get('share_token')
+        if not row and token:
+            cursor.execute("SELECT ride_id FROM ride_contacts WHERE token = ?;", (token,))
+            sc = cursor.fetchone()
+            if sc:
+                cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (sc['ride_id'],))
+                row = cursor.fetchone()
 
-    real_ride_id = row['id'] if row else (int(ride_id) if str(ride_id).isdigit() else 0)
-    dest = (row['destination'] if row else (data.get('destination') or 'Destination'))
-    v_num = (row['vehicle_number'] if row else (data.get('vehicle_number') or 'Cab'))
+        if not row:
+            cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+            row = cursor.fetchone()
 
-    if row and row['status'] != 'ended':
-        cursor.execute('''
-            UPDATE rides
-            SET status = 'ended', ended_at = CURRENT_TIMESTAMP
-            WHERE id = ?;
-        ''', (real_ride_id,))
-        conn.commit()
+        real_ride_id = row['id'] if row else (int(ride_id) if str(ride_id).isdigit() else 0)
+        dest = (row['destination'] if row else (data.get('destination') or 'Destination'))
+        v_num = (row['vehicle_number'] if row else (data.get('vehicle_number') or 'Cab'))
 
-    cursor.execute("SELECT contact_id FROM ride_contacts WHERE ride_id = ?;", (real_ride_id,))
-    c_rows = cursor.fetchall()
-    c_ids = [r['contact_id'] for r in c_rows if r['contact_id']]
-    conn.close()
+        if row and row['status'] != 'ended':
+            cursor.execute('''
+                UPDATE rides
+                SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+                WHERE id = ?;
+            ''', (real_ride_id,))
+            conn.commit()
+
+        cursor.execute("SELECT contact_id FROM ride_contacts WHERE ride_id = ?;", (real_ride_id,))
+        c_rows = cursor.fetchall()
+        c_ids = [r['contact_id'] for r in c_rows if r['contact_id']]
+    finally:
+        conn.close()
 
     c_phones = _extract_phones(data, user_id=user_id, contact_ids=c_ids)
 

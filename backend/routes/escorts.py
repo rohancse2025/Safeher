@@ -28,6 +28,59 @@ escorts_bp = Blueprint('escorts', __name__)
 EARTH_RADIUS_METERS = 6371000.0
 
 
+def _extract_phones(data, user_id=None, contact_ids=None):
+    phones = []
+    # 1. Direct phones list in payload
+    for p in (data.get('phones') or []):
+        p_str = str(p).strip()
+        if p_str and p_str not in phones:
+            phones.append(p_str)
+    # 2. Direct single phone
+    if data.get('phone'):
+        p_str = str(data.get('phone')).strip()
+        if p_str and p_str not in phones:
+            phones.append(p_str)
+    # 3. Client contacts list [{phone: '...'}]
+    for c in (data.get('contacts') or []):
+        if isinstance(c, dict):
+            p = str(c.get('phone') or '').strip()
+            if p and p not in phones:
+                phones.append(p)
+        elif isinstance(c, str) and c.strip():
+            if c.strip() not in phones:
+                phones.append(c.strip())
+    # 4. If contact_ids given and database has them
+    if contact_ids:
+        valid_cids = [int(cid) for cid in contact_ids if str(cid).isdigit()]
+        if valid_cids:
+            try:
+                conn_tmp = get_db()
+                cur_tmp = conn_tmp.cursor()
+                placeholders = ','.join('?' for _ in valid_cids)
+                cur_tmp.execute(f"SELECT phone FROM contacts WHERE id IN ({placeholders});", valid_cids)
+                for row in cur_tmp.fetchall():
+                    p = str(row['phone'] or '').strip()
+                    if p and p not in phones:
+                        phones.append(p)
+                conn_tmp.close()
+            except Exception:
+                pass
+    # 5. User primary contacts fallback if still empty
+    if not phones and user_id:
+        try:
+            conn_tmp = get_db()
+            cur_tmp = conn_tmp.cursor()
+            cur_tmp.execute("SELECT phone FROM contacts WHERE user_id = ? ORDER BY is_primary DESC, id ASC LIMIT 5;", (user_id,))
+            for row in cur_tmp.fetchall():
+                p = str(row['phone'] or '').strip()
+                if p and p not in phones:
+                    phones.append(p)
+            conn_tmp.close()
+        except Exception:
+            pass
+    return phones
+
+
 # ─── 1. Mathematical Distance & Projection Utilities ───────────
 
 def haversine_m(lat1, lon1, lat2, lon2):
@@ -250,111 +303,113 @@ def create_escort():
     route_json = json.dumps(route_points)
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Cancel any previous active/paused escorts for this user
-    cursor.execute('''
-        UPDATE escorts
-        SET status = 'ended', ended_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND status IN ('active', 'paused');
-    ''', (user_id,))
-
-    cursor.execute('''
-        INSERT INTO escorts (
-            user_id, dest_name, dest_lat, dest_lng, route_json, route_distance_m,
-            started_at, expected_end, status, checkin_interval_min, deviation_m,
-            last_lat, last_lng, last_update_at, last_checkin_at, next_checkin_due,
-            stationary_anchor_lat, stationary_anchor_lng, stationary_anchor_at,
-            pauses_used
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);
-    ''', (
-        user_id, dest_name, dest_lat, dest_lng, route_json, route_distance_m,
-        now_str, expected_end_str, checkin_interval_min, deviation_m,
-        last_lat, last_lng, now_str, now_str, next_checkin_due,
-        last_lat, last_lng, now_str
-    ))
-    escort_id = cursor.lastrowid
-
-    # Sync client contacts into DB if provided
-    client_contacts = data.get('contacts')
-    if client_contacts and isinstance(client_contacts, list):
-        for cc in client_contacts:
-            if isinstance(cc, dict):
-                c_name = str(cc.get('name') or '').strip()
-                c_phone = str(cc.get('phone') or '').strip()
-                c_email = str(cc.get('email') or '').strip()
-                if c_name and (c_phone or c_email):
-                    try:
-                        cursor.execute('SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ""));', (user_id, c_phone, c_email))
-                        if not cursor.fetchone():
-                            cursor.execute('INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);', (user_id, c_name, c_phone, c_email or None))
-                    except Exception:
-                        pass
-
-    # Verify contacts and generate tokens
-    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     tokens_map = {}
     links_map = {}
-
     valid_contacts = []
-    if contact_ids:
-        placeholders = ','.join('?' for _ in contact_ids)
-        cursor.execute(f'''
-            SELECT id, name, phone, email
-            FROM contacts
-            WHERE user_id = ? AND id IN ({placeholders});
-        ''', (user_id, *contact_ids))
-        valid_contacts = [dict(c) for c in cursor.fetchall()]
+    escort_id = 0
+    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
 
-    if not valid_contacts:
-        # Default to close contacts if specified, otherwise all user contacts
-        cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ? AND close = 1;', (user_id,))
-        valid_contacts = [dict(c) for c in cursor.fetchall()]
-        if not valid_contacts:
-            cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+    try:
+        cursor = conn.cursor()
+
+        # Cancel any previous active/paused escorts for this user
+        cursor.execute('''
+            UPDATE escorts
+            SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND status IN ('active', 'paused');
+        ''', (user_id,))
+
+        cursor.execute('''
+            INSERT INTO escorts (
+                user_id, dest_name, dest_lat, dest_lng, route_json, route_distance_m,
+                started_at, expected_end, status, checkin_interval_min, deviation_m,
+                last_lat, last_lng, last_update_at, last_checkin_at, next_checkin_due,
+                stationary_anchor_lat, stationary_anchor_lng, stationary_anchor_at,
+                pauses_used
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);
+        ''', (
+            user_id, dest_name, dest_lat, dest_lng, route_json, route_distance_m,
+            now_str, expected_end_str, checkin_interval_min, deviation_m,
+            last_lat, last_lng, now_str, now_str, next_checkin_due,
+            last_lat, last_lng, now_str
+        ))
+        escort_id = cursor.lastrowid
+
+        # Sync client contacts into DB if provided
+        client_contacts = data.get('contacts')
+        if client_contacts and isinstance(client_contacts, list):
+            for cc in client_contacts:
+                if isinstance(cc, dict):
+                    c_name = str(cc.get('name') or '').strip()
+                    c_phone = str(cc.get('phone') or '').strip()
+                    c_email = str(cc.get('email') or '').strip()
+                    if c_name and (c_phone or c_email):
+                        try:
+                            cursor.execute('SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ""));', (user_id, c_phone, c_email))
+                            if not cursor.fetchone():
+                                cursor.execute('INSERT INTO contacts (user_id, name, phone, email, is_primary) VALUES (?, ?, ?, ?, 1);', (user_id, c_name, c_phone, c_email or None))
+                        except Exception:
+                            pass
+
+        # Verify contacts and generate tokens
+        if contact_ids:
+            placeholders = ','.join('?' for _ in contact_ids)
+            cursor.execute(f'''
+                SELECT id, name, phone, email
+                FROM contacts
+                WHERE user_id = ? AND id IN ({placeholders});
+            ''', (user_id, *contact_ids))
             valid_contacts = [dict(c) for c in cursor.fetchall()]
 
-    if not valid_contacts:
-        cursor.execute('SELECT id, name, phone, email FROM contacts LIMIT 5;')
-        valid_contacts = [dict(c) for c in cursor.fetchall()]
+        if not valid_contacts:
+            # Default to close contacts if specified, otherwise all user contacts
+            cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ? AND close = 1;', (user_id,))
+            valid_contacts = [dict(c) for c in cursor.fetchall()]
+            if not valid_contacts:
+                cursor.execute('SELECT id, name, phone, email FROM contacts WHERE user_id = ?;', (user_id,))
+                valid_contacts = [dict(c) for c in cursor.fetchall()]
 
-    if not valid_contacts:
-        valid_contacts = []
+        if not valid_contacts:
+            cursor.execute('SELECT id, name, phone, email FROM contacts LIMIT 5;')
+            valid_contacts = [dict(c) for c in cursor.fetchall()]
 
-    for c in valid_contacts:
-        c_id = c['id']
-        token = secrets.token_urlsafe(24)
-        cursor.execute('''
-            INSERT INTO escort_contacts (escort_id, contact_id, token)
-            VALUES (?, ?, ?);
-        ''', (escort_id, c_id, token))
-        track_link = f"{frontend_url}/track.html?t={token}"
-        tokens_map[str(c_id)] = token
-        if 'phone' in c and c['phone']:
-            tokens_map[str(c['phone']).strip()] = token
-            tokens_map[str(c['phone']).replace('+', '').strip()] = token
-        links_map[str(c_id)] = track_link
+        if not valid_contacts:
+            valid_contacts = []
 
-        pass
+        for c in valid_contacts:
+            c_id = c['id']
+            token = secrets.token_urlsafe(24)
+            cursor.execute('''
+                INSERT INTO escort_contacts (escort_id, contact_id, token)
+                VALUES (?, ?, ?);
+            ''', (escort_id, c_id, token))
+            track_link = f"{frontend_url}/track.html?t={token}"
+            tokens_map[str(c_id)] = token
+            if 'phone' in c and c['phone']:
+                clean_cp = str(c['phone']).replace('+', '').strip()
+                tokens_map[str(c['phone']).strip()] = token
+                tokens_map[clean_cp] = token
+            links_map[str(c_id)] = track_link
 
-    # Log escort_started incident event
-    log_event(
-        user_id=user_id,
-        type='escort_started',
-        actor='user',
-        detail={'dest_name': dest_name, 'expected_minutes': expected_minutes},
-        escort_id=escort_id,
-        cursor=cursor
-    )
+        # Log escort_started incident event
+        log_event(
+            user_id=user_id,
+            type='escort_started',
+            actor='user',
+            detail={'dest_name': dest_name, 'expected_minutes': expected_minutes},
+            escort_id=escort_id,
+            cursor=cursor
+        )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     app_logger.info(f"[ESCORT STARTED] escort_id={escort_id}, user_id={user_id}, dest={dest_name}")
 
+    first_token = (list(tokens_map.values())[0]) if tokens_map else ''
     try:
         from services.notify import notify
-        first_token = tokens_map.get(str(valid_contacts[0]['id'])) if valid_contacts else ''
         notify(
             event_type='escort_start',
             user_id=user_id,
@@ -386,8 +441,8 @@ def create_escort():
                 'destination': dest_name,
                 'escort_id': escort_id,
                 'expected_end': expected_end_str,
-                'lat': origin_lat,
-                'lng': origin_lng
+                'lat': last_lat,
+                'lng': last_lng
             },
             contact_ids=c_ids,
             event_key=f"escort:{escort_id}:started"
@@ -396,6 +451,11 @@ def create_escort():
         app_logger.warning(f"[NOTIFY ESCORT START ERROR] {notify_err}")
 
     escort_phones = [c_item['phone'].strip() for c_item in valid_contacts if ('phone' in c_item.keys() and c_item['phone'] and str(c_item['phone']).strip())]
+    extra_phones = _extract_phones(data, user_id=user_id, contact_ids=[c['id'] for c in valid_contacts])
+    for ep in extra_phones:
+        if ep not in escort_phones:
+            escort_phones.append(ep)
+
     if escort_phones:
         try:
             from whatsapp_service import send_escort_whatsapp_notifications_background
@@ -452,135 +512,141 @@ def update_escort_position(escort_id):
     lng = float(lng)
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT id, user_id, dest_name, dest_lat, dest_lng, route_json, deviation_m,
-               status, off_route_since, stationary_since, stationary_anchor_lat,
-               stationary_anchor_lng, stationary_anchor_at, alert_id
-        FROM escorts
-        WHERE id = ?;
-    ''', (escort_id,))
-    escort = cursor.fetchone()
-
-    if not escort:
-        conn.close()
-        return jsonify({"ok": False, "error": "Escort journey not found"}), 404
-
-    current_status = escort['status']
-    if current_status in ('arrived', 'ended'):
-        conn.close()
-        return jsonify({"ok": False, "error": f"Escort journey is already {current_status}"}), 400
-
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
-
-    # 1. Parse route points and compute perpendicular distance to route
     try:
-        route_points = json.loads(escort['route_json']) if escort['route_json'] else []
-    except Exception:
-        route_points = []
+        cursor = conn.cursor()
 
-    deviation_m = float(escort['deviation_m'] or 200.0)
-    dist_to_route = point_to_route_distance_m(lat, lng, route_points)
+        cursor.execute('''
+            SELECT id, user_id, dest_name, dest_lat, dest_lng, route_json, deviation_m,
+                   status, off_route_since, stationary_since, stationary_anchor_lat,
+                   stationary_anchor_lng, stationary_anchor_at, alert_id
+            FROM escorts
+            WHERE id = ?;
+        ''', (escort_id,))
+        escort = cursor.fetchone()
 
-    # 2. Set or clear off_route_since
-    off_route_since = escort['off_route_since']
-    if dist_to_route > deviation_m:
-        if not off_route_since:
-            off_route_since = now_str
-            log_event(
-                user_id=user_id,
-                type='escort_off_route',
-                actor='user',
-                detail={'distance_m': round(dist_to_route, 1), 'deviation_m': deviation_m},
-                escort_id=escort_id,
-                cursor=cursor
-            )
-    else:
-        off_route_since = None
+        if not escort:
+            return jsonify({"ok": False, "error": "Escort journey not found"}), 404
 
-    # 3. Detect stationary (< 30 m over 5 minutes while not paused)
-    stationary_since = escort['stationary_since']
-    anchor_lat = escort['stationary_anchor_lat']
-    anchor_lng = escort['stationary_anchor_lng']
-    anchor_at_str = escort['stationary_anchor_at']
+        current_status = escort['status']
+        if current_status in ('arrived', 'ended'):
+            return jsonify({"ok": False, "error": f"Escort journey is already {current_status}"}), 400
 
-    if current_status == 'paused':
-        stationary_since = None
-        anchor_lat = lat
-        anchor_lng = lng
-        anchor_at_str = now_str
-    else:
-        if anchor_lat is None or anchor_lng is None or not anchor_at_str:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1. Parse route points and compute perpendicular distance to route
+        try:
+            route_points = json.loads(escort['route_json']) if escort['route_json'] else []
+        except Exception:
+            route_points = []
+
+        deviation_m = float(escort['deviation_m'] or 200.0)
+        dist_to_route = point_to_route_distance_m(lat, lng, route_points)
+
+        # 2. Set or clear off_route_since
+        off_route_since = escort['off_route_since']
+        if dist_to_route > deviation_m:
+            if not off_route_since:
+                off_route_since = now_str
+                log_event(
+                    user_id=user_id,
+                    type='escort_off_route',
+                    actor='user',
+                    detail={'distance_m': round(dist_to_route, 1), 'deviation_m': deviation_m},
+                    escort_id=escort_id,
+                    cursor=cursor
+                )
+        else:
+            off_route_since = None
+
+        # 3. Detect stationary (< 30 m over 5 minutes while not paused)
+        stationary_since = escort['stationary_since']
+        anchor_lat = escort['stationary_anchor_lat']
+        anchor_lng = escort['stationary_anchor_lng']
+        anchor_at_str = escort['stationary_anchor_at']
+
+        if current_status == 'paused':
+            stationary_since = None
             anchor_lat = lat
             anchor_lng = lng
             anchor_at_str = now_str
-            stationary_since = None
         else:
-            dist_from_anchor = haversine_m(lat, lng, anchor_lat, anchor_lng)
-            if dist_from_anchor >= 30.0:
-                # User has moved more than 30 m -> reset anchor
+            if anchor_lat is None or anchor_lng is None or not anchor_at_str:
                 anchor_lat = lat
                 anchor_lng = lng
                 anchor_at_str = now_str
                 stationary_since = None
             else:
-                # Still within 30 m of anchor
-                anchor_dt = parse_datetime_utc(anchor_at_str)
-                if anchor_dt and (now_utc - anchor_dt).total_seconds() >= 300:
-                    if not stationary_since:
-                        stationary_since = now_str
+                dist_from_anchor = haversine_m(lat, lng, anchor_lat, anchor_lng)
+                if dist_from_anchor >= 30.0:
+                    # User has moved more than 30 m -> reset anchor
+                    anchor_lat = lat
+                    anchor_lng = lng
+                    anchor_at_str = now_str
+                    stationary_since = None
+                else:
+                    # Still within 30 m of anchor
+                    anchor_dt = parse_datetime_utc(anchor_at_str)
+                    if anchor_dt and (now_utc - anchor_dt).total_seconds() >= 300:
+                        if not stationary_since:
+                            stationary_since = now_str
 
-    # 4. Detect arrival (within 100 m of destination)
-    dist_to_dest = haversine_m(lat, lng, escort['dest_lat'], escort['dest_lng'])
-    arrived = False
-    if dist_to_dest <= 100.0 and current_status != 'arrived':
-        arrived = True
-        current_status = 'arrived'
+        # 4. Detect arrival (within 100 m of destination)
+        dist_to_dest = haversine_m(lat, lng, escort['dest_lat'], escort['dest_lng'])
+        arrived = False
+        if dist_to_dest <= 100.0 and current_status != 'arrived':
+            arrived = True
+            current_status = 'arrived'
 
-    cursor.execute('''
-        UPDATE escorts
-        SET last_lat = ?,
-            last_lng = ?,
-            last_update_at = ?,
-            off_route_since = ?,
-            stationary_since = ?,
-            stationary_anchor_lat = ?,
-            stationary_anchor_lng = ?,
-            stationary_anchor_at = ?,
-            status = ?,
-            ended_at = CASE WHEN ? = 'arrived' THEN ? ELSE ended_at END
-        WHERE id = ?;
-    ''', (
-        lat, lng, now_str, off_route_since, stationary_since,
-        anchor_lat, anchor_lng, anchor_at_str, current_status,
-        current_status, now_str, escort_id
-    ))
-
-    if arrived:
-        log_event(
-            user_id=user_id,
-            type='escort_arrived',
-            actor='user',
-            detail={'dest_name': escort['dest_name']},
-            escort_id=escort_id,
-            cursor=cursor
-        )
-
-        # Send "arrived safely" emails to selected contacts
         cursor.execute('''
-            SELECT c.name, c.email, c.phone FROM escort_contacts ec
-            JOIN contacts c ON ec.contact_id = c.id
-            WHERE ec.escort_id = ?;
-        ''', (escort_id,))
-        contacts_to_notify = cursor.fetchall()
+            UPDATE escorts
+            SET last_lat = ?,
+                last_lng = ?,
+                last_update_at = ?,
+                off_route_since = ?,
+                stationary_since = ?,
+                stationary_anchor_lat = ?,
+                stationary_anchor_lng = ?,
+                stationary_anchor_at = ?,
+                status = ?,
+                ended_at = CASE WHEN ? = 'arrived' THEN ? ELSE ended_at END
+            WHERE id = ?;
+        ''', (
+            lat, lng, now_str, off_route_since, stationary_since,
+            anchor_lat, anchor_lng, anchor_at_str, current_status,
+            current_status, now_str, escort_id
+        ))
+
+        contacts_to_notify = []
+        if arrived:
+            log_event(
+                user_id=user_id,
+                type='escort_arrived',
+                actor='user',
+                detail={'dest_name': escort['dest_name']},
+                escort_id=escort_id,
+                cursor=cursor
+            )
+
+            # Send "arrived safely" emails and WhatsApp to selected contacts
+            cursor.execute('''
+                SELECT c.id, c.name, c.email, c.phone FROM escort_contacts ec
+                JOIN contacts c ON ec.contact_id = c.id
+                WHERE ec.escort_id = ?;
+            ''', (escort_id,))
+            contacts_to_notify = [dict(c) for c in cursor.fetchall()]
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    if arrived and contacts_to_notify:
         user_name = user_name or 'SafeHer User'
         dest_title = escort['dest_name']
 
         try:
             from services.notify import notify
-            c_ids = [c['id'] for c in contacts_to_notify]
+            c_ids = [c['id'] for c in contacts_to_notify if 'id' in c and c['id']]
             notify(
                 event_type='escort_arrived',
                 user_id=user_id,
@@ -597,16 +663,13 @@ def update_escort_position(escort_id):
         except Exception as notify_err:
             app_logger.warning(f"[NOTIFY ESCORT ARRIVED ERROR] {notify_err}")
 
-        arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
+        arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c.get('phone') and c['phone'].strip()]
         if arrived_phones:
             try:
                 from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
-                send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones)
+                send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones, arrived=True)
             except Exception as wa_arr_err:
                 app_logger.error(f"[Escort Arrived] WhatsApp error: {wa_arr_err}")
-
-    conn.commit()
-    conn.close()
 
     return jsonify({
         "ok": True,
@@ -935,118 +998,132 @@ def end_escort(escort_id):
     arrived = bool(data.get('arrived'))
 
     conn = get_db()
-    cursor = conn.cursor()
+    contacts_to_notify = []
+    c_ids = []
+    dest_title = 'destination'
+    duration_seconds = 0
+    duration_mins = 1
+    route_dist_val = 0.0
+    checkins_done = 0
+    checkins_missed = 0
+    has_alert = False
+    escort_obj = None
 
-    cursor.execute('''
-        SELECT id, user_id, dest_name, status, started_at, route_distance_m, alert_id
-        FROM escorts
-        WHERE id = ?;
-    ''', (escort_id,))
-    escort = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
 
-    if not escort:
-        conn.close()
-        return jsonify({"ok": False, "error": "Escort journey not found"}), 404
-
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
-    final_status = 'arrived' if arrived else 'ended'
-
-    cursor.execute('''
-        UPDATE escorts
-        SET status = ?,
-            ended_at = ?
-        WHERE id = ?;
-    ''', (final_status, now_str, escort_id))
-
-    if arrived:
-        log_event(
-            user_id=user_id,
-            type='escort_arrived',
-            actor='user',
-            detail={'dest_name': escort['dest_name']},
-            escort_id=escort_id,
-            cursor=cursor
-        )
-
-        # Notify contacts
         cursor.execute('''
-            SELECT c.name, c.email, c.phone FROM escort_contacts ec
+            SELECT id, user_id, dest_name, status, started_at, route_distance_m, alert_id
+            FROM escorts
+            WHERE id = ?;
+        ''', (escort_id,))
+        escort = cursor.fetchone()
+
+        if not escort:
+            return jsonify({"ok": False, "error": "Escort journey not found"}), 404
+
+        escort_obj = dict(escort)
+        dest_title = escort['dest_name'] or 'destination'
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+        final_status = 'arrived' if arrived else 'ended'
+
+        cursor.execute('''
+            UPDATE escorts
+            SET status = ?,
+                ended_at = ?
+            WHERE id = ?;
+        ''', (final_status, now_str, escort_id))
+
+        # Query contacts linked to this escort
+        cursor.execute('''
+            SELECT c.id, c.name, c.email, c.phone FROM escort_contacts ec
             JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.escort_id = ?;
         ''', (escort_id,))
-        contacts_to_notify = cursor.fetchall()
-        dest_title = escort['dest_name']
+        contacts_to_notify = [dict(c) for c in cursor.fetchall()]
 
-        try:
-            from services.notify import notify
-            c_ids = [c['id'] for c in contacts_to_notify]
-            notify(
-                event_type='escort_ended',
+        if not contacts_to_notify:
+            cursor.execute('SELECT id, name, email, phone FROM contacts WHERE user_id = ?;', (user_id,))
+            contacts_to_notify = [dict(c) for c in cursor.fetchall()]
+
+        c_ids = [c['id'] for c in contacts_to_notify if 'id' in c and c['id']]
+
+        if arrived:
+            log_event(
                 user_id=user_id,
-                context={
-                    'user_name': user_name,
-                    'destination': dest_title,
-                    'escort_id': escort_id
-                },
-                contact_ids=c_ids,
-                event_key=f"escort:{escort_id}:ended"
+                type='escort_arrived',
+                actor='user',
+                detail={'dest_name': dest_title},
+                escort_id=escort_id,
+                cursor=cursor
             )
-        except Exception as notify_err:
-            app_logger.warning(f"[NOTIFY ESCORT ENDED ERROR] {notify_err}")
-
-        arrived_phones = [c['phone'].strip() for c in contacts_to_notify if c['phone'] and c['phone'].strip()]
-        if arrived_phones:
-            try:
-                from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
-                send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, arrived_phones)
-            except Exception as wa_arr_err:
-                app_logger.error(f"[Escort End] WhatsApp error: {wa_arr_err}")
-
-        try:
-            from services.notify import notify
-            notify(
-                event_type='escort_safe',
+        else:
+            log_event(
                 user_id=user_id,
-                context={
-                    'user_name': user_name,
-                    'dest_name': escort['dest_name'],
-                    'escort_id': escort_id
-                },
-                event_key=f"escort_safe_{escort_id}"
+                type='escort_ended',
+                actor='user',
+                detail={'dest_name': dest_title},
+                escort_id=escort_id,
+                cursor=cursor
             )
-        except Exception as notify_err:
-            app_logger.warning(f"[NOTIFY ESCORT_SAFE ERROR] {notify_err}")
-    else:
-        log_event(
+
+        # Calculate journey summary statistics before closing DB connection
+        started_dt = parse_datetime_utc(escort['started_at'])
+        route_dist_val = float(escort['route_distance_m'] or 0)
+        escort_alert_id = escort['alert_id']
+
+        duration_seconds = int((now_utc - started_dt).total_seconds()) if started_dt else 0
+        duration_mins = max(1, round(duration_seconds / 60))
+
+        cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_ok';", (escort_id,))
+        checkins_done = cursor.fetchone()['count']
+
+        cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_missed';", (escort_id,))
+        checkins_missed = cursor.fetchone()['count']
+
+        cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_alerted';", (escort_id,))
+        alert_count = cursor.fetchone()['count']
+        has_alert = bool(escort_alert_id) or alert_count > 0
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Extract all phones for automated WhatsApp dispatch
+    escort_end_phones = _extract_phones(data, user_id=user_id, contact_ids=c_ids)
+    for c in contacts_to_notify:
+        p = (c.get('phone') or '').strip()
+        if p and p not in escort_end_phones:
+            escort_end_phones.append(p)
+
+    if escort_end_phones:
+        try:
+            from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
+            send_escort_arrived_whatsapp_notifications_background(
+                escort_id, user_name, dest_title, escort_end_phones, arrived=arrived
+            )
+            app_logger.info(f"[ESCORT END WHATSAPP DISPATCHED] escort_id={escort_id}, arrived={arrived}, phones={escort_end_phones}")
+        except Exception as wa_arr_err:
+            app_logger.error(f"[Escort End] WhatsApp error: {wa_arr_err}")
+
+    try:
+        from services.notify import notify
+        notify(
+            event_type='escort_ended' if not arrived else 'escort_safe',
             user_id=user_id,
-            type='escort_ended',
-            actor='user',
-            detail={},
-            escort_id=escort_id,
-            cursor=cursor
+            context={
+                'user_name': user_name,
+                'destination': dest_title,
+                'dest_name': dest_title,
+                'escort_id': escort_id,
+                'arrived': arrived
+            },
+            contact_ids=c_ids,
+            event_key=f"escort:{escort_id}:ended"
         )
-
-    # Calculate journey summary statistics before closing DB connection
-    started_dt = parse_datetime_utc(escort['started_at'])
-    route_dist_val = float(escort['route_distance_m'] or 0)
-    escort_alert_id = escort['alert_id']
-
-    duration_seconds = int((now_utc - started_dt).total_seconds()) if started_dt else 0
-    duration_mins = max(1, round(duration_seconds / 60))
-
-    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_ok';", (escort_id,))
-    checkins_done = cursor.fetchone()['count']
-
-    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_checkin_missed';", (escort_id,))
-    checkins_missed = cursor.fetchone()['count']
-
-    cursor.execute("SELECT COUNT(*) AS count FROM incident_events WHERE escort_id = ? AND type = 'escort_alerted';", (escort_id,))
-    alert_count = cursor.fetchone()['count']
-    has_alert = bool(escort_alert_id) or alert_count > 0
-
-    conn.commit()
-    conn.close()
+    except Exception as notify_err:
+        app_logger.warning(f"[NOTIFY ESCORT ENDED ERROR] {notify_err}")
 
     summary_data = {
         "escort_id": escort_id,
@@ -1138,59 +1215,71 @@ def notify_contacts_arrived_safely(escort_id):
     user = getattr(g, 'current_user', None) or get_user_from_request()
     user_name = user['name'] if user else 'SafeHer User'
     conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT id, user_id, dest_name FROM escorts WHERE id = ?;', (escort_id,))
-    escort = cursor.fetchone()
-    if not escort:
-        conn.close()
-        return jsonify({"ok": False, "error": "Escort journey not found"}), 404
-
-    cursor.execute('''
-        SELECT c.name, c.email, c.phone FROM escort_contacts ec
-        JOIN contacts c ON ec.contact_id = c.id
-        WHERE ec.escort_id = ?;
-    ''', (escort_id,))
-    contacts_to_notify = cursor.fetchall()
-    dest_title = escort['dest_name']
-
+    contacts_to_notify = []
+    dest_title = 'destination'
     sent_count = 0
-    for c in contacts_to_notify:
-        if c['email'] and c['email'].strip():
-            subj = f"SafeHer – {user_name} arrived safely at {dest_title}"
-            body_txt = (
-                f"Hello {c['name']},\n\n"
-                f"{user_name} has arrived safely at {dest_title}.\n"
-                f"Thank you for looking out for them!\n\n"
-                f"SafeHer Women Safety"
-            )
-            try:
-                from services.notify import notify
-                notify(
-                    event_type='escort_arrived',
-                    user_id=escort['user_id'],
-                    context={
-                        'user_name': user_name,
-                        'destination': dest_title,
-                        'escort_id': escort_id
-                    },
-                    contact_ids=[c['id']],
-                    event_key=f"escort:{escort_id}:arrived"
-                )
-                sent_count += 1
-            except Exception as mail_err:
-                app_logger.error(f"[Escort Notify Arrived] Email error to {c['email']}: {mail_err}")
 
-    log_event(
-        user_id=user['id'] if user else 10000,
-        type='escort_arrived',
-        actor='user',
-        detail={'dest_name': dest_title, 'manual_notify': True, 'sent_count': sent_count},
-        escort_id=escort_id,
-        cursor=cursor
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id, user_id, dest_name FROM escorts WHERE id = ?;', (escort_id,))
+        escort = cursor.fetchone()
+        if not escort:
+            return jsonify({"ok": False, "error": "Escort journey not found"}), 404
+
+        cursor.execute('''
+            SELECT c.id, c.name, c.email, c.phone FROM escort_contacts ec
+            JOIN contacts c ON ec.contact_id = c.id
+            WHERE ec.escort_id = ?;
+        ''', (escort_id,))
+        contacts_to_notify = [dict(c) for c in cursor.fetchall()]
+        dest_title = escort['dest_name']
+
+        for c in contacts_to_notify:
+            if c.get('email') and c['email'].strip():
+                subj = f"SafeHer – {user_name} arrived safely at {dest_title}"
+                body_txt = (
+                    f"Hello {c['name']},\n\n"
+                    f"{user_name} has arrived safely at {dest_title}.\n"
+                    f"Thank you for looking out for them!\n\n"
+                    f"SafeHer Women Safety"
+                )
+                try:
+                    from services.notify import notify
+                    notify(
+                        event_type='escort_arrived',
+                        user_id=escort['user_id'],
+                        context={
+                            'user_name': user_name,
+                            'destination': dest_title,
+                            'escort_id': escort_id
+                        },
+                        contact_ids=[c['id']],
+                        event_key=f"escort:{escort_id}:arrived"
+                    )
+                    sent_count += 1
+                except Exception as mail_err:
+                    app_logger.error(f"[Escort Notify Arrived] Email error to {c['email']}: {mail_err}")
+
+        log_event(
+            user_id=user['id'] if user else 10000,
+            type='escort_arrived',
+            actor='user',
+            detail={'dest_name': dest_title, 'manual_notify': True, 'sent_count': sent_count},
+            escort_id=escort_id,
+            cursor=cursor
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    phones_to_wa = [c['phone'].strip() for c in contacts_to_notify if c.get('phone') and str(c['phone']).strip()]
+    if phones_to_wa:
+        try:
+            from whatsapp_service import send_escort_arrived_whatsapp_notifications_background
+            send_escort_arrived_whatsapp_notifications_background(escort_id, user_name, dest_title, phones_to_wa, arrived=True)
+        except Exception:
+            pass
 
     return jsonify({
         "ok": True,

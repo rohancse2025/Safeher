@@ -1524,37 +1524,22 @@ SafeHer.ride = (function() {
 
 
   function showReachedSafelyModal(message, record) {
-
     var modal = document.getElementById('ride-safely-modal');
-
     if (!modal) {
-
-      if (SafeHer.toast) SafeHer.toast('Reached safely! Ride completed.');
-
+      if (SafeHer.toast) SafeHer.toast('Reached safely! Contacts notified automatically via WhatsApp.');
       SafeHer.router.go('home');
-
       return;
-
     }
 
-
-
     var textEl = document.getElementById('ride-safely-msg-preview');
-
-    if (textEl) textEl.textContent = message;
-
-
+    if (textEl) textEl.textContent = '✅ Contacts notified automatically via WhatsApp that you reached safely!\n\n' + message;
 
     var waBtn = document.getElementById('ride-safely-wa-btn');
-
     if (waBtn) {
-
+      waBtn.innerHTML = '✅ WhatsApp Notified';
       waBtn.onclick = function() {
-
         window.open('https://wa.me/?text=' + encodeURIComponent(message), '_blank');
-
       };
-
     }
 
 

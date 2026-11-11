@@ -3056,27 +3056,32 @@ SafeHer.api = (function() {
 
 
 
-    endEscort: function(id, arrived, callback) {
-
+    endEscort: function(id, optionsOrCallback, callback) {
       if (!useBackend()) return;
 
+      var payload = {};
+      var cb = callback;
+
+      if (typeof optionsOrCallback === 'object' && optionsOrCallback !== null) {
+        payload = optionsOrCallback;
+      } else if (typeof optionsOrCallback === 'function') {
+        cb = optionsOrCallback;
+        payload = { arrived: false };
+      } else {
+        payload = { arrived: !!optionsOrCallback };
+      }
+
       apiFetch('/api/escorts/' + id + '/end', {
-
         method: 'POST',
-
-        body: JSON.stringify({ arrived: !!arrived })
-
+        body: JSON.stringify(payload)
       })
-
       .then(function(res) {
-
-        if (callback) callback(null, res.data || res);
-
+        if (cb) cb(null, res.data || res);
       })
-
       .catch(function(err) {
-
-        if (callback) callback(err.message || 'End escort error', null);
+        if (cb) cb(err.message || 'End escort error', null);
+      });
+    },
 
       });
 
@@ -3127,7 +3132,8 @@ SafeHer.api = (function() {
       var endpoint = shareId ? ('/api/shares/' + shareId + '/stop') : '/api/shares/1/stop';
       apiFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify(data || {})
+        body: JSON.stringify(data || {}),
+        _silent: true
       })
 
       .then(function(res) {

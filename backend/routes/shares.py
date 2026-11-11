@@ -119,117 +119,105 @@ def create_share():
     lng = data.get('lng')
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Ensure user exists in users table to satisfy foreign keys
     try:
-        cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
-        if not cursor.fetchone():
-            cursor.execute('''
-                INSERT INTO users (id, name, phone, email, password_hash)
-                VALUES (?, ?, '917483245232', 'user@safeher.app', 'demo_hash');
-            ''', (user_id, user_name))
-            conn.commit()
-    except Exception:
-        pass
+        cursor = conn.cursor()
 
-    # Cancel any previous active share for this user
-    cursor.execute('''
-        UPDATE shares
-        SET status = 'ended', ended_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND status = 'active';
-    ''', (user_id,))
+        # Ensure user exists in users table to satisfy foreign keys
+        try:
+            cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
+            if not cursor.fetchone():
+                cursor.execute('''
+                    INSERT INTO users (id, name, phone, email, password_hash)
+                    VALUES (?, ?, '917483245232', 'user@safeher.app', 'demo_hash');
+                ''', (user_id, user_name))
+                conn.commit()
+        except Exception:
+            pass
 
-    cursor.execute('''
-        INSERT INTO shares (
-            user_id, duration_minutes, until_stopped, started_at, expires_at,
-            status, last_lat, last_lng, last_update_at
-        ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 'active', ?, ?, CURRENT_TIMESTAMP);
-    ''', (user_id, duration_min, 1 if until_stopped else 0, expires_at, lat, lng))
-    share_id = cursor.lastrowid
+        # Cancel any previous active share for this user
+        cursor.execute('''
+            UPDATE shares
+            SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND status = 'active';
+        ''', (user_id,))
 
-    # 1. Sync any client-provided contacts into contacts table
-    client_contacts = data.get('contacts') or []
-    synced_contact_ids = []
-    for cc in client_contacts:
-        if isinstance(cc, dict):
-            c_name = str(cc.get('name') or 'Emergency Contact').strip()
-            c_phone = str(cc.get('phone') or '').strip()
-            c_email = str(cc.get('email') or '').strip()
-            if c_phone or c_email:
-                cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));", (user_id, c_phone, c_email))
+        cursor.execute('''
+            INSERT INTO shares (
+                user_id, duration_minutes, until_stopped, started_at, expires_at,
+                status, last_lat, last_lng, last_update_at
+            ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 'active', ?, ?, CURRENT_TIMESTAMP);
+        ''', (user_id, duration_min, 1 if until_stopped else 0, expires_at, lat, lng))
+        share_id = cursor.lastrowid
+
+        # 1. Sync any client-provided contacts into contacts table
+        client_contacts = data.get('contacts') or []
+        synced_contact_ids = []
+        for cc in client_contacts:
+            if isinstance(cc, dict):
+                c_name = str(cc.get('name') or 'Emergency Contact').strip()
+                c_phone = str(cc.get('phone') or '').strip()
+                c_email = str(cc.get('email') or '').strip()
+                if c_phone or c_email:
+                    cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));", (user_id, c_phone, c_email))
+                    row = cursor.fetchone()
+                    if row:
+                        synced_contact_ids.append(row['id'])
+                    else:
+                        cursor.execute('''
+                            INSERT INTO contacts (user_id, name, phone, email, relationship)
+                            VALUES (?, ?, ?, ?, 'Contact');
+                        ''', (user_id, c_name, c_phone, c_email or None))
+                        synced_contact_ids.append(cursor.lastrowid)
+
+        # 2. If client passed direct phones list
+        for p in (data.get('phones') or []):
+            p_str = str(p).strip()
+            if p_str:
+                cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND phone = ?;", (user_id, p_str))
                 row = cursor.fetchone()
                 if row:
-                    synced_contact_ids.append(row['id'])
+                    if row['id'] not in synced_contact_ids:
+                        synced_contact_ids.append(row['id'])
                 else:
                     cursor.execute('''
-                        INSERT INTO contacts (user_id, name, phone, email, relationship)
-                        VALUES (?, ?, ?, ?, 'Contact');
-                    ''', (user_id, c_name, c_phone, c_email or None))
+                        INSERT INTO contacts (user_id, name, phone, relationship)
+                        VALUES (?, 'Emergency Contact', ?, 'Contact');
+                    ''', (user_id, p_str))
                     synced_contact_ids.append(cursor.lastrowid)
 
-    # 2. If client passed direct phones list
-    for p in (data.get('phones') or []):
-        p_str = str(p).strip()
-        if p_str:
-            cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND phone = ?;", (user_id, p_str))
-            row = cursor.fetchone()
-            if row:
-                if row['id'] not in synced_contact_ids:
-                    synced_contact_ids.append(row['id'])
-            else:
-                cursor.execute('''
-                    INSERT INTO contacts (user_id, name, phone, relationship)
-                    VALUES (?, 'Emergency Contact', ?, 'Contact');
-                ''', (user_id, p_str))
-                synced_contact_ids.append(cursor.lastrowid)
+        # 3. Resolve valid contact IDs that actually exist in DB
+        final_contact_ids = []
+        raw_cids = data.get('contact_ids')
+        if raw_cids and isinstance(raw_cids, list):
+            for cid in raw_cids:
+                if str(cid).isdigit():
+                    cursor.execute("SELECT id FROM contacts WHERE id = ?;", (int(cid),))
+                    if cursor.fetchone():
+                        final_contact_ids.append(int(cid))
 
-    # 3. Resolve valid contact IDs that actually exist in DB
-    final_contact_ids = []
-    raw_cids = data.get('contact_ids')
-    if raw_cids and isinstance(raw_cids, list):
-        for cid in raw_cids:
-            if str(cid).isdigit():
-                cursor.execute("SELECT id FROM contacts WHERE id = ?;", (int(cid),))
-                if cursor.fetchone():
-                    final_contact_ids.append(int(cid))
+        for scid in synced_contact_ids:
+            if scid not in final_contact_ids:
+                final_contact_ids.append(scid)
 
-    for scid in synced_contact_ids:
-        if scid not in final_contact_ids:
-            final_contact_ids.append(scid)
+        if not final_contact_ids:
+            cursor.execute("SELECT id FROM contacts WHERE user_id = ?;", (user_id,))
+            final_contact_ids = [r['id'] for r in cursor.fetchall()]
 
-    if not final_contact_ids:
-        cursor.execute("SELECT id FROM contacts WHERE user_id = ?;", (user_id,))
-        final_contact_ids = [r['id'] for r in cursor.fetchall()]
-
-    if not final_contact_ids:
-        # Create a default emergency contact for user so foreign key never fails
-        cursor.execute('''
-            INSERT INTO contacts (user_id, name, phone, email, relationship)
-            VALUES (?, 'Primary Contact', '917483245232', 'contact@safeher.app', 'Contact');
-        ''', (user_id,))
-        final_contact_ids = [cursor.lastrowid]
-
-    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
-    tokens_map = {}
-    tokens_list = []
-    client_token = (data.get('token') or '').strip()
-
-    for idx, cid in enumerate(final_contact_ids):
-        tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
-        try:
+        if not final_contact_ids:
+            # Create a default emergency contact for user so foreign key never fails
             cursor.execute('''
-                INSERT INTO share_contacts (share_id, contact_id, token, created_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-            ''', (share_id, cid, tok))
-            tokens_map[cid] = tok
-            tokens_list.append({
-                "contact_id": cid,
-                "token": tok,
-                "track_url": f"{frontend_url}/track.html?t={tok}"
-            })
-        except Exception:
-            tok = secrets.token_urlsafe(32)
+                INSERT INTO contacts (user_id, name, phone, email, relationship)
+                VALUES (?, 'Primary Contact', '917483245232', 'contact@safeher.app', 'Contact');
+            ''', (user_id,))
+            final_contact_ids = [cursor.lastrowid]
+
+        frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+        tokens_map = {}
+        tokens_list = []
+        client_token = (data.get('token') or '').strip()
+
+        for idx, cid in enumerate(final_contact_ids):
+            tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
             try:
                 cursor.execute('''
                     INSERT INTO share_contacts (share_id, contact_id, token, created_at)
@@ -241,11 +229,25 @@ def create_share():
                     "token": tok,
                     "track_url": f"{frontend_url}/track.html?t={tok}"
                 })
-            except Exception as e:
-                app_logger.warning(f"[SHARE CONTACT INSERT] cid={cid}: {e}")
+            except Exception:
+                tok = secrets.token_urlsafe(32)
+                try:
+                    cursor.execute('''
+                        INSERT INTO share_contacts (share_id, contact_id, token, created_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP);
+                    ''', (share_id, cid, tok))
+                    tokens_map[cid] = tok
+                    tokens_list.append({
+                        "contact_id": cid,
+                        "token": tok,
+                        "track_url": f"{frontend_url}/track.html?t={tok}"
+                    })
+                except Exception as e:
+                    app_logger.warning(f"[SHARE CONTACT INSERT] cid={cid}: {e}")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     duration_desc = f"{duration_min} minutes" if not until_stopped else "until stopped"
     primary_tok = tokens_list[0]['token'] if tokens_list else (client_token or secrets.token_urlsafe(32))
@@ -374,40 +376,44 @@ def stop_share(share_id):
     user_name = (data.get('user_name') or (user.get('name') if user else None) or 'SafeHer User').strip()
 
     conn = get_db()
-    cursor = conn.cursor()
+    c_ids = []
+    real_share_id = 0
+    try:
+        cursor = conn.cursor()
 
-    sh_row = None
-    if str(share_id).isdigit():
-        cursor.execute("SELECT id, user_id, status FROM shares WHERE id = ?;", (int(share_id),))
-        sh_row = cursor.fetchone()
-
-    token = data.get('token') or data.get('share_token')
-    if not sh_row and token:
-        cursor.execute("SELECT share_id FROM share_contacts WHERE token = ?;", (token,))
-        sc = cursor.fetchone()
-        if sc:
-            cursor.execute("SELECT id, user_id, status FROM shares WHERE id = ?;", (sc['share_id'],))
+        sh_row = None
+        if str(share_id).isdigit():
+            cursor.execute("SELECT id, user_id, status FROM shares WHERE id = ?;", (int(share_id),))
             sh_row = cursor.fetchone()
 
-    if not sh_row:
-        cursor.execute("SELECT id, user_id, status FROM shares WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
-        sh_row = cursor.fetchone()
+        token = data.get('token') or data.get('share_token')
+        if not sh_row and token:
+            cursor.execute("SELECT share_id FROM share_contacts WHERE token = ?;", (token,))
+            sc = cursor.fetchone()
+            if sc:
+                cursor.execute("SELECT id, user_id, status FROM shares WHERE id = ?;", (sc['share_id'],))
+                sh_row = cursor.fetchone()
 
-    real_share_id = sh_row['id'] if sh_row else (int(share_id) if str(share_id).isdigit() else 0)
+        if not sh_row:
+            cursor.execute("SELECT id, user_id, status FROM shares WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+            sh_row = cursor.fetchone()
 
-    if sh_row and sh_row['status'] != 'ended':
-        cursor.execute('''
-            UPDATE shares
-            SET status = 'ended', ended_at = CURRENT_TIMESTAMP
-            WHERE id = ?;
-        ''', (real_share_id,))
-        conn.commit()
+        real_share_id = sh_row['id'] if sh_row else (int(share_id) if str(share_id).isdigit() else 0)
 
-    # Get contacts who had tokens for this share
-    cursor.execute("SELECT contact_id FROM share_contacts WHERE share_id = ?;", (real_share_id,))
-    c_rows = cursor.fetchall()
-    c_ids = [r['contact_id'] for r in c_rows if r['contact_id']]
-    conn.close()
+        if sh_row and sh_row['status'] != 'ended':
+            cursor.execute('''
+                UPDATE shares
+                SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+                WHERE id = ?;
+            ''', (real_share_id,))
+            conn.commit()
+
+        # Get contacts who had tokens for this share
+        cursor.execute("SELECT contact_id FROM share_contacts WHERE share_id = ?;", (real_share_id,))
+        c_rows = cursor.fetchall()
+        c_ids = [r['contact_id'] for r in c_rows if r['contact_id']]
+    finally:
+        conn.close()
 
     # Extract all recipient phones from payload, contacts table, or DB
     sh_phones = _extract_phones(data, user_id=user_id, contact_ids=c_ids)

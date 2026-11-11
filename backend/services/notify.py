@@ -329,42 +329,42 @@ def process_outbox(limit=25):
 
     processed_count = 0
     try:
+        # Step 1: Claim rows and close connection immediately
         conn = get_db()
-        cursor = conn.cursor()
-
-        # Fetch pending rows where next_attempt_at is due (or NULL = immediate)
-        cursor.execute('''
-            SELECT id, user_id, contact_id, recipient_email, recipient_masked,
-                   subject, body_text, body_html, attempts
-            FROM notifications
-            WHERE channel = 'email'
-              AND status IN ('queued', 'sending')
-              AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
-            ORDER BY id ASC
-            LIMIT ?;
-        ''', (limit,))
-        rows = cursor.fetchall()
-
-        if not rows:
+        rows_data = []
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, user_id, contact_id, recipient_email, recipient_masked,
+                       subject, body_text, body_html, attempts
+                FROM notifications
+                WHERE channel = 'email'
+                  AND status IN ('queued', 'sending')
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                ORDER BY id ASC
+                LIMIT ?;
+            ''', (limit,))
+            rows = cursor.fetchall()
+            if not rows:
+                return 0
+            rows_data = [dict(r) for r in rows]
+            claimed_ids = [r['id'] for r in rows_data]
+            placeholders = ','.join(['?'] * len(claimed_ids))
+            cursor.execute(f'''
+                UPDATE notifications
+                SET status = 'sending'
+                WHERE id IN ({placeholders});
+            ''', claimed_ids)
+            conn.commit()
+        finally:
             conn.close()
-            return 0
 
-        # Mark claimed rows as 'sending' to prevent duplicate workers picking them up
-        claimed_ids = [r['id'] for r in rows]
-        placeholders = ','.join(['?'] * len(claimed_ids))
-        cursor.execute(f'''
-            UPDATE notifications
-            SET status = 'sending'
-            WHERE id IN ({placeholders});
-        ''', claimed_ids)
-        conn.commit()
-
-        # Configuration
+        # Step 2: Send emails outside of database connection
         brevo_api_key = os.getenv('BREVO_API_KEY')
         email_from = os.getenv('EMAIL_FROM', 'alerts@safeher.org')
         email_from_name = os.getenv('EMAIL_FROM_NAME', 'SafeHer Safety Alerts')
 
-        for row in rows:
+        for row in rows_data:
             notif_id = row['id']
             to_email = row['recipient_email']
             masked = row['recipient_masked']
@@ -377,7 +377,6 @@ def process_outbox(limit=25):
             provider_msg_id = None
             error_message = None
 
-            # If Brevo API key is available, use Brevo Transactional Email API (POST /v3/smtp/email)
             if brevo_api_key:
                 success, provider_msg_id, error_message = _send_via_brevo_api(
                     api_key=brevo_api_key,
@@ -389,7 +388,6 @@ def process_outbox(limit=25):
                     html_content=body_html
                 )
             else:
-                # Fallback to standard SMTP if Brevo key is not yet provided
                 try:
                     from email_service import send_email
                     sent_ok, msg = send_email(to_email, subject, body_text, body_html)
@@ -401,45 +399,46 @@ def process_outbox(limit=25):
                 except Exception as ex:
                     error_message = f"Email delivery error: {ex}"
 
-            # Update DB with outcome
-            if success:
-                cursor.execute('''
-                    UPDATE notifications
-                    SET status = 'sent',
-                        attempts = ?,
-                        sent_at = CURRENT_TIMESTAMP,
-                        provider_message_id = ?,
-                        last_error = NULL,
-                        next_attempt_at = NULL
-                    WHERE id = ?;
-                ''', (attempts, provider_msg_id, notif_id))
-                app_logger.info(f"[OUTBOX SENT] Notification #{notif_id} sent to {masked} (msgId={provider_msg_id})")
-                processed_count += 1
-            else:
-                # Calculate retry with backoff schedule: 1, 5, 15, 30, 60 minutes
-                if attempts >= MAX_ATTEMPTS:
-                    new_status = 'failed'
-                    next_attempt_at = None
-                    app_logger.error(f"[OUTBOX EXHAUSTED] Notification #{notif_id} permanently failed after {attempts} attempts to {masked}: {error_message}")
+            # Step 3: Record outcome with a fresh connection and close immediately
+            conn_res = get_db()
+            try:
+                cur_res = conn_res.cursor()
+                if success:
+                    cur_res.execute('''
+                        UPDATE notifications
+                        SET status = 'sent',
+                            attempts = ?,
+                            sent_at = CURRENT_TIMESTAMP,
+                            provider_message_id = ?,
+                            last_error = NULL,
+                            next_attempt_at = NULL
+                        WHERE id = ?;
+                    ''', (attempts, provider_msg_id, notif_id))
+                    app_logger.info(f"[OUTBOX SENT] Notification #{notif_id} sent to {masked} (msgId={provider_msg_id})")
+                    processed_count += 1
                 else:
-                    new_status = 'queued'
-                    delay_secs = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
-                    next_attempt_dt = datetime.now() + timedelta(seconds=delay_secs)
-                    next_attempt_at = next_attempt_dt.strftime("%Y-%m-%d %H:%M:%S")
-                    app_logger.warning(f"[OUTBOX RETRY] Notification #{notif_id} attempt {attempts}/{MAX_ATTEMPTS} failed to {masked}. Retrying in {delay_secs}s at {next_attempt_at}. Error: {error_message}")
+                    if attempts >= MAX_ATTEMPTS:
+                        new_status = 'failed'
+                        next_attempt_at = None
+                        app_logger.error(f"[OUTBOX EXHAUSTED] Notification #{notif_id} permanently failed after {attempts} attempts to {masked}: {error_message}")
+                    else:
+                        new_status = 'queued'
+                        delay_secs = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
+                        next_attempt_dt = datetime.now() + timedelta(seconds=delay_secs)
+                        next_attempt_at = next_attempt_dt.strftime("%Y-%m-%d %H:%M:%S")
+                        app_logger.warning(f"[OUTBOX RETRY] Notification #{notif_id} attempt {attempts}/{MAX_ATTEMPTS} failed to {masked}. Retrying in {delay_secs}s at {next_attempt_at}. Error: {error_message}")
 
-                cursor.execute('''
-                    UPDATE notifications
-                    SET status = ?,
-                        attempts = ?,
-                        last_error = ?,
-                        next_attempt_at = ?
-                    WHERE id = ?;
-                ''', (new_status, attempts, error_message, next_attempt_at, notif_id))
-
-            conn.commit()
-
-        conn.close()
+                    cur_res.execute('''
+                        UPDATE notifications
+                        SET status = ?,
+                            attempts = ?,
+                            last_error = ?,
+                            next_attempt_at = ?
+                        WHERE id = ?;
+                    ''', (new_status, attempts, error_message, next_attempt_at, notif_id))
+                conn_res.commit()
+            finally:
+                conn_res.close()
 
     except Exception as e:
         app_logger.error(f"[OUTBOX WORKER ERROR] {e}")

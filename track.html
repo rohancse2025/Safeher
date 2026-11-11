@@ -953,10 +953,11 @@
         var firstName = data.first_name || 'User';
         var isEscort = (data.type === 'escort');
         var isShare = (data.type === 'share');
+        var isRide = (data.type === 'ride');
 
         if (avatarEl) avatarEl.textContent = firstName.charAt(0).toUpperCase();
 
-        // Ambient audio sentinel card is for SOS/Escort emergencies, not passive share
+        // Ambient audio sentinel card is for SOS/Escort/Ride emergencies, not passive share
         var sentinelCard = document.getElementById('track-sentinel-card');
         if (sentinelCard) sentinelCard.style.display = isShare ? 'none' : 'block';
 
@@ -1088,6 +1089,55 @@
               navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
             }
           }
+        } else if (isRide) {
+          // ─── Ride Mode Rendering ──────────────────────────────────
+          var rideStatus = (data.status || 'active').toLowerCase();
+          var isEnded = (rideStatus === 'ended' || rideStatus === 'arrived' || rideStatus === 'completed');
+
+          if (nameEl) nameEl.textContent = firstName + "'s Monitored Ride";
+          if (modeEl) {
+            var vInfo = (data.vehicle_type ? (data.vehicle_type + ' ') : '') + (data.vehicle_number || '');
+            modeEl.textContent = (vInfo ? (vInfo + ' • ') : '') + 'To: ' + (data.destination || 'Destination');
+          }
+
+          if (statusEl) {
+            statusEl.textContent = isEnded ? 'Ride Completed' : 'Ride In Progress';
+            statusEl.className = 'track-status-pill ' + (isEnded ? 'status-ended' : 'status-active');
+          }
+
+          if (bannerEl) {
+            if (isEnded) {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-ended';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span><strong>Ride completed safely</strong> (' + escapeHtml(firstName) + ' arrived safely). All is well!</span>';
+              if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+              }
+            } else {
+              bannerEl.style.display = 'none';
+            }
+          }
+
+          var alertStats = document.getElementById('track-alert-stats');
+          var escortStats = document.getElementById('track-escort-stats');
+          if (alertStats) alertStats.style.display = 'none';
+          if (escortStats) escortStats.style.display = 'none';
+
+          var lat = parseFloat(data.latest_lat);
+          var lng = parseFloat(data.latest_lng);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            lastLat = lat;
+            lastLng = lng;
+            initMap(lat, lng);
+            if (gmapsLink) {
+              gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+            }
+            var navHerBtn = document.getElementById('track-navigate-her');
+            if (navHerBtn) {
+              navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+            }
+          }
         } else {
           // ─── Standard Alert Rendering ────────────────────────────
           var isEnded = (data.status !== 'active');
@@ -1170,7 +1220,7 @@
           } else {
             contactSection.style.display = 'block';
             if (actTitle) {
-              actTitle.textContent = isShare ? ('Quick Response to ' + firstName) : ('Respond to ' + firstName + "'s Alert");
+              actTitle.textContent = (isShare || isRide || isEscort) ? ('Quick Response to ' + firstName) : ('Respond to ' + firstName + "'s Alert");
             }
             if (actSub) {
               actSub.textContent = 'Tap an update below — ' + firstName + ' will immediately see your response on screen:';
