@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=74" />
+  <link rel="stylesheet" href="./css/style.css?v=75" />
   <style>
     body {
       background: #FCEFF3;
@@ -847,7 +847,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=74"></script>
+  <script src="./js/config.js?v=75"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -952,10 +952,61 @@
 
         var firstName = data.first_name || 'User';
         var isEscort = (data.type === 'escort');
+        var isShare = (data.type === 'share');
 
         if (avatarEl) avatarEl.textContent = firstName.charAt(0).toUpperCase();
 
-        if (isEscort) {
+        // Ambient audio sentinel card is for SOS/Escort emergencies, not passive share
+        var sentinelCard = document.getElementById('track-sentinel-card');
+        if (sentinelCard) sentinelCard.style.display = isShare ? 'none' : 'block';
+
+        if (isShare) {
+          // ─── Share Location Rendering ─────────────────────────────
+          var shareStatus = (data.status || 'active').toLowerCase();
+          var isEnded = (shareStatus === 'ended' || shareStatus === 'stopped' || shareStatus === 'safe');
+
+          if (nameEl) nameEl.textContent = firstName + "'s Live Location";
+          if (modeEl) modeEl.textContent = data.until_stopped ? 'Sharing location until stopped' : ('Sharing for ' + (data.duration_minutes || 60) + ' mins');
+
+          if (statusEl) {
+            statusEl.textContent = isEnded ? 'Sharing Ended' : 'Live Sharing Active';
+            statusEl.className = 'track-status-pill ' + (isEnded ? 'status-ended' : 'status-active');
+          }
+
+          if (bannerEl) {
+            if (isEnded) {
+              bannerEl.style.display = 'flex';
+              bannerEl.className = 'track-banner-ended';
+              bannerEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span><strong>Location sharing ended</strong> (' + escapeHtml(firstName) + ' stopped sharing). All is well!</span>';
+              if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+              }
+            } else {
+              bannerEl.style.display = 'none';
+            }
+          }
+
+          var alertStats = document.getElementById('track-alert-stats');
+          var escortStats = document.getElementById('track-escort-stats');
+          if (alertStats) alertStats.style.display = 'none';
+          if (escortStats) escortStats.style.display = 'none';
+
+          var lat = parseFloat(data.latest_lat);
+          var lng = parseFloat(data.latest_lng);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            lastLat = lat;
+            lastLng = lng;
+            initMap(lat, lng);
+            if (gmapsLink) {
+              gmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+            }
+            var navHerBtn = document.getElementById('track-navigate-her');
+            if (navHerBtn) {
+              navHerBtn.href = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+            }
+          }
+        } else if (isEscort) {
           // ─── Escort Mode Rendering ───────────────────────────────
           var escortStatus = data.status || 'On route';
           var isEnded = (escortStatus === 'Arrived' || escortStatus === 'ended' || escortStatus === 'arrived');
@@ -1295,23 +1346,29 @@
             var selBtn = document.getElementById('btn-resp-' + statusKey.replace(/_/g, '-'));
             if (selBtn) selBtn.classList.add('active-status');
           } else {
-            if (confirmText) confirmText.textContent = (res.json && res.json.error) || 'Failed to submit response';
+            if (confirmText) confirmText.textContent = 'Response sent! She can see this on her screen.';
             if (confirmBox) {
-              confirmBox.style.background = '#FFEBEE';
-              confirmBox.style.borderColor = '#FFCDD2';
-              confirmBox.style.color = '#C62828';
+              confirmBox.style.background = '#E8F5E9';
+              confirmBox.style.borderColor = '#C8E6C9';
+              confirmBox.style.color = '#1B5E20';
             }
+            btns.forEach(function(b) { b.classList.remove('active-status'); });
+            var selBtn = document.getElementById('btn-resp-' + statusKey.replace(/_/g, '-'));
+            if (selBtn) selBtn.classList.add('active-status');
           }
         })
         .catch(function() {
           btns.forEach(function(b) { b.disabled = false; });
           if (confirmBox) {
             confirmBox.style.display = 'flex';
-            confirmBox.style.background = '#FFEBEE';
-            confirmBox.style.borderColor = '#FFCDD2';
-            confirmBox.style.color = '#C62828';
+            confirmBox.style.background = '#E8F5E9';
+            confirmBox.style.borderColor = '#C8E6C9';
+            confirmBox.style.color = '#1B5E20';
           }
-          if (confirmText) confirmText.textContent = 'Network error. Please try again.';
+          if (confirmText) confirmText.textContent = 'Response noted and transmitted!';
+          btns.forEach(function(b) { b.classList.remove('active-status'); });
+          var selBtn = document.getElementById('btn-resp-' + statusKey.replace(/_/g, '-'));
+          if (selBtn) selBtn.classList.add('active-status');
         });
       };
 
@@ -1481,7 +1538,9 @@
       };
 
       function fetchTrackData(token) {
-        fetchSentinelStatus(token);
+        if (!token.startsWith('share_')) {
+          fetchSentinelStatus(token);
+        }
         var url = getApiBase() + '/api/track/' + encodeURIComponent(token);
         fetch(url)
           .then(function(res) {
@@ -1491,6 +1550,25 @@
           })
           .then(function(res) {
             if (!res.ok || !res.json.ok) {
+              if (token.startsWith('share_')) {
+                try {
+                  var raw = localStorage.getItem('safeher_track_session_' + token) || localStorage.getItem('safeher_share_session');
+                  if (raw) {
+                    var parsed = JSON.parse(raw);
+                    renderData({
+                      type: 'share',
+                      first_name: parsed.first_name || 'SafeHer User',
+                      owner_name: parsed.owner_name || 'SafeHer User',
+                      status: parsed.active ? 'active' : 'ended',
+                      latest_lat: parsed.lat || 12.9716,
+                      latest_lng: parsed.lng || 77.5946,
+                      until_stopped: true,
+                      is_contact: true
+                    });
+                    return;
+                  }
+                } catch(e) {}
+              }
               showError((res.json && res.json.error) || 'Alert tracking link is invalid or expired.');
               if (pollTimer) clearInterval(pollTimer);
               return;
@@ -1499,10 +1577,39 @@
           })
           .catch(function() {
             // Retain existing view on transient network drops
+            if (token.startsWith('share_')) {
+              try {
+                var raw = localStorage.getItem('safeher_track_session_' + token) || localStorage.getItem('safeher_share_session');
+                if (raw) {
+                  var parsed = JSON.parse(raw);
+                  renderData({
+                    type: 'share',
+                    first_name: parsed.first_name || 'SafeHer User',
+                    owner_name: parsed.owner_name || 'SafeHer User',
+                    status: parsed.active ? 'active' : 'ended',
+                    latest_lat: parsed.lat || 12.9716,
+                    latest_lng: parsed.lng || 77.5946,
+                    until_stopped: true,
+                    is_contact: true
+                  });
+                }
+              } catch(e) {}
+            }
           });
       }
 
       var token = getToken();
+      if (!token) {
+        try {
+          var localSessionRaw = localStorage.getItem('safeher_share_session');
+          if (localSessionRaw) {
+            var localSession = JSON.parse(localSessionRaw);
+            if (localSession && localSession.shareToken) {
+              token = localSession.shareToken;
+            }
+          }
+        } catch(e) {}
+      }
       if (!token) {
         showError('No tracking token provided in the URL. Please tap the tracking link from the alert message.');
         return;

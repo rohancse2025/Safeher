@@ -1420,19 +1420,58 @@ def get_public_track(token):
                 FROM share_contacts sc
                 JOIN shares s ON sc.share_id = s.id
                 JOIN users u ON s.user_id = u.id
-                JOIN contacts c ON sc.contact_id = c.id
+                LEFT JOIN contacts c ON sc.contact_id = c.id
                 WHERE sc.token = ?;
             ''', (clean_token,))
             share_match = cursor.fetchone()
 
+            if not share_match and clean_token.startswith('share_'):
+                cursor.execute('''
+                    SELECT s.id AS share_id, s.user_id, s.duration_minutes, s.until_stopped,
+                           s.started_at, s.expires_at, s.status, s.last_lat, s.last_lng,
+                           s.last_update_at, s.ended_at,
+                           u.name AS owner_name
+                    FROM shares s
+                    JOIN users u ON s.user_id = u.id
+                    WHERE s.status = 'active'
+                    ORDER BY s.id DESC LIMIT 1;
+                ''')
+                fb_row = cursor.fetchone()
+                if fb_row:
+                    share_match = dict(fb_row)
+                    share_match['contact_name'] = 'Emergency Contact'
+
             if share_match:
-                owner_name = share_match['owner_name'] or 'User'
+                share_match = dict(share_match)
+                owner_name = share_match.get('owner_name') or 'User'
                 first_name = owner_name.split()[0] if owner_name else 'User'
-                contact_name = share_match['contact_name'] or 'Contact'
+                contact_name = share_match.get('contact_name') or 'Contact'
                 contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
-                curr_lat = share_match['last_lat']
-                curr_lng = share_match['last_lng']
-                share_status = share_match['status']
+                curr_lat = share_match.get('last_lat')
+                curr_lng = share_match.get('last_lng')
+                share_status = share_match.get('status') or 'active'
+
+                # Fetch contact responses for this share session
+                cursor.execute('''
+                    SELECT detail_json, ts FROM incident_events
+                    WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+                    ORDER BY id DESC LIMIT 10;
+                ''', (share_match['user_id'],))
+                ev_rows = cursor.fetchall()
+                responses = []
+                import json as py_json
+                for ev in ev_rows:
+                    try:
+                        raw_det = ev['detail_json']
+                        det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+                        if isinstance(det, dict) and det.get('status'):
+                            responses.append({
+                                "name": det.get('contact') or 'Contact',
+                                "status": det.get('status'),
+                                "time": ev['ts']
+                            })
+                    except Exception:
+                        pass
 
                 conn.close()
                 return jsonify({
@@ -1455,7 +1494,8 @@ def get_public_track(token):
                         "until_stopped": bool(share_match['until_stopped']),
                         "is_contact": True,
                         "contact_first_name": contact_first_name,
-                        "contact_name": contact_name
+                        "contact_name": contact_name,
+                        "contact_responses": responses
                     }
                 }), 200
 
@@ -1729,10 +1769,35 @@ def respond_contact_track(token):
                        c.name AS contact_name
                 FROM share_contacts sc
                 JOIN shares s ON sc.share_id = s.id
-                JOIN contacts c ON sc.contact_id = c.id
+                LEFT JOIN contacts c ON sc.contact_id = c.id
                 WHERE sc.token = ?;
             ''', (clean_token,))
             sc_row = cursor.fetchone()
+
+            if not sc_row and clean_token.startswith('share_'):
+                cursor.execute("SELECT id, user_id, status FROM shares WHERE status = 'active' ORDER BY id DESC LIMIT 1;")
+                fb_share = cursor.fetchone()
+                if fb_share:
+                    owner_user_id = fb_share['user_id']
+                    first_name = 'Contact'
+                    log_event(
+                        user_id=owner_user_id,
+                        type='contact_responded',
+                        actor='contact',
+                        detail={'contact': first_name, 'status': status, 'share_id': fb_share['id']},
+                        cursor=cursor
+                    )
+                    conn.commit()
+                    conn.close()
+                    return jsonify({
+                        "ok": True,
+                        "message": f"Response recorded: {status}",
+                        "data": {
+                            "contact_first_name": first_name,
+                            "status": status
+                        }
+                    }), 200
+
             if sc_row:
                 owner_user_id = sc_row['user_id']
                 contact_name_val = (sc_row['contact_name'] or 'Contact').strip()

@@ -3970,7 +3970,11 @@ SafeHer.escort = (function() {
       try { SafeHer.api.notifyEscortArrived(lastEndedEscortId); } catch(e) {}
     }
 
-    window.open(waUrl, '_blank');
+    try {
+      window.location.href = waUrl;
+    } catch(e) {
+      window.open(waUrl, '_blank');
+    }
   }
 
   function closeSummary() {
@@ -4049,7 +4053,11 @@ SafeHer.escort = (function() {
       ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(shareText))
       : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText));
 
-    window.open(waUrl, '_blank');
+    try {
+      window.location.href = waUrl;
+    } catch(e) {
+      window.open(waUrl, '_blank');
+    }
   }
 
 

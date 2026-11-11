@@ -290,7 +290,11 @@ SafeHer.shareLocation = (function() {
       ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
       : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
 
-    window.open(waUrl, '_blank');
+    try {
+      window.location.href = waUrl;
+    } catch(e) {
+      window.open(waUrl, '_blank');
+    }
   }
 
   // ─── Leaflet Map Management ───────────────────────────────
@@ -403,8 +407,13 @@ SafeHer.shareLocation = (function() {
       }
     } catch(e) {}
 
-    if (session.shareToken && window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
-      fetch(window.SafeHerConfig.API_BASE.replace(/\/+$/, '') + '/api/track/' + encodeURIComponent(session.shareToken))
+    var apiBase = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) ? window.SafeHerConfig.API_BASE.replace(/\/+$/, '') : '';
+    if (apiBase) {
+      var authTok = (SafeHer.auth && SafeHer.auth.getToken) ? SafeHer.auth.getToken() : localStorage.getItem('safeher_token');
+      var authHeaders = { 'Content-Type': 'application/json' };
+      if (authTok) authHeaders['Authorization'] = 'Bearer ' + authTok;
+
+      fetch(apiBase + '/api/shares/active', { headers: authHeaders })
         .then(function(res) { return res.json(); })
         .then(function(json) {
           if (json && json.ok && json.data && json.data.contact_responses) {
@@ -414,6 +423,19 @@ SafeHer.shareLocation = (function() {
           }
         })
         .catch(function() {});
+
+      if (session.shareToken) {
+        fetch(apiBase + '/api/track/' + encodeURIComponent(session.shareToken))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json && json.ok && json.data && json.data.contact_responses) {
+              json.data.contact_responses.forEach(function(r) {
+                addResponseItem(r);
+              });
+            }
+          })
+          .catch(function() {});
+      }
     }
   }
 
@@ -523,110 +545,146 @@ SafeHer.shareLocation = (function() {
     var startBtn = document.getElementById('btn-start-sharing');
     if (startBtn) {
       startBtn.disabled = true;
-      startBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">hourglass_top</span>Getting location...';
+      startBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:18px;">hourglass_top</span>Starting...';
     }
 
-    function proceed(lat, lng) {
-      if (startBtn) {
-        startBtn.disabled = false;
-        startBtn.innerHTML = '<span class="material-symbols-rounded">share_location</span>Start Sharing';
-      }
+    var user = (SafeHer.api && SafeHer.api.getUser ? SafeHer.api.getUser() : null);
+    var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'SafeHer User';
 
-      currentLat = lat;
-      currentLng = lng;
+    // 1. Generate unique share token immediately for tracking link
+    var shareToken = 'share_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
+    var trackUrl = frontendBase.replace(/\/+$/, '') + '/track.html?t=' + shareToken;
 
-      var durationMs = getDurationMs(selectedDuration);
-      var endTime = durationMs ? (Date.now() + durationMs) : null;
-      var endTimeStr = endTime
-        ? new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : 'until you stop';
+    var durationMs = getDurationMs(selectedDuration);
+    var endTime = durationMs ? (Date.now() + durationMs) : null;
+    var endTimeStr = endTime
+      ? new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'until you stop';
 
-      var untilStopped = (selectedDuration === 'stop');
-      var durationMins = 60;
-      if (selectedDuration === '15m') durationMins = 15;
-      else if (selectedDuration === '1h') durationMins = 60;
-      else if (selectedDuration === '4h') durationMins = 240;
-      else if (selectedDuration === '8h') durationMins = 480;
-      else if (selectedDuration === 'all_day') durationMins = 1440;
-      if (untilStopped) durationMins = null;
+    var untilStopped = (selectedDuration === 'stop');
+    var durationMins = 60;
+    if (selectedDuration === '15m') durationMins = 15;
+    else if (selectedDuration === '1h') durationMins = 60;
+    else if (selectedDuration === '4h') durationMins = 240;
+    else if (selectedDuration === '8h') durationMins = 480;
+    else if (selectedDuration === 'all_day') durationMins = 1440;
+    if (untilStopped) durationMins = null;
 
-      var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
-      var session = {
-        active: true,
-        startTime: Date.now(),
-        endTime: endTime,
-        endTimeStr: endTimeStr,
-        durationKey: selectedDuration,
-        contactIds: selectedContactIds,
-        lat: currentLat,
-        lng: currentLng,
-        lastUpdated: Date.now(),
-        shareId: null,
-        trackUrl: frontendBase.replace(/\/+$/, '') + '/track.html',
-        isOffline: !navigator.onLine
-      };
+    // Use current or cached location
+    var initLat = currentLat || (SafeHer.getLastLocation ? SafeHer.getLastLocation().lat : 12.9716);
+    var initLng = currentLng || (SafeHer.getLastLocation ? SafeHer.getLastLocation().lng : 77.5946);
 
-      saveActiveSession(session);
-      updateHomeBanner();
-      renderActiveView(session);
-      startTrackingLoop();
-      shareViaWhatsApp();
+    var session = {
+      active: true,
+      startTime: Date.now(),
+      endTime: endTime,
+      endTimeStr: endTimeStr,
+      durationKey: selectedDuration,
+      contactIds: selectedContactIds,
+      lat: initLat,
+      lng: initLng,
+      lastUpdated: Date.now(),
+      shareId: null,
+      shareToken: shareToken,
+      trackUrl: trackUrl,
+      isOffline: !navigator.onLine
+    };
 
-      var sharePayload = {
-        contact_ids: selectedContactIds,
-        duration_minutes: durationMins,
-        until_stopped: untilStopped,
-        lat: currentLat,
-        lng: currentLng
-      };
+    saveActiveSession(session);
 
-      if (SafeHer.api && SafeHer.api.shareLocation) {
-        SafeHer.api.shareLocation(sharePayload, function(err, result) {
-          if (err || !result) {
-            console.warn('[ShareLocation] Backend share failed, enqueued offline:', err);
-            if (SafeHer.offlineQueue) {
-              SafeHer.offlineQueue.enqueue({
-                url: '/api/shares',
-                method: 'POST',
-                body: sharePayload
-              });
-            }
-            session.isOffline = true;
-            saveActiveSession(session);
-            renderActiveContactsList(session);
-            return;
-          }
+    // Save fallback tracking session in localStorage
+    try {
+      localStorage.setItem('safeher_track_session_' + shareToken, JSON.stringify({
+        type: 'share',
+        first_name: userName,
+        owner_name: userName,
+        status: 'active',
+        latest_lat: initLat,
+        latest_lng: initLng,
+        last_update_time: 'Just now',
+        started_at: new Date().toISOString(),
+        is_contact: true,
+        contact_first_name: 'Contact',
+        contact_name: 'Emergency Contact'
+      }));
+    } catch(e) {}
 
-          var shareData = result.data || result;
-          session.shareId = shareData.id || null;
-          if (shareData.tokens && shareData.tokens.length > 0) {
-            session.shareToken = shareData.tokens[0].token;
-            session.trackUrl = shareData.tokens[0].track_url;
-          }
-          session.isOffline = false;
-          saveActiveSession(session);
-          updateLiveLinkDisplay(session);
-          renderActiveContactsList(session);
-        });
-      }
+    updateHomeBanner();
+    renderActiveView(session);
+    startTrackingLoop();
 
-      SafeHer.toast('Location sharing active');
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerHTML = '<span class="material-symbols-rounded">chat</span>Start &amp; Share via WhatsApp';
     }
 
+    // 2. Launch WhatsApp immediately from the user click gesture
+    shareViaWhatsApp();
+
+    // 3. Background GPS refinement
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function(pos) {
-          proceed(pos.coords.latitude, pos.coords.longitude);
+          currentLat = pos.coords.latitude;
+          currentLng = pos.coords.longitude;
+          var curSess = getActiveSession();
+          if (curSess) {
+            curSess.lat = currentLat;
+            curSess.lng = currentLng;
+            saveActiveSession(curSess);
+            updateCoordsDisplay(currentLat, currentLng);
+            if (mapInstance && markerInstance) {
+              markerInstance.setLatLng([currentLat, currentLng]);
+              mapInstance.panTo([currentLat, currentLng]);
+            }
+          }
         },
-        function() {
-          SafeHer.toast('Location off. Using default coordinates.');
-          proceed(currentLat, currentLng);
-        },
-        { timeout: 6000, enableHighAccuracy: true }
+        function() {},
+        { timeout: 5000, enableHighAccuracy: true }
       );
-    } else {
-      proceed(currentLat, currentLng);
     }
+
+    // 4. Background backend registration
+    var sharePayload = {
+      contact_ids: selectedContactIds,
+      duration_minutes: durationMins,
+      until_stopped: untilStopped,
+      lat: initLat,
+      lng: initLng,
+      token: shareToken
+    };
+
+    if (SafeHer.api && SafeHer.api.shareLocation) {
+      SafeHer.api.shareLocation(sharePayload, function(err, result) {
+        if (err || !result) {
+          console.warn('[ShareLocation] Backend share queued offline:', err);
+          if (SafeHer.offlineQueue) {
+            SafeHer.offlineQueue.enqueue({
+              url: '/api/shares',
+              method: 'POST',
+              body: sharePayload
+            });
+          }
+          session.isOffline = true;
+          saveActiveSession(session);
+          return;
+        }
+
+        var shareData = result.data || result;
+        session.shareId = shareData.id || null;
+        if (shareData.tokens && shareData.tokens.length > 0) {
+          session.shareToken = shareData.tokens[0].token;
+          session.trackUrl = shareData.tokens[0].track_url;
+        }
+        session.isOffline = false;
+        saveActiveSession(session);
+        updateLiveLinkDisplay(session);
+        renderActiveContactsList(session);
+      });
+    }
+
+    SafeHer.toast('Location sharing active');
   }
 
   // ─── Stop Sharing Action ──────────────────────────────────
@@ -698,7 +756,11 @@ SafeHer.shareLocation = (function() {
       : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
 
     stopSharing(false);
-    window.open(waUrl, '_blank');
+    try {
+      window.location.href = waUrl;
+    } catch(e) {
+      window.open(waUrl, '_blank');
+    }
   }
 
   // ─── Web Share API & Clipboard Fallback ───────────────────

@@ -83,9 +83,10 @@ def create_share():
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     tokens_map = {}
     tokens_list = []
+    client_token = (data.get('token') or '').strip()
 
-    for cid in contact_ids:
-        tok = secrets.token_urlsafe(32)
+    for idx, cid in enumerate(contact_ids):
+        tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
         cursor.execute('''
             INSERT INTO share_contacts (share_id, contact_id, token, created_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP);
@@ -307,6 +308,29 @@ def get_active_share():
         SELECT contact_id, token FROM share_contacts WHERE share_id = ?;
     ''', (row['id'],))
     c_rows = cursor.fetchall()
+
+    # Query recent contact responses for this user
+    cursor.execute('''
+        SELECT detail_json, ts FROM incident_events
+        WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+        ORDER BY id DESC LIMIT 10;
+    ''', (user['id'],))
+    ev_rows = cursor.fetchall()
+    responses = []
+    import json as py_json
+    for ev in ev_rows:
+        try:
+            raw_det = ev['detail_json']
+            det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+            if isinstance(det, dict) and det.get('status'):
+                responses.append({
+                    "name": det.get('contact') or 'Contact',
+                    "status": det.get('status'),
+                    "time": ev['ts']
+                })
+        except Exception:
+            pass
+
     conn.close()
 
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
@@ -314,6 +338,7 @@ def get_active_share():
 
     share_dict = dict(row)
     share_dict['tokens'] = tokens
+    share_dict['contact_responses'] = responses
 
     return jsonify({
         "ok": True,
