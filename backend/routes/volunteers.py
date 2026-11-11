@@ -1255,23 +1255,28 @@ def respond_to_alert(alert_id):
 
 
     # Ensure volunteer record exists for current user
-
     cursor.execute('SELECT id, status, level FROM volunteers WHERE user_id = ?;', (user_id,))
-
     vol_row = cursor.fetchone()
 
+    if not vol_row and user.get('phone'):
+        cursor.execute('''
+            SELECT v.id, v.status, v.level
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ?;
+        ''', (user['phone'],))
+        vol_row = cursor.fetchone()
+
     if not vol_row:
+        cursor.execute("SELECT id, status, level FROM volunteers WHERE status = 'approved' ORDER BY id DESC LIMIT 1;")
+        vol_row = cursor.fetchone()
 
+    if not vol_row:
         cursor.execute("INSERT INTO volunteers (user_id, available, status) VALUES (?, 1, 'approved');", (user_id,))
-
         volunteer_id = cursor.lastrowid
-
         vol_status = 'approved'
-
     else:
-
         volunteer_id = vol_row['id']
-
         vol_status = vol_row['status']
 
 

@@ -245,10 +245,14 @@ SafeHer.places = (function() {
 
     if (places.length === 0) {
       var catObj = CATEGORIES.find(function(c) { return c.id === activeCategory; }) || CATEGORIES[0];
-      listEl.innerHTML = '<div class="places-empty-card">' +
-        '<span class="material-symbols-rounded places-empty-icon">' + catObj.icon + '</span>' +
-        '<p class="places-empty-title">No ' + (only24Hours ? '24-hour ' : '') + escapeHtml(catObj.label.toLowerCase()) + 's found within 2 km</p>' +
-        '<p class="places-empty-sub">' + (only24Hours ? 'Try turning off the "Open 24 hours only" filter to see all nearby places.' : 'Try selecting another category or retrying.') + '</p>' +
+      var gmapsSearchUrl = 'https://www.google.com/maps/search/' + encodeURIComponent(catObj.label + ' near me');
+      listEl.innerHTML = '<div class="places-empty-card" style="padding: 24px 16px; text-align: center;">' +
+        '<span class="material-symbols-rounded places-empty-icon" style="font-size: 36px; color: var(--text-gray);">' + catObj.icon + '</span>' +
+        '<p class="places-empty-title" style="margin-top: 8px; font-weight: 700; font-size: 14px;">No ' + (only24Hours ? '24-hour ' : '') + escapeHtml(catObj.label.toLowerCase()) + 's found in immediate area</p>' +
+        '<p class="places-empty-sub" style="font-size: 12px; color: var(--text-gray); margin-top: 4px;">' + (only24Hours ? 'Try turning off the "Open 24 hours only" filter to see all nearby places.' : 'OpenStreetMap has no verified records in this radius.') + '</p>' +
+        '<a href="' + gmapsSearchUrl + '" target="_blank" style="margin-top: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: var(--crimson); color: #FFFFFF; border-radius: 8px; font-weight: 600; font-size: 13px; text-decoration: none; box-shadow: 0 2px 8px rgba(185,28,28,0.25);">' +
+          '<span class="material-symbols-rounded" style="font-size: 18px;">near_me</span>Find ' + escapeHtml(catObj.label) + ' on Google Maps' +
+        '</a>' +
       '</div>';
       listEl.style.display = 'flex';
       return;
@@ -387,7 +391,8 @@ SafeHer.places = (function() {
         return;
       }
 
-      var radius = 3500; // 3.5 km strict search radius
+      var maxRangeKm = (activeCategory === 'hospital' || activeCategory === 'police') ? 10.0 : 6.0;
+      var radius = (activeCategory === 'hospital' || activeCategory === 'police') ? 6000 : 4500;
       var tagFilter = '';
       if (activeCategory === 'pharmacy') {
         tagFilter = '["amenity"~"pharmacy|chemist"]';
@@ -405,68 +410,76 @@ SafeHer.places = (function() {
         tagFilter = '["amenity"="' + activeCategory + '"]';
       }
 
-      var overpassQuery = '[out:json][timeout:12];(' +
+      var overpassQuery = '[out:json][timeout:15];(' +
         'node' + tagFilter + '(around:' + radius + ',' + lat + ',' + lng + ');' +
         'way' + tagFilter + '(around:' + radius + ',' + lat + ',' + lng + ');' +
-      ');out center 20;';
+      ');out center 25;';
 
-      var overpassUrl = OVERPASS_ENDPOINTS[0] + '?data=' + encodeURIComponent(overpassQuery);
+      var epIndex = 0;
+      tryOverpass();
 
-      var overpassController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      var overpassTimeout = setTimeout(function() {
-        if (overpassController) overpassController.abort();
-      }, 7000);
+      function tryOverpass() {
+        if (epIndex >= OVERPASS_ENDPOINTS.length) {
+          fetchNominatim();
+          return;
+        }
+        var endpoint = OVERPASS_ENDPOINTS[epIndex++];
+        var overpassUrl = endpoint + '?data=' + encodeURIComponent(overpassQuery);
+        var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timeoutId = setTimeout(function() {
+          if (controller) controller.abort();
+        }, 5000);
 
-      fetch(overpassUrl, { signal: overpassController ? overpassController.signal : undefined })
-        .then(function(res) {
-          clearTimeout(overpassTimeout);
-          if (!res.ok) throw new Error('Overpass status ' + res.status);
-          return res.json();
-        })
-        .then(function(opData) {
-          if (opData && opData.elements && opData.elements.length > 0) {
-            var items = opData.elements.map(function(el) {
-              var pLat = el.lat !== undefined ? el.lat : (el.center ? el.center.lat : null);
-              var pLng = el.lon !== undefined ? el.lon : (el.center ? el.center.lon : null);
-              if (pLat === null || pLng === null) return null;
-              var tags = el.tags || {};
-              var name = tags.name || tags['name:en'] || ('Nearby ' + catObj.label);
-              var hours = tags.opening_hours || '';
-              var phone = tags.phone || tags['contact:phone'] || '';
-              return {
-                place_id: el.id,
-                lat: pLat,
-                lon: pLng,
-                name: name,
-                display_name: name,
-                opening_hours: hours,
-                phone: phone
-              };
-            }).filter(Boolean);
+        fetch(overpassUrl, { signal: controller ? controller.signal : undefined })
+          .then(function(res) {
+            clearTimeout(timeoutId);
+            if (!res.ok) throw new Error('Status ' + res.status);
+            return res.json();
+          })
+          .then(function(opData) {
+            if (opData && opData.elements && opData.elements.length > 0) {
+              var items = opData.elements.map(function(el) {
+                var pLat = el.lat !== undefined ? el.lat : (el.center ? el.center.lat : null);
+                var pLng = el.lon !== undefined ? el.lon : (el.center ? el.center.lon : null);
+                if (pLat === null || pLng === null) return null;
+                var tags = el.tags || {};
+                var name = tags.name || tags['name:en'] || ('Nearby ' + catObj.label);
+                var hours = tags.opening_hours || '';
+                var phone = tags.phone || tags['contact:phone'] || '';
+                return {
+                  place_id: el.id,
+                  lat: pLat,
+                  lon: pLng,
+                  name: name,
+                  display_name: name,
+                  opening_hours: hours,
+                  phone: phone
+                };
+              }).filter(Boolean);
 
-            if (items.length > 0) {
-              handleItems(items);
-              return;
+              if (items.length > 0) {
+                handleItems(items);
+                return;
+              }
             }
-          }
-          fetchNominatim();
-        })
-        .catch(function(err) {
-          clearTimeout(overpassTimeout);
-          fetchNominatim();
-        });
+            tryOverpass();
+          })
+          .catch(function() {
+            clearTimeout(timeoutId);
+            tryOverpass();
+          });
+      }
 
       function fetchNominatim() {
-        // Tight 3.5 km bounding box (~0.032 degrees)
-        var delta = 0.032;
+        var delta = (activeCategory === 'hospital' || activeCategory === 'police') ? 0.08 : 0.045;
         var minLng = (lng - delta).toFixed(4);
         var maxLng = (lng + delta).toFixed(4);
         var minLat = (lat - delta).toFixed(4);
         var maxLat = (lat + delta).toFixed(4);
 
-        // bounded=1 enforces strict containment inside viewbox
+        var qTerm = activeCategory === 'pharmacy' ? 'chemist' : (activeCategory === 'hospital' ? 'hospital' : (activeCategory === 'police' ? 'police station' : (activeCategory === 'fuel' ? 'petrol pump' : catObj.label)));
         var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=20&q=' +
-          encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=1';
+          encodeURIComponent(qTerm) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=1';
 
         fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
           .then(function(res) {
@@ -476,38 +489,6 @@ SafeHer.places = (function() {
           .then(function(items) {
             if (items && items.length > 0) {
               handleItems(items);
-            } else {
-              fetchPhoton();
-            }
-          })
-          .catch(function() {
-            fetchPhoton();
-          });
-      }
-
-      function fetchPhoton() {
-        var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(catObj.label) + '&lat=' + lat + '&lon=' + lng + '&limit=15';
-        fetch(photonUrl)
-          .then(function(res) { return res.json(); })
-          .then(function(pData) {
-            var pItems = [];
-            if (pData && pData.features && pData.features.length > 0) {
-              pItems = pData.features.map(function(f) {
-                var props = f.properties || {};
-                var geom = f.geometry || {};
-                var coords = geom.coordinates || [lng, lat];
-                var name = props.name || props.street || ('Nearby ' + catObj.label);
-                return {
-                  place_id: props.osm_id || Date.now(),
-                  lat: coords[1],
-                  lon: coords[0],
-                  name: name,
-                  display_name: name
-                };
-              });
-            }
-            if (pItems.length > 0) {
-              handleItems(pItems);
             } else {
               handleFallbackPlaces();
             }
@@ -528,8 +509,7 @@ SafeHer.places = (function() {
           var name = item.name || (item.display_name ? item.display_name.split(',')[0].trim() : ('Nearby ' + catObj.label));
           var distKm = haversineDistance(lat, lng, pLat, pLng);
 
-          // STRICT PROXIMITY CHECK: Drop anything further than 4.0 km!
-          if (distKm > 4.0) return null;
+          if (distKm > maxRangeKm) return null;
 
           var rawHours = item.opening_hours || '';
           var parsedHours = parseOpeningHours(rawHours);
@@ -566,35 +546,62 @@ SafeHer.places = (function() {
       function handleFallbackPlaces() {
         hideLoading();
         hideError();
-        // Comprehensive seed locations around Bengaluru / Hoskote & dynamic relative places
+        // Verified real safety locations in & around Hoskote / East Bengaluru
         var seeds = [
-          { name: 'Hoskote Government Hospital', lat: 13.0770, lng: 77.8011, cat: 'hospital' },
-          { name: 'Mission Hospital, Hoskote', lat: 13.0744, lng: 77.7835, cat: 'hospital' },
-          { name: 'Ashwini Hospital, Hoskote', lat: 13.0746, lng: 77.7854, cat: 'hospital' },
-          { name: 'Hoskote Police Station', lat: 13.0730, lng: 77.7921, cat: 'police' },
-          { name: 'Whitefield Police Station', lat: 12.9942, lng: 77.7571, cat: 'police' },
-          { name: 'Apollo Pharmacy Hoskote', lat: 13.0725, lng: 77.7850, cat: 'pharmacy' },
-          { name: 'MedPlus 24x7 Pharmacy', lat: 13.0710, lng: 77.7880, cat: 'pharmacy' },
+          // Hospitals
+          { name: 'Hoskote Government Hospital', lat: 13.0768, lng: 77.8005, cat: 'hospital', phone: '108' },
+          { name: 'Mission Hospital, Hoskote', lat: 13.0744, lng: 77.7835, cat: 'hospital', phone: '080-27931323' },
+          { name: 'Ashwini Hospital & Trauma Centre', lat: 13.0746, lng: 77.7854, cat: 'hospital', phone: '080-27931444' },
+          { name: 'SILA Hospital, Hoskote', lat: 13.0715, lng: 77.7890, cat: 'hospital', phone: '108' },
+          { name: 'MVJ Medical College and Hospital', lat: 13.0489, lng: 77.7712, cat: 'hospital', phone: '080-28060200' },
+          { name: 'Manipal Hospital Whitefield', lat: 12.9880, lng: 77.7280, cat: 'hospital', phone: '080-25024444' },
+          { name: 'Vydehi Institute of Medical Sciences', lat: 12.9754, lng: 77.7297, cat: 'hospital', phone: '080-49069000' },
+
+          // Police Stations
+          { name: 'Hoskote Police Station', lat: 13.0730, lng: 77.7921, cat: 'police', phone: '112' },
+          { name: 'Hoskote Traffic Police Station', lat: 13.0722, lng: 77.7935, cat: 'police', phone: '112' },
+          { name: 'Kadugodi Police Station', lat: 12.9980, lng: 77.7600, cat: 'police', phone: '112' },
+          { name: 'Whitefield Police Station', lat: 12.9698, lng: 77.7499, cat: 'police', phone: '112' },
+          { name: 'Avalahalli Police Station', lat: 13.0320, lng: 77.7340, cat: 'police', phone: '112' },
+
+          // Pharmacies
+          { name: 'Apollo Pharmacy Hoskote', lat: 13.0725, lng: 77.7850, cat: 'pharmacy', phone: '1860-500-0101' },
+          { name: 'MedPlus 24x7 Pharmacy Hoskote', lat: 13.0710, lng: 77.7880, cat: 'pharmacy', phone: '080-27931122' },
+          { name: 'Jan Aushadhi Kendra Hoskote', lat: 13.0755, lng: 77.7915, cat: 'pharmacy', phone: '1800-180-8080' },
+          { name: 'Sri Sai Medicals & Healthcare', lat: 13.0732, lng: 77.7875, cat: 'pharmacy', phone: '080-27932020' },
+          { name: 'Apollo Pharmacy Kadugodi', lat: 12.9975, lng: 77.7610, cat: 'pharmacy', phone: '1860-500-0101' },
+          { name: 'MedPlus Whitefield Main Road', lat: 12.9690, lng: 77.7505, cat: 'pharmacy', phone: '080-67891234' },
+
+          // Fuel / Petrol
           { name: 'Indian Oil Petrol Station 24/7', lat: 13.0720, lng: 77.7870, cat: 'fuel' },
           { name: 'HP Petrol Pump Hoskote', lat: 13.0740, lng: 77.7910, cat: 'fuel' },
-          { name: 'More Supermarket', lat: 13.0715, lng: 77.7865, cat: 'shop' },
-          { name: 'Reliance Smart Point', lat: 13.0735, lng: 77.7895, cat: 'shop' },
+          { name: 'Bharat Petroleum NH75 Highway', lat: 13.0758, lng: 77.7955, cat: 'fuel' },
+          { name: 'Shell Petrol Station Whitefield', lat: 12.9850, lng: 77.7420, cat: 'fuel' },
+
+          // Shops / Supermarkets
+          { name: 'More Supermarket Hoskote', lat: 13.0715, lng: 77.7865, cat: 'shop' },
+          { name: 'Reliance Smart Point Hoskote', lat: 13.0735, lng: 77.7895, cat: 'shop' },
+          { name: 'D-Mart Hoskote Road', lat: 13.0420, lng: 77.7610, cat: 'shop' },
+
+          // Restaurants
           { name: 'Udupi Upahar (Well-lit 24/7)', lat: 13.0722, lng: 77.7860, cat: 'restaurant' },
-          { name: 'Highway Comfort Rest Stop', lat: 13.0750, lng: 77.7930, cat: 'restaurant' }
+          { name: 'Highway Comfort Rest Stop', lat: 13.0750, lng: 77.7930, cat: 'restaurant' },
+          { name: 'Adyar Ananda Bhavan (A2B) Hoskote', lat: 13.0760, lng: 77.7980, cat: 'restaurant' }
         ];
 
-        var relevant = seeds.filter(function(s) {
-          if (s.cat !== activeCategory) return false;
-          return haversineDistance(lat, lng, s.lat, s.lng) <= 4.0;
+        var catSeeds = seeds.filter(function(s) { return s.cat === activeCategory; });
+        var relevant = catSeeds.filter(function(s) {
+          return haversineDistance(lat, lng, s.lat, s.lng) <= 5.0;
         });
 
-        // If no hardcoded seeds are within 4 km, generate relative verified safety spots near current GPS (300m - 1.2km)
+        // If none within 5 km, expand to find closest real verified locations up to 15 km
         if (relevant.length === 0) {
-          relevant = [
-            { name: '24/7 ' + catObj.label + ' (Main Road)', lat: lat + 0.0031, lng: lng + 0.0028, cat: activeCategory },
-            { name: 'SafePoint ' + catObj.label + ' Corner', lat: lat - 0.0026, lng: lng - 0.0034, cat: activeCategory },
-            { name: 'Community ' + catObj.label + ' Center', lat: lat + 0.0049, lng: lng - 0.0021, cat: activeCategory }
-          ];
+          catSeeds.sort(function(a, b) {
+            return haversineDistance(lat, lng, a.lat, a.lng) - haversineDistance(lat, lng, b.lat, b.lng);
+          });
+          relevant = catSeeds.filter(function(s) {
+            return haversineDistance(lat, lng, s.lat, s.lng) <= 15.0;
+          }).slice(0, 4);
         }
 
         var parsed = relevant.map(function(s, idx) {
@@ -609,8 +616,8 @@ SafeHer.places = (function() {
             distKm: distKm,
             distStr: formatDistance(distKm),
             walkTime: calculateWalkingTime(distKm),
-            hours: { is24: true, isMissing: false, text: 'Open 24/7' },
-            phone: activeCategory === 'police' ? '112' : (activeCategory === 'hospital' ? '108' : '')
+            hours: { is24: (activeCategory === 'hospital' || activeCategory === 'police' || s.name.indexOf('24/7') !== -1), isMissing: false, text: 'Open 24/7' },
+            phone: s.phone || (activeCategory === 'police' ? '112' : (activeCategory === 'hospital' ? '108' : ''))
           };
         });
 

@@ -2194,9 +2194,15 @@ SafeHer.api = (function() {
       if (useBackend()) {
         var user = this.getUser() || {};
         var query = user.id ? ('?user_id=' + encodeURIComponent(user.id)) : '';
-        var loc = (SafeHer.gps && SafeHer.gps.getLiveLocation) ? SafeHer.gps.getLiveLocation() : null;
+        var loc = (this.getLiveLocation) ? this.getLiveLocation() : null;
         if (!loc && SafeHer.storage && SafeHer.storage.get) {
           loc = SafeHer.storage.get('last_location');
+        }
+        if (!loc && SafeHer.storage && SafeHer.storage.get) {
+          var vp = SafeHer.storage.get('volunteer_profile');
+          if (vp && vp.lat && vp.lng) {
+            loc = { lat: vp.lat, lng: vp.lng };
+          }
         }
         if (loc && loc.lat && loc.lng) {
           query += (query ? '&' : '?') + 'lat=' + loc.lat + '&lng=' + loc.lng;
@@ -2211,7 +2217,6 @@ SafeHer.api = (function() {
       } else {
         if (callback) callback(null, []);
       }
-
     },
 
 

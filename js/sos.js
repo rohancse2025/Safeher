@@ -1868,15 +1868,29 @@ SafeHer.sos = (function() {
       var startTime = (act && (act.createdAt || act.timestamp)) ? new Date(act.createdAt || act.timestamp).getTime() : Date.now();
       var elapsedSec = Math.floor((Date.now() - startTime) / 1000);
 
+      var readyVolunteersCount = 0;
+      try {
+        var rawCount = localStorage.getItem('safeher_volunteers_count');
+        if (rawCount !== null) readyVolunteersCount = parseInt(rawCount, 10) || 0;
+      } catch(e) {}
+
       var emptyHtml = '';
-      if (elapsedSec >= 20) {
+      if (elapsedSec < 60) {
+        if (readyVolunteersCount > 0) {
+          emptyHtml = '<div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
+            '<span class="material-symbols-rounded" style="color: #16A34A; font-size: 22px; display: block; margin-bottom: 2px;">sensors</span>' +
+            '<strong style="font-size: 13px; color: #166534; display: block;">Alert dispatched to ' + readyVolunteersCount + ' nearby volunteer' + (readyVolunteersCount > 1 ? 's' : '') + '</strong>' +
+            '<span style="font-size: 11px; color: #15803D; display: block; margin-top: 2px;">Waiting for volunteer to accept on their phone... (' + Math.max(1, 60 - elapsedSec) + 's)</span>' +
+          '</div>';
+        } else {
+          emptyHtml = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Broadcasting emergency alert to nearby volunteers... (' + Math.max(1, 60 - elapsedSec) + 's)</p>';
+        }
+      } else {
         emptyHtml = '<div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
           '<span class="material-symbols-rounded" style="color: #DC2626; font-size: 24px; display: block; margin-bottom: 2px;">warning</span>' +
-          '<strong style="font-size: 13px; color: #991B1B; display: block;">No community volunteers coming nearby</strong>' +
+          '<strong style="font-size: 13px; color: #991B1B; display: block;">No community volunteers confirmed yet</strong>' +
           '<span style="font-size: 11px; color: #7F1D1D; display: block; margin-top: 2px;">Emergency contacts have your location. Please call 112 directly if in danger.</span>' +
         '</div>';
-      } else {
-        emptyHtml = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Waiting for volunteers to respond...</p>';
       }
 
       if (listEl) listEl.innerHTML = emptyHtml;
