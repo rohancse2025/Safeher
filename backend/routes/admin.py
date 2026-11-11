@@ -172,13 +172,17 @@ def list_all_volunteers():
         counts['all'] += cnt
 
     query = '''
-        SELECT v.id, v.user_id, u.name, u.phone, u.email, v.note, v.status, v.level,
+        SELECT v.id, v.user_id,
+               COALESCE(u.name, v.full_name, 'SafeHer User') AS name,
+               COALESCE(u.phone, '9999999999') AS phone,
+               COALESCE(u.email, 'volunteer@safeher.app') AS email,
+               v.note, v.status, v.level,
                v.full_name, v.dob, v.locality, v.id_type, v.id_last4,
                v.training_score, v.training_passed_at, v.flags_json,
                v.approved_at, v.approved_by, v.valid_until,
                v.reject_reason_code, v.reapply_after, v.available, v.lat, v.lng, v.updated_at
         FROM volunteers v
-        JOIN users u ON v.user_id = u.id
+        LEFT JOIN users u ON v.user_id = u.id
     '''
     params = []
     if status_filter:

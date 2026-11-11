@@ -2191,31 +2191,25 @@ SafeHer.api = (function() {
 
 
     getNearbyAlerts: function(callback) {
-
       if (useBackend()) {
-
         var user = this.getUser() || {};
-
         var query = user.id ? ('?user_id=' + encodeURIComponent(user.id)) : '';
-
+        var loc = (SafeHer.gps && SafeHer.gps.getLiveLocation) ? SafeHer.gps.getLiveLocation() : null;
+        if (!loc && SafeHer.storage && SafeHer.storage.get) {
+          loc = SafeHer.storage.get('last_location');
+        }
+        if (loc && loc.lat && loc.lng) {
+          query += (query ? '&' : '?') + 'lat=' + loc.lat + '&lng=' + loc.lng;
+        }
         apiFetch('/api/volunteers/nearby-alerts' + query, { method: 'GET' })
-
           .then(function(json) {
-
             if (callback) callback(null, json.data || []);
-
           })
-
           .catch(function(err) {
-
             if (callback) callback(err.message, []);
-
           });
-
       } else {
-
         if (callback) callback(null, []);
-
       }
 
     },

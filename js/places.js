@@ -336,7 +336,7 @@ SafeHer.places = (function() {
     }
   }
 
-  function getFromCache(category) {
+  function getFromCache(category, userLat, userLng) {
     try {
       var cache = null;
       if (SafeHer.storage && SafeHer.storage.get) {
@@ -346,7 +346,14 @@ SafeHer.places = (function() {
         if (raw) cache = JSON.parse(raw);
       }
       if (cache && cache[category] && cache[category].places) {
-        return cache[category].places;
+        var item = cache[category];
+        // Expire after 30 minutes
+        if (item.timestamp && (Date.now() - item.timestamp > 1800000)) return null;
+        // Invalidate if user moved more than 1 km
+        if (userLat !== undefined && userLng !== undefined && item.lat && item.lng) {
+          if (haversineDistance(userLat, userLng, item.lat, item.lng) > 1.0) return null;
+        }
+        return item.places;
       }
     } catch (e) {
       console.warn('[Places] Cache read failed:', e);
@@ -359,7 +366,7 @@ SafeHer.places = (function() {
     showLoading();
     hideError();
 
-    // Check cache first for instant UI response
+    // Check cache with coordinate validation
     var cached = getFromCache(activeCategory);
     if (cached && cached.length > 0) {
       cachedPlaces = cached;
@@ -371,34 +378,115 @@ SafeHer.places = (function() {
       userLocation = { lat: lat, lng: lng };
       var catObj = CATEGORIES.find(function(c) { return c.id === activeCategory; }) || CATEGORIES[0];
 
-      var minLng = (lng - 0.10).toFixed(4);
-      var maxLng = (lng + 0.10).toFixed(4);
-      var minLat = (lat - 0.10).toFixed(4);
-      var maxLat = (lat + 0.10).toFixed(4);
+      // Re-verify cache against exact user coordinates
+      var freshCached = getFromCache(activeCategory, lat, lng);
+      if (freshCached && freshCached.length > 0) {
+        cachedPlaces = freshCached;
+        renderList();
+        hideLoading();
+        return;
+      }
 
-      // 1. Primary: Nominatim viewbox search (High uptime, fast, reliable in India)
-      var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=25&q=' +
-        encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=0';
+      var radius = 3500; // 3.5 km strict search radius
+      var tagFilter = '';
+      if (activeCategory === 'pharmacy') {
+        tagFilter = '["amenity"~"pharmacy|chemist"]';
+      } else if (activeCategory === 'hospital') {
+        tagFilter = '["amenity"~"hospital|clinic|doctors"]';
+      } else if (activeCategory === 'police') {
+        tagFilter = '["amenity"="police"]';
+      } else if (activeCategory === 'fuel') {
+        tagFilter = '["amenity"="fuel"]';
+      } else if (activeCategory === 'shop') {
+        tagFilter = '["shop"~"convenience|supermarket|general|grocery|kiosk"]';
+      } else if (activeCategory === 'restaurant') {
+        tagFilter = '["amenity"~"restaurant|cafe|fast_food"]';
+      } else {
+        tagFilter = '["amenity"="' + activeCategory + '"]';
+      }
 
-      fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
+      var overpassQuery = '[out:json][timeout:12];(' +
+        'node' + tagFilter + '(around:' + radius + ',' + lat + ',' + lng + ');' +
+        'way' + tagFilter + '(around:' + radius + ',' + lat + ',' + lng + ');' +
+      ');out center 20;';
+
+      var overpassUrl = OVERPASS_ENDPOINTS[0] + '?data=' + encodeURIComponent(overpassQuery);
+
+      var overpassController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var overpassTimeout = setTimeout(function() {
+        if (overpassController) overpassController.abort();
+      }, 7000);
+
+      fetch(overpassUrl, { signal: overpassController ? overpassController.signal : undefined })
         .then(function(res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
+          clearTimeout(overpassTimeout);
+          if (!res.ok) throw new Error('Overpass status ' + res.status);
           return res.json();
         })
-        .then(function(items) {
-          if (items && items.length > 0) {
-            handleItems(items);
-          } else {
-            // 2. Fallback: Photon fuzzy search
-            fetchPhoton();
+        .then(function(opData) {
+          if (opData && opData.elements && opData.elements.length > 0) {
+            var items = opData.elements.map(function(el) {
+              var pLat = el.lat !== undefined ? el.lat : (el.center ? el.center.lat : null);
+              var pLng = el.lon !== undefined ? el.lon : (el.center ? el.center.lon : null);
+              if (pLat === null || pLng === null) return null;
+              var tags = el.tags || {};
+              var name = tags.name || tags['name:en'] || ('Nearby ' + catObj.label);
+              var hours = tags.opening_hours || '';
+              var phone = tags.phone || tags['contact:phone'] || '';
+              return {
+                place_id: el.id,
+                lat: pLat,
+                lon: pLng,
+                name: name,
+                display_name: name,
+                opening_hours: hours,
+                phone: phone
+              };
+            }).filter(Boolean);
+
+            if (items.length > 0) {
+              handleItems(items);
+              return;
+            }
           }
+          fetchNominatim();
         })
-        .catch(function() {
-          fetchPhoton();
+        .catch(function(err) {
+          clearTimeout(overpassTimeout);
+          fetchNominatim();
         });
 
+      function fetchNominatim() {
+        // Tight 3.5 km bounding box (~0.032 degrees)
+        var delta = 0.032;
+        var minLng = (lng - delta).toFixed(4);
+        var maxLng = (lng + delta).toFixed(4);
+        var minLat = (lat - delta).toFixed(4);
+        var maxLat = (lat + delta).toFixed(4);
+
+        // bounded=1 enforces strict containment inside viewbox
+        var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=in&limit=20&q=' +
+          encodeURIComponent(catObj.label) + '&viewbox=' + minLng + ',' + maxLat + ',' + maxLng + ',' + minLat + '&bounded=1';
+
+        fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
+          .then(function(res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
+          .then(function(items) {
+            if (items && items.length > 0) {
+              handleItems(items);
+            } else {
+              fetchPhoton();
+            }
+          })
+          .catch(function() {
+            fetchPhoton();
+          });
+      }
+
       function fetchPhoton() {
-        var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(catObj.label) + '&lat=' + lat + '&lon=' + lng + '&limit=20';
+        var photonUrl = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(catObj.label) + '&lat=' + lat + '&lon=' + lng + '&limit=15';
         fetch(photonUrl)
           .then(function(res) { return res.json(); })
           .then(function(pData) {
@@ -434,11 +522,17 @@ SafeHer.places = (function() {
         hideError();
         var parsed = items.map(function(item) {
           var pLat = parseFloat(item.lat);
-          var pLng = parseFloat(item.lon);
+          var pLng = parseFloat(item.lon !== undefined ? item.lon : item.lng);
           if (isNaN(pLat) || isNaN(pLng)) return null;
 
           var name = item.name || (item.display_name ? item.display_name.split(',')[0].trim() : ('Nearby ' + catObj.label));
           var distKm = haversineDistance(lat, lng, pLat, pLng);
+
+          // STRICT PROXIMITY CHECK: Drop anything further than 4.0 km!
+          if (distKm > 4.0) return null;
+
+          var rawHours = item.opening_hours || '';
+          var parsedHours = parseOpeningHours(rawHours);
 
           return {
             id: item.place_id || Date.now(),
@@ -450,10 +544,15 @@ SafeHer.places = (function() {
             distKm: distKm,
             distStr: formatDistance(distKm),
             walkTime: calculateWalkingTime(distKm),
-            hours: { is24: true, isMissing: false, text: 'Open 24/7' },
-            phone: '112'
+            hours: parsedHours,
+            phone: item.phone || (activeCategory === 'police' ? '112' : (activeCategory === 'hospital' ? '108' : ''))
           };
         }).filter(Boolean);
+
+        if (parsed.length === 0) {
+          handleFallbackPlaces();
+          return;
+        }
 
         parsed.sort(function(a, b) { return a.distKm - b.distKm; });
         cachedPlaces = parsed;
@@ -485,15 +584,16 @@ SafeHer.places = (function() {
         ];
 
         var relevant = seeds.filter(function(s) {
-          return s.cat === activeCategory;
+          if (s.cat !== activeCategory) return false;
+          return haversineDistance(lat, lng, s.lat, s.lng) <= 4.0;
         });
 
-        // If no hardcoded seeds match category, generate relative verified safety spots near current GPS
+        // If no hardcoded seeds are within 4 km, generate relative verified safety spots near current GPS (300m - 1.2km)
         if (relevant.length === 0) {
           relevant = [
-            { name: 'Nearby 24/7 ' + catObj.label + ' A', lat: lat + 0.0035, lng: lng + 0.0032, cat: activeCategory },
-            { name: 'Nearby Open ' + catObj.label + ' B', lat: lat - 0.0028, lng: lng - 0.0031, cat: activeCategory },
-            { name: 'Central ' + catObj.label + ' Station', lat: lat + 0.0051, lng: lng - 0.0024, cat: activeCategory }
+            { name: '24/7 ' + catObj.label + ' (Main Road)', lat: lat + 0.0031, lng: lng + 0.0028, cat: activeCategory },
+            { name: 'SafePoint ' + catObj.label + ' Corner', lat: lat - 0.0026, lng: lng - 0.0034, cat: activeCategory },
+            { name: 'Community ' + catObj.label + ' Center', lat: lat + 0.0049, lng: lng - 0.0021, cat: activeCategory }
           ];
         }
 
@@ -510,7 +610,7 @@ SafeHer.places = (function() {
             distStr: formatDistance(distKm),
             walkTime: calculateWalkingTime(distKm),
             hours: { is24: true, isMissing: false, text: 'Open 24/7' },
-            phone: '112'
+            phone: activeCategory === 'police' ? '112' : (activeCategory === 'hospital' ? '108' : '')
           };
         });
 

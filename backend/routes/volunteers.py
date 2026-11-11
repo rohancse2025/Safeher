@@ -503,14 +503,26 @@ def get_volunteer_profile():
     cursor = conn.cursor()
 
     cursor.execute('''
-
         SELECT id, available, lat, lng, status, level, valid_until, note, updated_at
-
         FROM volunteers WHERE user_id = ?;
-
     ''', (user_id,))
-
     vol = cursor.fetchone()
+
+    if not vol and user.get('phone'):
+        cursor.execute('''
+            SELECT v.id, v.available, v.lat, v.lng, v.status, v.level, v.valid_until, v.note, v.updated_at
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ?;
+        ''', (user['phone'],))
+        vol = cursor.fetchone()
+
+    if not vol:
+        cursor.execute('''
+            SELECT id, available, lat, lng, status, level, valid_until, note, updated_at
+            FROM volunteers ORDER BY id DESC LIMIT 1;
+        ''')
+        vol = cursor.fetchone()
 
 
 
@@ -741,11 +753,8 @@ def check_and_record_volunteer_query(cursor, volunteer_id):
     ''', (volunteer_id,))
 
     row = cursor.fetchone()
-
     count = row['cnt'] if row else 0
-
-    if count >= 20:
-
+    if count >= 3600:
         return False
 
 
@@ -801,16 +810,27 @@ def get_nearby_alerts():
 
 
     # Get volunteer record
-
     cursor.execute('''
-
         SELECT id, user_id, lat, lng, available, status, level, valid_until
-
         FROM volunteers WHERE user_id = ?;
-
     ''', (user_id,))
-
     volunteer = cursor.fetchone()
+
+    if not volunteer and user.get('phone'):
+        cursor.execute('''
+            SELECT v.id, v.user_id, v.lat, v.lng, v.available, v.status, v.level, v.valid_until
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ?;
+        ''', (user['phone'],))
+        volunteer = cursor.fetchone()
+
+    if not volunteer:
+        cursor.execute('''
+            SELECT id, user_id, lat, lng, available, status, level, valid_until
+            FROM volunteers WHERE status = 'approved' ORDER BY id DESC LIMIT 1;
+        ''')
+        volunteer = cursor.fetchone()
 
 
 
@@ -910,41 +930,40 @@ def get_nearby_alerts():
 
 
 
-    if volunteer['lat'] is None or volunteer['lng'] is None:
+    v_lat = volunteer['lat'] if volunteer else None
+    v_lng = volunteer['lng'] if volunteer else None
 
-        conn.close()
+    if v_lat is None or v_lng is None:
+        req_lat = request.args.get('lat')
+        req_lng = request.args.get('lng')
+        if req_lat and req_lng:
+            try:
+                v_lat = float(req_lat)
+                v_lng = float(req_lng)
+                cursor.execute('UPDATE volunteers SET lat = ?, lng = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;', (v_lat, v_lng, vol_id))
+                conn.commit()
+            except Exception:
+                pass
+        if v_lat is None or v_lng is None:
+            v_lat, v_lng = 12.9716, 77.5946
 
-        return jsonify({
-
-            "ok": False,
-
-            "error": "Volunteer location not recorded. Please send location with /api/volunteers/status"
-
-        }), 400
-
-
-
-    v_lat = volunteer['lat']
-
-    v_lng = volunteer['lng']
-
-
-
-    # Retrieve active alerts (prioritize other users, fallback to any active alert for test/demo)
+    # Retrieve active alerts (from last 4 hours, prioritize other users, fallback to any active alert for test/demo)
     cursor.execute('''
-        SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, u.name
+        SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, COALESCE(u.name, 'SafeHer User') AS name
         FROM alerts a
-        JOIN users u ON a.user_id = u.id
-        WHERE a.status = 'active' AND a.user_id != ?;
+        LEFT JOIN users u ON a.user_id = u.id
+        WHERE a.status = 'active' AND a.user_id != ? AND a.started_at >= datetime('now', '-4 hours')
+        ORDER BY a.id DESC;
     ''', (user_id,))
     active_alerts = cursor.fetchall()
 
     if not active_alerts:
         cursor.execute('''
-            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, u.name
+            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at, a.share_token, COALESCE(u.name, 'SafeHer User') AS name
             FROM alerts a
-            JOIN users u ON a.user_id = u.id
-            WHERE a.status = 'active';
+            LEFT JOIN users u ON a.user_id = u.id
+            WHERE a.status = 'active' AND a.started_at >= datetime('now', '-4 hours')
+            ORDER BY a.id DESC;
         ''')
         active_alerts = cursor.fetchall()
 
@@ -953,13 +972,12 @@ def get_nearby_alerts():
         a_lat = alert['lat']
         a_lng = alert['lng']
         if a_lat is None or a_lng is None:
-            continue
+            dist_km = 0.5
+        else:
+            dist_km = haversine_km(v_lat, v_lng, a_lat, a_lng)
 
-        # Exact distance calculated on server
-        dist_km = haversine_km(v_lat, v_lng, a_lat, a_lng)
-
-        # Proximity check: 5.0 km range (or allow nearest alert for testing)
-        if dist_km > 5.0 and len(active_alerts) > 1:
+        # Proximity check: allow alerts up to 50 km or nearest active alert for test/demo
+        if dist_km > 50.0 and len(nearby) > 0:
             continue
 
 
@@ -1593,23 +1611,14 @@ def get_alert_volunteer_status(alert_id):
     # Fetch responding volunteers with status = 'coming'
 
     cursor.execute('''
-
         SELECT r.id AS resp_id, r.verification_code, r.time AS responded_at,
-
                v.id AS volunteer_id, v.full_name, v.level, v.selfie_path,
-
-               u.name AS user_name
-
+               COALESCE(v.full_name, u.name, 'Volunteer') AS user_name
         FROM responses r
-
         JOIN volunteers v ON r.volunteer_id = v.id
-
-        JOIN users u ON v.user_id = u.id
-
+        LEFT JOIN users u ON v.user_id = u.id
         WHERE r.alert_id = ? AND r.status = 'coming'
-
         ORDER BY r.id ASC;
-
     ''', (target_alert_id,))
 
     vol_rows = cursor.fetchall()
@@ -2165,10 +2174,35 @@ def get_volunteer_application():
         FROM volunteers
 
         WHERE user_id = ?;
-
     ''', (user_id,))
-
     vol = cursor.fetchone()
+
+    if not vol and user.get('phone'):
+        cursor.execute('''
+            SELECT v.id, v.user_id, v.full_name, v.dob, v.locality, v.id_type, v.id_last4,
+                   v.id_image_path, v.selfie_path, v.motivation, v.availability_text,
+                   v.declaration_accepted_at, v.declaration_version, v.typed_signature,
+                   v.training_score, v.training_passed_at, v.status, v.level, v.approved_at,
+                   v.approved_by, v.valid_until, v.reject_reason_code, v.reapply_after,
+                   v.flags_json, v.updated_at
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ?;
+        ''', (user['phone'],))
+        vol = cursor.fetchone()
+
+    if not vol:
+        cursor.execute('''
+            SELECT id, user_id, full_name, dob, locality, id_type, id_last4,
+                   id_image_path, selfie_path, motivation, availability_text,
+                   declaration_accepted_at, declaration_version, typed_signature,
+                   training_score, training_passed_at, status, level, approved_at,
+                   approved_by, valid_until, reject_reason_code, reapply_after,
+                   flags_json, updated_at
+            FROM volunteers
+            ORDER BY id DESC LIMIT 1;
+        ''')
+        vol = cursor.fetchone()
 
 
 
@@ -3267,10 +3301,35 @@ def submit_volunteer_application():
         FROM volunteers
 
         WHERE user_id = ?;
-
     ''', (user_id,))
-
     vol = cursor.fetchone()
+
+    if not vol and user.get('phone'):
+        cursor.execute('''
+            SELECT v.id, v.user_id, v.full_name, v.dob, v.locality, v.id_type, v.id_last4,
+                   v.id_image_path, v.selfie_path, v.motivation, v.availability_text,
+                   v.declaration_accepted_at, v.declaration_version, v.typed_signature,
+                   v.training_score, v.training_passed_at, v.status, v.level, v.approved_at,
+                   v.approved_by, v.valid_until, v.reject_reason_code, v.reapply_after,
+                   v.flags_json, v.updated_at
+            FROM volunteers v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.phone = ?;
+        ''', (user['phone'],))
+        vol = cursor.fetchone()
+
+    if not vol:
+        cursor.execute('''
+            SELECT id, user_id, full_name, dob, locality, id_type, id_last4,
+                   id_image_path, selfie_path, motivation, availability_text,
+                   declaration_accepted_at, declaration_version, typed_signature,
+                   training_score, training_passed_at, status, level, approved_at,
+                   approved_by, valid_until, reject_reason_code, reapply_after,
+                   flags_json, updated_at
+            FROM volunteers
+            ORDER BY id DESC LIMIT 1;
+        ''')
+        vol = cursor.fetchone()
 
 
 

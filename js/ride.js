@@ -1461,6 +1461,9 @@ SafeHer.ride = (function() {
 
     saveToHistory(completedRecord);
 
+    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
+    var safeMessage = buildSafeArrivalMessage(activeRide, user);
+
     var allRideContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
     if ((!allRideContacts || allRideContacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
       allRideContacts = SafeHer.storage.get('contacts') || [];
@@ -1482,10 +1485,6 @@ SafeHer.ride = (function() {
     if (SafeHer.deliveryTracker) {
       SafeHer.deliveryTracker.stopAll();
     }
-
-    var user = (SafeHer.api && SafeHer.api.getUser) ? SafeHer.api.getUser() : {};
-
-    var safeMessage = buildSafeArrivalMessage(activeRide, user);
 
 
 

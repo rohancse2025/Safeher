@@ -40,11 +40,23 @@ SafeHer.volunteerApply = (function() {
   }
 
   function getAuthHeader() {
-    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : localStorage.getItem('token');
+    var token = (SafeHer.api && SafeHer.api.getToken) ? SafeHer.api.getToken() : null;
+    if (!token && SafeHer.storage && SafeHer.storage.get) {
+      token = SafeHer.storage.get('auth_token');
+    }
+    if (!token) {
+      try { token = localStorage.getItem('safeher_raw_jwt') || localStorage.getItem('safeher_token') || localStorage.getItem('token'); } catch(e) {}
+    }
     return token ? { 'Authorization': 'Bearer ' + token } : {};
   }
 
   function getBaseUrl() {
+    if (window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
+      return window.SafeHerConfig.API_BASE.replace(/\/+$/, '');
+    }
+    if (SafeHer.api && typeof SafeHer.api.getBaseUrl === 'function') {
+      return SafeHer.api.getBaseUrl().replace(/\/+$/, '');
+    }
     return (SafeHer.config && SafeHer.config.API_BASE_URL) ? SafeHer.config.API_BASE_URL : '';
   }
 
@@ -993,18 +1005,47 @@ SafeHer.volunteerApply = (function() {
     SafeHer.toast('Demo application submitted! Open admin.html to approve.');
   }
 
+  function syncVolunteerProfileLocal(st, lvl) {
+    try {
+      var prof = (SafeHer.api && SafeHer.api.getVolunteerProfile) ? SafeHer.api.getVolunteerProfile() : {};
+      prof.status = st || 'approved';
+      prof.level = lvl || prof.level || 'trusted';
+      prof.badge = (prof.level === 'trusted' ? 'Trusted' : 'Provisional');
+      if (SafeHer.storage && SafeHer.storage.set) {
+        SafeHer.storage.set('volunteer_profile', prof);
+      }
+      try { localStorage.setItem('safeher_volunteer_profile', JSON.stringify(prof)); } catch(e) {}
+    } catch(e) {}
+  }
+
   function checkApprovalStatus() {
     loadApplication(function(err, app) {
-      if (!err && app) {
-        if (app.status === 'approved') {
-          SafeHer.toast('Congratulations! Your volunteer profile is Approved.');
-          if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
-          initOrRender();
-        } else {
-          SafeHer.toast('Status is currently: ' + app.status + '. Awaiting approval in Admin Portal.');
-          renderStep(currentStep);
-        }
+      if (!err && app && app.status === 'approved') {
+        applicationData.status = 'approved';
+        syncVolunteerProfileLocal('approved', app.level);
+        SafeHer.toast('🎉 Volunteer Approved! "Available to help" is now unlocked.');
+        if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
+        initOrRender();
+        return;
       }
+      if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
+        SafeHer.api.getVolunteerServerProfile(function(sErr, serverProf) {
+          if (!sErr && serverProf && serverProf.status === 'approved') {
+            applicationData.status = 'approved';
+            syncVolunteerProfileLocal('approved', serverProf.level);
+            SafeHer.toast('🎉 Volunteer Approved! "Available to help" is now unlocked.');
+            if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
+            initOrRender();
+            return;
+          }
+          var curSt = (serverProf && serverProf.status) || (app && app.status) || 'submitted';
+          SafeHer.toast('Status is currently: ' + curSt + '. Awaiting approval in Admin Portal.');
+          renderStep(currentStep);
+        });
+        return;
+      }
+      SafeHer.toast('Status is currently: ' + ((app && app.status) || 'submitted') + '. Awaiting approval in Admin Portal.');
+      renderStep(currentStep);
     });
   }
 
@@ -1022,9 +1063,28 @@ SafeHer.volunteerApply = (function() {
       var alertCard = document.getElementById('volunteer-alert-card');
 
       if (app && app.status === 'approved') {
+        syncVolunteerProfileLocal('approved', app.level);
         if (statusCard) statusCard.style.display = 'block';
         if (container) container.innerHTML = '';
+        if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
       } else {
+        // Also check server profile in case approved via admin dashboard
+        if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
+          SafeHer.api.getVolunteerServerProfile(function(sErr, serverProf) {
+            if (!sErr && serverProf && serverProf.status === 'approved') {
+              applicationData.status = 'approved';
+              syncVolunteerProfileLocal('approved', serverProf.level);
+              if (statusCard) statusCard.style.display = 'block';
+              if (container) container.innerHTML = '';
+              if (SafeHer.volunteer && SafeHer.volunteer.render) SafeHer.volunteer.render();
+              return;
+            }
+            if (statusCard) statusCard.style.display = 'none';
+            if (alertCard) alertCard.style.display = 'none';
+            renderStep(currentStep);
+          });
+          return;
+        }
         // Hide active responder toggles when not yet approved
         if (statusCard) statusCard.style.display = 'none';
         if (alertCard) alertCard.style.display = 'none';
