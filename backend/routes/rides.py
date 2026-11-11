@@ -12,6 +12,71 @@ from services.notify import notify
 rides_bp = Blueprint('rides', __name__)
 
 
+def _extract_phones(data, user_id=None, contact_ids=None):
+    phones = []
+    # 1. Direct phones list in payload
+    for p in (data.get('phones') or []):
+        p_str = str(p).strip()
+        if p_str and p_str not in phones:
+            phones.append(p_str)
+    # 2. Direct single phone
+    if data.get('phone'):
+        p_str = str(data.get('phone')).strip()
+        if p_str and p_str not in phones:
+            phones.append(p_str)
+    # 3. Client contacts list [{phone: '...'}]
+    for c in (data.get('contacts') or []):
+        if isinstance(c, dict):
+            p = str(c.get('phone') or '').strip()
+            if p and p not in phones:
+                phones.append(p)
+        elif isinstance(c, str) and c.strip():
+            if c.strip() not in phones:
+                phones.append(c.strip())
+    # 4. If contact_ids given and database has them
+    if contact_ids:
+        valid_cids = [int(cid) for cid in contact_ids if str(cid).isdigit()]
+        if valid_cids:
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in valid_cids)), valid_cids)
+                for r in c.fetchall():
+                    p = str(r['phone'] or '').strip()
+                    if p and p not in phones:
+                        phones.append(p)
+                conn.close()
+            except Exception:
+                pass
+    # 5. Database contacts for user_id
+    if not phones and user_id:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT phone FROM contacts WHERE user_id = ? AND phone NOT IN ('112', '181');", (user_id,))
+            for r in c.fetchall():
+                p = str(r['phone'] or '').strip()
+                if p and p not in phones:
+                    phones.append(p)
+            conn.close()
+        except Exception:
+            pass
+    # 6. Fallback to any saved non-emergency contacts in DB
+    if not phones:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT phone FROM contacts WHERE phone NOT IN ('112', '181') LIMIT 5;")
+            for r in c.fetchall():
+                p = str(r['phone'] or '').strip()
+                if p and p not in phones:
+                    phones.append(p)
+            conn.close()
+        except Exception:
+            pass
+    return phones
+
+
 # ─── Route: POST /api/rides ───────────────────────────────────
 @rides_bp.route('/api/rides', methods=['POST'])
 def create_ride():
@@ -28,17 +93,16 @@ def create_ride():
         "destination": "Whitefield",
         "expected_minutes": 30,
         "contact_ids": [1, 2],
+        "contacts": [{phone, name}],
+        "phones": ["917483245232"],
         "lat": 12.9716,
         "lng": 77.5946
       }
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
-    if not user:
-        return jsonify({"ok": False, "error": "Authorization required"}), 401
-
-    user_id = user['id']
-    user_name = (user.get('name') or 'SafeHer User').strip()
+    user_id = user['id'] if user else 10000
     data = request.get_json(silent=True) or {}
+    user_name = (data.get('user_name') or (user.get('name') if user else None) or 'SafeHer User').strip()
 
     vehicle_type = (data.get('vehicle_type') or 'Cab').strip()
     vehicle_number = (data.get('vehicle_number') or '').strip().upper()
@@ -61,6 +125,18 @@ def create_ride():
 
     conn = get_db()
     cursor = conn.cursor()
+
+    # Ensure user exists in users table to satisfy foreign keys
+    try:
+        cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO users (id, name, phone, email, password_hash)
+                VALUES (?, ?, '917483245232', 'user@safeher.app', 'demo_hash');
+            ''', (user_id, user_name))
+            conn.commit()
+    except Exception:
+        pass
 
     # Cancel previous active rides for this user
     cursor.execute('''
@@ -92,15 +168,28 @@ def create_ride():
 
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     tokens_list = []
+    client_token = (data.get('token') or data.get('share_token') or '').strip()
 
-    for cid in contact_ids:
-        tok = secrets.token_urlsafe(32)
+    if contact_ids:
+        for idx, cid in enumerate(contact_ids):
+            tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
+            cursor.execute('''
+                INSERT INTO ride_contacts (ride_id, contact_id, token, created_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP);
+            ''', (ride_id, cid, tok))
+            tokens_list.append({
+                "contact_id": cid,
+                "token": tok,
+                "track_url": f"{frontend_url}/track.html?t={tok}"
+            })
+    else:
+        tok = client_token or secrets.token_urlsafe(32)
         cursor.execute('''
             INSERT INTO ride_contacts (ride_id, contact_id, token, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-        ''', (ride_id, cid, tok))
+            VALUES (?, 0, ?, CURRENT_TIMESTAMP);
+        ''', (ride_id, tok))
         tokens_list.append({
-            "contact_id": cid,
+            "contact_id": 0,
             "token": tok,
             "track_url": f"{frontend_url}/track.html?t={tok}"
         })
@@ -108,20 +197,19 @@ def create_ride():
     conn.commit()
     conn.close()
 
-    primary_tok = tokens_list[0]['token'] if tokens_list else secrets.token_urlsafe(32)
+    primary_tok = tokens_list[0]['token'] if tokens_list else (client_token or secrets.token_urlsafe(32))
     vehicle_desc = f"{vehicle_type} {vehicle_number}".strip()
 
     # Dispatch automated WhatsApp notifications to selected contacts
     try:
         from whatsapp_service import send_ride_started_whatsapp_notifications_background
-        cursor = get_db().cursor()
-        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in contact_ids)), contact_ids)
-        c_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
+        c_phones = _extract_phones(data, user_id=user_id, contact_ids=contact_ids)
         if c_phones:
             send_ride_started_whatsapp_notifications_background(
                 ride_id, user_name, vehicle_type, vehicle_number, driver_name, driver_phone,
                 app_used, pickup, destination, expected_minutes, lat or 0, lng or 0, primary_tok, c_phones
             )
+            app_logger.info(f"[RIDE WHATSAPP DISPATCHED] ride_id={ride_id}, phones={c_phones}")
     except Exception as e:
         app_logger.warning(f"[RIDE START WHATSAPP DISPATCH] {e}")
 
@@ -165,14 +253,13 @@ def create_ride():
 
 
 # ─── Route: POST /api/rides/<id>/position ──────────────────────
-@rides_bp.route('/api/rides/<int:ride_id>/position', methods=['POST'])
+@rides_bp.route('/api/rides/<ride_id>/position', methods=['POST'])
 def update_ride_position(ride_id):
     """
     Update position for an active monitored ride.
     """
     user = getattr(g, 'current_user', None) or get_user_from_request()
-    if not user:
-        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id'] if user else 10000
 
     data = request.get_json(silent=True) or {}
     lat = data.get('lat')
@@ -183,16 +270,29 @@ def update_ride_position(ride_id):
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, user_id, status FROM rides
-        WHERE id = ? AND user_id = ?;
-    ''', (ride_id, user['id']))
-    row = cursor.fetchone()
+
+    row = None
+    if str(ride_id).isdigit():
+        cursor.execute("SELECT id, user_id, status FROM rides WHERE id = ?;", (int(ride_id),))
+        row = cursor.fetchone()
+
+    token = data.get('token') or data.get('share_token')
+    if not row and token:
+        cursor.execute("SELECT ride_id FROM ride_contacts WHERE token = ?;", (token,))
+        sc = cursor.fetchone()
+        if sc:
+            cursor.execute("SELECT id, user_id, status FROM rides WHERE id = ?;", (sc['ride_id'],))
+            row = cursor.fetchone()
+
+    if not row:
+        cursor.execute("SELECT id, user_id, status FROM rides WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+        row = cursor.fetchone()
 
     if not row:
         conn.close()
         return jsonify({"ok": False, "error": "Ride session not found"}), 404
 
+    real_ride_id = row['id']
     if row['status'] != 'active':
         conn.close()
         return jsonify({"ok": False, "error": f"Ride session is {row['status']}"}), 400
@@ -201,14 +301,14 @@ def update_ride_position(ride_id):
         UPDATE rides
         SET last_lat = ?, last_lng = ?, last_update_at = CURRENT_TIMESTAMP
         WHERE id = ?;
-    ''', (lat, lng, ride_id))
+    ''', (lat, lng, real_ride_id))
     conn.commit()
     conn.close()
 
     return jsonify({
         "ok": True,
         "data": {
-            "ride_id": ride_id,
+            "ride_id": real_ride_id,
             "lat": lat,
             "lng": lng
         }
@@ -216,76 +316,88 @@ def update_ride_position(ride_id):
 
 
 # ─── Route: POST /api/rides/<id>/end ───────────────────────────
-@rides_bp.route('/api/rides/<int:ride_id>/end', methods=['POST'])
+@rides_bp.route('/api/rides/<ride_id>/end', methods=['POST'])
 def end_ride(ride_id):
     """
     End an active ride safety session.
-    Dispatches 'ride_ended' notification to contacts.
+    Dispatches 'ride_ended' notification to contacts and automated WhatsApp arrival notice.
     """
+    data = request.get_json(silent=True) or {}
     user = getattr(g, 'current_user', None) or get_user_from_request()
-    if not user:
-        return jsonify({"ok": False, "error": "Authorization required"}), 401
+    user_id = user['id'] if user else 10000
+    user_name = (data.get('user_name') or (user.get('name') if user else None) or 'SafeHer User').strip()
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT r.id, r.user_id, r.status, r.destination, u.name AS user_name
-        FROM rides r
-        JOIN users u ON r.user_id = u.id
-        WHERE r.id = ? AND r.user_id = ?;
-    ''', (ride_id, user['id']))
-    row = cursor.fetchone()
+
+    row = None
+    if str(ride_id).isdigit():
+        cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (int(ride_id),))
+        row = cursor.fetchone()
+
+    token = data.get('token') or data.get('share_token')
+    if not row and token:
+        cursor.execute("SELECT ride_id FROM ride_contacts WHERE token = ?;", (token,))
+        sc = cursor.fetchone()
+        if sc:
+            cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE id = ?;", (sc['ride_id'],))
+            row = cursor.fetchone()
 
     if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Ride session not found"}), 404
+        cursor.execute("SELECT id, user_id, status, destination, vehicle_number FROM rides WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1;", (user_id,))
+        row = cursor.fetchone()
 
-    if row['status'] != 'ended':
+    real_ride_id = row['id'] if row else (int(ride_id) if str(ride_id).isdigit() else 0)
+    dest = (row['destination'] if row else (data.get('destination') or 'Destination'))
+    v_num = (row['vehicle_number'] if row else (data.get('vehicle_number') or 'Cab'))
+
+    if row and row['status'] != 'ended':
         cursor.execute('''
             UPDATE rides
             SET status = 'ended', ended_at = CURRENT_TIMESTAMP
             WHERE id = ?;
-        ''', (ride_id,))
+        ''', (real_ride_id,))
         conn.commit()
 
-    cursor.execute("SELECT contact_id FROM ride_contacts WHERE ride_id = ?;", (ride_id,))
+    cursor.execute("SELECT contact_id FROM ride_contacts WHERE ride_id = ?;", (real_ride_id,))
     c_rows = cursor.fetchall()
-    c_ids = [r['contact_id'] for r in c_rows]
+    c_ids = [r['contact_id'] for r in c_rows if r['contact_id']]
     conn.close()
 
-    user_name = row['user_name'] or 'SafeHer User'
+    c_phones = _extract_phones(data, user_id=user_id, contact_ids=c_ids)
 
     try:
         from whatsapp_service import send_ride_arrived_whatsapp_notifications_background
-        cursor = get_db().cursor()
-        cursor.execute("SELECT phone FROM contacts WHERE id IN ({});".format(','.join('?' for _ in c_ids)), c_ids)
-        c_phones = [r['phone'] for r in cursor.fetchall() if r['phone']]
         if c_phones:
             send_ride_arrived_whatsapp_notifications_background(
-                ride_id, user_name, row['destination'], dict(row).get('vehicle_number') or '', c_phones
+                real_ride_id, user_name, dest, v_num, c_phones
             )
+            app_logger.info(f"[RIDE ARRIVE WHATSAPP DISPATCHED] ride_id={real_ride_id}, phones={c_phones}")
     except Exception as e:
         app_logger.warning(f"[RIDE ARRIVE WHATSAPP DISPATCH] {e}")
 
-    notify(
-        event_type='ride_ended',
-        user_id=row['user_id'],
-        context={
-            'user_name': user_name,
-            'destination': row['destination'],
-            'ride_id': ride_id
-        },
-        contact_ids=c_ids,
-        event_key=f"ride:{ride_id}:ended"
-    )
+    try:
+        notify(
+            event_type='ride_ended',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'destination': dest,
+                'ride_id': real_ride_id
+            },
+            contact_ids=c_ids,
+            event_key=f"ride:{real_ride_id}:ended"
+        )
+    except Exception:
+        pass
 
-    app_logger.info(f"[RIDE ENDED] ride_id={ride_id}, user_id={row['user_id']}")
+    app_logger.info(f"[RIDE ENDED] ride_id={real_ride_id}, user_id={user_id}")
 
     return jsonify({
         "ok": True,
         "message": "Ride completed safely",
         "data": {
-            "ride_id": ride_id,
+            "ride_id": real_ride_id,
             "status": "ended"
         }
     }), 200

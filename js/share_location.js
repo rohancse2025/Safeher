@@ -655,13 +655,29 @@ SafeHer.shareLocation = (function() {
     }
 
     // 4. Background backend registration
+    var allContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    if ((!allContacts || allContacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
+      allContacts = SafeHer.storage.get('contacts') || [];
+    }
+    var activeContacts = allContacts;
+    if (selectedContactIds && selectedContactIds.length > 0) {
+      activeContacts = allContacts.filter(function(c) {
+        return selectedContactIds.indexOf(c.id) !== -1 || selectedContactIds.indexOf(String(c.id)) !== -1;
+      });
+      if (!activeContacts || activeContacts.length === 0) activeContacts = allContacts;
+    }
+    var contactPhones = activeContacts.map(function(c) { return c.phone; }).filter(Boolean);
+
     var sharePayload = {
       contact_ids: selectedContactIds,
+      contacts: activeContacts,
+      phones: contactPhones,
       duration_minutes: durationMins,
       until_stopped: untilStopped,
       lat: initLat,
       lng: initLng,
-      token: shareToken
+      token: shareToken,
+      user_name: userName
     };
 
     if (SafeHer.api && SafeHer.api.shareLocation) {
@@ -699,8 +715,22 @@ SafeHer.shareLocation = (function() {
   // ─── Stop Sharing Action ──────────────────────────────────
   function stopSharing(isTimeout) {
     var activeSession = getActiveSession();
-    if (activeSession && activeSession.shareId && SafeHer.api && SafeHer.api.stopShareLocation) {
-      SafeHer.api.stopShareLocation({ share_id: activeSession.shareId });
+    var allContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    if ((!allContacts || allContacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
+      allContacts = SafeHer.storage.get('contacts') || [];
+    }
+    var stopPhones = allContacts.map(function(c) { return c.phone; }).filter(Boolean);
+    var u = (SafeHer.api && SafeHer.api.getUser ? SafeHer.api.getUser() : null);
+    var uName = (u && (u.name || u.full_name)) ? (u.name || u.full_name) : 'SafeHer User';
+
+    if (SafeHer.api && SafeHer.api.stopShareLocation) {
+      SafeHer.api.stopShareLocation({
+        share_id: activeSession ? activeSession.shareId : null,
+        token: activeSession ? activeSession.shareToken : null,
+        contacts: allContacts,
+        phones: stopPhones,
+        user_name: uName
+      });
     }
     if (SafeHer.deliveryTracker) {
       SafeHer.deliveryTracker.stopAll();

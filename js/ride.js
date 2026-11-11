@@ -1123,7 +1123,10 @@ SafeHer.ride = (function() {
       expected_minutes: travelMinutes,
       lat: rideLat,
       lng: rideLng,
-      contact_ids: selectedContacts.map(function(c) { return c.id; })
+      contact_ids: selectedContacts.map(function(c) { return c.id; }),
+      contacts: selectedContacts,
+      phones: selectedContacts.map(function(c) { return c.phone; }).filter(Boolean),
+      user_name: (SafeHer.api && SafeHer.api.getUser ? (SafeHer.api.getUser().name || 'SafeHer User') : 'SafeHer User')
     };
 
     activeRide.isOffline = !navigator.onLine;
@@ -1449,12 +1452,21 @@ SafeHer.ride = (function() {
 
     saveToHistory(completedRecord);
 
+    var allRideContacts = (SafeHer.api && SafeHer.api.getContacts ? SafeHer.api.getContacts() : []) || [];
+    if ((!allRideContacts || allRideContacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
+      allRideContacts = SafeHer.storage.get('contacts') || [];
+    }
+    var rideStopPhones = allRideContacts.map(function(c) { return c.phone; }).filter(Boolean);
+
     if (SafeHer.api && SafeHer.api.endRideSafety) {
       SafeHer.api.endRideSafety({
         ride_id: activeRide.backendRideId || activeRide.id,
         destination: completedRecord.destination,
         vehicle_number: completedRecord.vehicleNumber,
-        share_token: activeRide.shareToken || completedRecord.id
+        share_token: activeRide.shareToken || completedRecord.id,
+        contacts: allRideContacts,
+        phones: rideStopPhones,
+        user_name: (user.name || 'SafeHer User')
       });
       if (SafeHer.toast) SafeHer.toast('Safe arrival notification sent to contacts via WhatsApp!');
     }
