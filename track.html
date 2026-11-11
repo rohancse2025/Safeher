@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=84" />
+  <link rel="stylesheet" href="./css/style.css?v=85" />
   <style>
     body {
       background: #FCEFF3;
@@ -813,7 +813,9 @@
           </button>
         </div>
 
-        <!-- Audio Player element for streaming audio chunks -->
+        <!-- Dual Audio Players for gapless flip-flop streaming -->
+        <audio id="sentinel-player-1" preload="auto" playsinline style="display:none;"></audio>
+        <audio id="sentinel-player-2" preload="auto" playsinline style="display:none;"></audio>
         <audio id="sentinel-audio-player" preload="none" playsinline style="display:none;"></audio>
 
         <!-- Auxiliary Actions: Save Evidence Clip & Audio Time -->
@@ -847,7 +849,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=84"></script>
+  <script src="./js/config.js?v=85"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -1430,57 +1432,77 @@
         });
       };
 
-      // ─── Live Sentinel™: Real-Time Ambient Listen-In ───────────
+      // ─── Live Sentinel™: Real-Time Dual-Player Gapless Ambient Listen-In ───
       var sentinelPollTimer = null;
-      var sentinelAudioEl = null;
+      var player1 = null;
+      var player2 = null;
+      var activePlayerIdx = 1;
       var isSentinelListening = false;
       var lastPlayedSeq = 0;
       var queuedChunks = [];
       var isAudioPlaying = false;
+      var hasJumpedToLiveHead = false;
+      var watchdogTimer = null;
 
-      var chunkPlayTimeout = null;
-
-      function getSentinelAudioEl() {
-        if (!sentinelAudioEl) {
-          sentinelAudioEl = document.getElementById('sentinel-audio-player');
-          if (sentinelAudioEl) {
-            sentinelAudioEl.onended = function() {
-              if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
-              isAudioPlaying = false;
-              playNextQueuedChunk();
-            };
-            sentinelAudioEl.onerror = function() {
-              if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
-              isAudioPlaying = false;
-              playNextQueuedChunk();
-            };
-          }
-        }
-        return sentinelAudioEl;
+      function getSentinelPlayers() {
+        if (!player1) player1 = document.getElementById('sentinel-player-1') || new Audio();
+        if (!player2) player2 = document.getElementById('sentinel-player-2') || new Audio();
+        return { p1: player1, p2: player2 };
       }
 
       function playNextQueuedChunk() {
         if (!isSentinelListening || isAudioPlaying || queuedChunks.length === 0) return;
+        var players = getSentinelPlayers();
+        var current = (activePlayerIdx === 1) ? players.p1 : players.p2;
+        var standby = (activePlayerIdx === 1) ? players.p2 : players.p1;
         var nextUrl = queuedChunks.shift();
-        var audio = getSentinelAudioEl();
-        if (!audio || !nextUrl) return;
-        isAudioPlaying = true;
-        audio.src = nextUrl;
+        if (!current || !nextUrl) return;
 
-        if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
-        // Safety watchdog: advance within 2.5s if chunk ends or stalls
-        chunkPlayTimeout = setTimeout(function() {
-          if (isAudioPlaying && (!audio.duration || audio.currentTime >= audio.duration - 0.2 || audio.paused)) {
+        isAudioPlaying = true;
+        current.src = nextUrl;
+
+        // Preload the standby player with the FOLLOWING chunk for zero-latency transition
+        if (queuedChunks.length > 0 && standby) {
+          try {
+            standby.src = queuedChunks[0];
+            standby.preload = 'auto';
+            standby.load();
+          } catch(e) {}
+        }
+
+        // On chunk end: flip active player and immediately play next chunk without silence gap
+        current.onended = function() {
+          if (watchdogTimer) clearTimeout(watchdogTimer);
+          isAudioPlaying = false;
+          activePlayerIdx = (activePlayerIdx === 1) ? 2 : 1;
+          playNextQueuedChunk();
+        };
+
+        current.onerror = function() {
+          if (watchdogTimer) clearTimeout(watchdogTimer);
+          isAudioPlaying = false;
+          activePlayerIdx = (activePlayerIdx === 1) ? 2 : 1;
+          playNextQueuedChunk();
+        };
+
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+        // Safety watchdog: advance if mobile decoder stalls or stalls at EOF
+        watchdogTimer = setTimeout(function() {
+          if (isAudioPlaying && (!current.duration || current.currentTime >= current.duration - 0.2 || current.paused)) {
             isAudioPlaying = false;
+            activePlayerIdx = (activePlayerIdx === 1) ? 2 : 1;
             playNextQueuedChunk();
           }
-        }, 2500);
+        }, 2200);
 
-        audio.play().catch(function(err) {
-          console.warn('[Sentinel] Autoplay deferred:', err);
-          if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
-          isAudioPlaying = false;
-        });
+        var pPromise = current.play();
+        if (pPromise && pPromise.catch) {
+          pPromise.catch(function(err) {
+            console.warn('[Sentinel] Mobile autoplay pause:', err);
+            if (watchdogTimer) clearTimeout(watchdogTimer);
+            isAudioPlaying = false;
+          });
+        }
       }
 
       window.toggleSentinelAudio = function() {
@@ -1505,17 +1527,20 @@
           }
           if (wave) wave.classList.add('is-live');
 
-          // Prime/unlock audio element immediately on user tap to satisfy mobile browser autoplay policy
-          var audio = getSentinelAudioEl();
-          if (audio) {
-            try {
-              audio.play().then(function() {
-                if (!audio.src) audio.pause();
-              }).catch(function() {});
-            } catch(e) {}
-          }
+          // Prime and unlock BOTH players on user gesture to satisfy mobile browser autoplay policy
+          var players = getSentinelPlayers();
+          [players.p1, players.p2].forEach(function(p) {
+            if (p) {
+              try {
+                p.play().then(function() {
+                  if (!p.src) p.pause();
+                }).catch(function() {});
+              } catch(e) {}
+            }
+          });
 
-          // Reset lastPlayedSeq so the latest available chunk plays immediately
+          // Reset to LIVE HEAD: don't play ancient historical backlog
+          hasJumpedToLiveHead = false;
           lastPlayedSeq = 0;
           isAudioPlaying = false;
           queuedChunks = [];
@@ -1542,10 +1567,13 @@
             clearInterval(sentinelPollTimer);
             sentinelPollTimer = null;
           }
-          var audio = getSentinelAudioEl();
-          if (audio) {
-            try { audio.pause(); } catch(e) {}
+          if (watchdogTimer) {
+            clearTimeout(watchdogTimer);
+            watchdogTimer = null;
           }
+          var pl = getSentinelPlayers();
+          try { if (pl.p1) pl.p1.pause(); } catch(e) {}
+          try { if (pl.p2) pl.p2.pause(); } catch(e) {}
           isAudioPlaying = false;
           queuedChunks = [];
         }
@@ -1601,32 +1629,46 @@
               }
             }
 
-            // Queue new audio chunks if sequence changed or if contact just tapped Listen
-            if (res.chunk_url && res.latest_seq) {
-              if (isSentinelListening) {
-                if (res.recent_chunks && res.recent_chunks.length > 0) {
-                  // Sort chronologically by sequence number
-                  var sorted = res.recent_chunks.slice().sort(function(a, b) { return a.sequence - b.sequence; });
-                  sorted.forEach(function(item) {
-                    if (item.sequence > lastPlayedSeq) {
-                      var cUrl = getApiBase() + item.url;
-                      if (queuedChunks.indexOf(cUrl) === -1) {
-                        queuedChunks.push(cUrl);
-                      }
-                      lastPlayedSeq = item.sequence;
-                    }
-                  });
-                } else if (res.latest_seq > lastPlayedSeq || (lastPlayedSeq === 0 && !isAudioPlaying && queuedChunks.length === 0)) {
-                  lastPlayedSeq = res.latest_seq;
-                  var fullChunkUrl = getApiBase() + res.chunk_url;
-                  if (queuedChunks.indexOf(fullChunkUrl) === -1) {
-                    queuedChunks.push(fullChunkUrl);
-                  }
-                }
+            // Real-time chunk dispatch with Live Jump and Gapless Preloader
+            if (isSentinelListening && res.chunk_url && res.latest_seq) {
+              // 1. Initial Listen Tap: Jump immediately to live head (no 20-second backlog delay!)
+              if (!hasJumpedToLiveHead) {
+                hasJumpedToLiveHead = true;
+                lastPlayedSeq = Math.max(0, res.latest_seq - 1);
+                var liveUrl = getApiBase() + res.chunk_url;
+                queuedChunks = [liveUrl];
+                lastPlayedSeq = res.latest_seq;
+                playNextQueuedChunk();
+                return;
+              }
 
-                if (!isAudioPlaying && queuedChunks.length > 0) {
-                  playNextQueuedChunk();
+              // 2. Continuous Live Streaming: Enqueue only new incoming chunks
+              if (res.recent_chunks && res.recent_chunks.length > 0) {
+                var sorted = res.recent_chunks.slice().sort(function(a, b) { return a.sequence - b.sequence; });
+                sorted.forEach(function(item) {
+                  if (item.sequence > lastPlayedSeq) {
+                    var cUrl = getApiBase() + item.url;
+                    if (queuedChunks.indexOf(cUrl) === -1) {
+                      queuedChunks.push(cUrl);
+                    }
+                    lastPlayedSeq = item.sequence;
+                  }
+                });
+              } else if (res.latest_seq > lastPlayedSeq) {
+                lastPlayedSeq = res.latest_seq;
+                var fullChunkUrl = getApiBase() + res.chunk_url;
+                if (queuedChunks.indexOf(fullChunkUrl) === -1) {
+                  queuedChunks.push(fullChunkUrl);
                 }
+              }
+
+              // 3. Drift protection: if contact's connection drops behind, discard stale chunks
+              if (queuedChunks.length > 3) {
+                queuedChunks = queuedChunks.slice(-2);
+              }
+
+              if (!isAudioPlaying && queuedChunks.length > 0) {
+                playNextQueuedChunk();
               }
             }
           })
@@ -1639,23 +1681,39 @@
         var token = getToken();
         if (!token) return;
         var btn = document.getElementById('btn-sentinel-save-clip');
-        if (btn) btn.disabled = true;
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:15px; animation:spin 1s linear infinite;">sync</span><span>Preparing Evidence...</span>';
+        }
         var checkUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio';
         fetch(checkUrl)
           .then(function(res) { return res.json(); })
           .then(function(meta) {
-            if (btn) btn.disabled = false;
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:15px;">download</span><span>Save Clip</span>';
+            }
             if (!meta || !meta.ok || !meta.has_audio) {
               alert('No audio recording is available yet. Ambient audio streaming is still buffering from device.');
               return;
             }
             var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
-            window.open(downloadUrl, '_blank');
+            var link = document.createElement('a');
+            link.href = downloadUrl;
+            link.setAttribute('download', 'SafeHer_Sentinel_Full_Evidence.webm');
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(function() {
+              if (link.parentNode) link.parentNode.removeChild(link);
+            }, 1500);
           })
           .catch(function() {
-            if (btn) btn.disabled = false;
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:15px;">download</span><span>Save Clip</span>';
+            }
             var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
-            window.open(downloadUrl, '_blank');
+            window.location.href = downloadUrl;
           });
       };
 

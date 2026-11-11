@@ -3096,6 +3096,11 @@ def upload_sentinel_audio(alert_id):
         f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
         with open(f_path, 'wb') as f_out:
             f_out.write(saved_bytes)
+        try:
+            with open(os.path.join(s_dir, f"session_stream{ext}"), 'ab') as f_stream:
+                f_stream.write(saved_bytes)
+        except Exception:
+            pass
 
     elif request.is_json:
         data = request.get_json(silent=True) or {}
@@ -3121,6 +3126,11 @@ def upload_sentinel_audio(alert_id):
             f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
             with open(f_path, 'wb') as f_out:
                 f_out.write(saved_bytes)
+            try:
+                with open(os.path.join(s_dir, f"session_stream{ext}"), 'ab') as f_stream:
+                    f_stream.write(saved_bytes)
+            except Exception:
+                pass
     else:
         raw_body = request.get_data()
         if raw_body and len(raw_body) > 64:
@@ -3130,6 +3140,11 @@ def upload_sentinel_audio(alert_id):
             f_path = os.path.join(s_dir, f"chunk_{sequence}{ext}")
             with open(f_path, 'wb') as f_out:
                 f_out.write(saved_bytes)
+            try:
+                with open(os.path.join(s_dir, f"session_stream{ext}"), 'ab') as f_stream:
+                    f_stream.write(saved_bytes)
+            except Exception:
+                pass
 
     # Save latest status metadata
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -3158,21 +3173,10 @@ def upload_sentinel_audio(alert_id):
             if saved_bytes:
                 with open(os.path.join(token_dir, f"chunk_{sequence}{ext}"), 'wb') as f_tchunk:
                     f_tchunk.write(saved_bytes)
+                with open(os.path.join(token_dir, f"session_stream{ext}"), 'ab') as f_tstream:
+                    f_tstream.write(saved_bytes)
         except Exception:
             pass
-
-    # Rolling window: keep latest 15 chunks, remove older ones to save disk
-    try:
-        all_chunks = sorted(
-            [fn for fn in os.listdir(s_dir) if fn.startswith('chunk_') and not fn.endswith('.json')],
-            key=lambda x: os.path.getmtime(os.path.join(s_dir, x))
-        )
-        if len(all_chunks) > 15:
-            for old_fn in all_chunks[:-15]:
-                try: os.remove(os.path.join(s_dir, old_fn))
-                except Exception: pass
-    except Exception:
-        pass
 
     return jsonify({
         "ok": True,
@@ -3181,6 +3185,43 @@ def upload_sentinel_audio(alert_id):
         "share_token": share_token,
         "message": "Sentinel ambient audio chunk saved"
     }), 200
+
+
+@alerts_bp.route('/api/alerts/<alert_id>/live-audio/full-session', methods=['POST'])
+def upload_sentinel_full_session(alert_id):
+    """
+    Accepts consolidated full-session master audio recording from victim's phone.
+    Guarantees the emergency contact can download the complete session evidence.
+    """
+    try:
+        aid = int(alert_id)
+    except (ValueError, TypeError):
+        aid = str(alert_id).strip()
+
+    s_dir = get_sentinel_dir(aid)
+    share_token = (request.form.get('share_token') or request.args.get('share_token') or '').strip()
+
+    f = request.files.get('audio') or request.files.get('file')
+    if f:
+        ext = '.webm'
+        if 'mp4' in (f.mimetype or ''): ext = '.mp4'
+        elif 'ogg' in (f.mimetype or ''): ext = '.ogg'
+        saved_bytes = f.read()
+        target = os.path.join(s_dir, f"full_session{ext}")
+        with open(target, 'wb') as f_out:
+            f_out.write(saved_bytes)
+
+        if share_token and str(share_token) != str(aid):
+            t_dir = get_sentinel_dir(share_token)
+            try:
+                with open(os.path.join(t_dir, f"full_session{ext}"), 'wb') as f_out:
+                    f_out.write(saved_bytes)
+            except Exception:
+                pass
+
+        return jsonify({"ok": True, "message": "Full session audio uploaded", "bytes": len(saved_bytes)}), 200
+
+    return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
 
 @alerts_bp.route('/api/track/<token>/live-audio', methods=['GET'])
@@ -3302,6 +3343,7 @@ def get_sentinel_chunk_file(token, sequence):
 def download_sentinel_audio(token):
     """
     Allows emergency contacts to download the ambient audio clip as police evidence.
+    Always provides the COMPLETE continuous recording of the session, not a 1-second slice.
     """
     alert = resolve_alert_from_token(token)
     if not alert:
@@ -3310,30 +3352,75 @@ def download_sentinel_audio(token):
     alert_id = alert['id']
     candidate_dirs = get_sentinel_search_dirs(token, alert)
     target_file = None
+    target_mime = 'audio/webm'
+    target_ext = '.webm'
 
     for d in candidate_dirs:
         if not os.path.exists(d):
             continue
-        files = sorted(
-            [f for f in os.listdir(d) if f.startswith('chunk_') and not f.endswith('.json')],
-            key=lambda x: os.path.getmtime(os.path.join(d, x))
-        )
-        if files:
-            target_file = os.path.join(d, files[-1])
+
+        # 1. Prefer client-uploaded continuous full_session file
+        for ext in ['.webm', '.mp4', '.ogg', '.wav']:
+            fs_path = os.path.join(d, f"full_session{ext}")
+            if os.path.exists(fs_path) and os.path.getsize(fs_path) > 1024:
+                target_file = fs_path
+                target_ext = ext
+                target_mime = 'audio/mp4' if ext == '.mp4' else 'audio/webm'
+                break
+        if target_file:
             break
 
-    if not target_file or not os.path.exists(target_file):
-        return jsonify({"ok": False, "error": "No live audio recorded for this alert"}), 404
+        # 2. Check server-accumulated session_stream file
+        for ext in ['.webm', '.mp4', '.ogg', '.wav']:
+            ss_path = os.path.join(d, f"session_stream{ext}")
+            if os.path.exists(ss_path) and os.path.getsize(ss_path) > 1024:
+                target_file = ss_path
+                target_ext = ext
+                target_mime = 'audio/mp4' if ext == '.mp4' else 'audio/webm'
+                break
+        if target_file:
+            break
 
-    mime = 'audio/mp4' if target_file.endswith('.mp4') else 'audio/webm'
-    ext = '.mp4' if target_file.endswith('.mp4') else '.webm'
+        # 3. Concatenate all individual sequence chunks into a complete continuous evidence file
+        chunk_files = [f for f in os.listdir(d) if f.startswith('chunk_') and not f.endswith('.json')]
+        if chunk_files:
+            # Sort numerically by sequence
+            def get_seq(fn):
+                m = re.search(r'chunk_(\d+)', fn)
+                return int(m.group(1)) if m else 0
+            sorted_chunks = sorted(chunk_files, key=get_seq)
+            ext = os.path.splitext(sorted_chunks[0])[1] or '.webm'
+            combined_path = os.path.join(d, f"combined_evidence{ext}")
+            try:
+                with open(combined_path, 'wb') as f_out:
+                    for cf in sorted_chunks:
+                        with open(os.path.join(d, cf), 'rb') as f_in:
+                            f_out.write(f_in.read())
+                if os.path.exists(combined_path) and os.path.getsize(combined_path) > 0:
+                    target_file = combined_path
+                    target_ext = ext
+                    target_mime = 'audio/mp4' if ext == '.mp4' else 'audio/webm'
+                    break
+            except Exception:
+                pass
+
+        # 4. Fallback: single latest chunk if concatenation failed
+        if not target_file and chunk_files:
+            target_file = os.path.join(d, chunk_files[-1])
+            target_ext = os.path.splitext(target_file)[1] or '.webm'
+            target_mime = 'audio/mp4' if target_ext == '.mp4' else 'audio/webm'
+            break
+
+    if not target_file or not os.path.exists(target_file) or os.path.getsize(target_file) == 0:
+        return jsonify({"ok": False, "error": "No live audio recorded for this alert"}), 404
 
     resp = send_file(
         target_file,
-        mimetype=mime,
+        mimetype=target_mime,
         as_attachment=True,
-        download_name=f"SafeHer_Sentinel_Evidence_{alert_id}{ext}"
+        download_name=f"SafeHer_Sentinel_Full_Evidence_{alert_id}{target_ext}"
     )
     resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return resp
 

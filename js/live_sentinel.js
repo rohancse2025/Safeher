@@ -19,6 +19,9 @@
   var currentShareToken = null;
   var currentStream = null;
   var currentRecorder = null;
+  var continuousRecorder = null;
+  var fullSessionChunks = [];
+  var fullSessionSyncTimer = null;
   var audioContext = null;
   var analyserNode = null;
   var animFrameId = null;
@@ -133,6 +136,34 @@
     }
   }
 
+  function syncFullSessionBlob() {
+    if (!currentAlertId || fullSessionChunks.length === 0) return;
+    try {
+      var mime = getBestAudioMime() || 'audio/webm';
+      var ext = mime.indexOf('mp4') !== -1 ? '.mp4' : '.webm';
+      var masterBlob = new Blob(fullSessionChunks, { type: mime });
+      if (masterBlob.size < 50) return;
+
+      var apiBase = getApiBase();
+      var formData = new FormData();
+      formData.append('audio', masterBlob, 'full_session' + ext);
+      formData.append('duration_ms', fullSessionChunks.length * 3000);
+
+      var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0 || currentAlertId.indexOf('escort_') === 0) ? currentAlertId : null);
+      if (tok) {
+        formData.append('share_token', tok);
+      }
+
+      var fullUrl = apiBase + '/api/alerts/' + encodeURIComponent(currentAlertId) + '/live-audio/full-session';
+      fetch(fullUrl, {
+        method: 'POST',
+        body: formData
+      }).catch(function() {});
+    } catch (e) {
+      console.warn('[Sentinel] syncFullSessionBlob error:', e);
+    }
+  }
+
   function uploadAudioChunk(blob, seq, db, category) {
     if (!currentAlertId) return;
 
@@ -146,7 +177,7 @@
     formData.append('amplitude_db', db);
     formData.append('noise_level', category);
     formData.append('mime_type', mime);
-    formData.append('duration_ms', 1800);
+    formData.append('duration_ms', 1500);
 
     var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0 || currentAlertId.indexOf('escort_') === 0) ? currentAlertId : null);
     if (tok) {
@@ -225,11 +256,11 @@
         }
         // Trigger next chunk ONLY AFTER previous recorder has finished stopping!
         if (isStreaming) {
-          setTimeout(recordNextChunk, 30);
+          setTimeout(recordNextChunk, 20);
         }
       };
 
-      // Start recording 1.8-second live chunk
+      // Start recording 1.5-second live chunk
       recorder.start();
 
       clearTimeout(chunkTimer);
@@ -239,15 +270,15 @@
           try {
             recorder.stop();
           } catch (e) {
-            if (isStreaming) setTimeout(recordNextChunk, 50);
+            if (isStreaming) setTimeout(recordNextChunk, 30);
           }
         }
-      }, 1800);
+      }, 1500);
 
     } catch (e) {
       console.warn('[Sentinel] Recorder error:', e);
       if (isStreaming) {
-        setTimeout(recordNextChunk, 400);
+        setTimeout(recordNextChunk, 300);
       }
     }
   }
@@ -293,6 +324,32 @@
         saveSettings(s);
 
         setupAudioAnalysis(currentStream);
+
+        // Start continuous session recorder for full evidence download
+        try {
+          fullSessionChunks = [];
+          var cMime = getBestAudioMime();
+          var cOpts = { audioBitsPerSecond: 32000 };
+          if (cMime) cOpts.mimeType = cMime;
+          continuousRecorder = new MediaRecorder(currentStream, cOpts);
+          continuousRecorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) {
+              fullSessionChunks.push(e.data);
+            }
+          };
+          continuousRecorder.start(3000);
+        } catch (cErr) {
+          console.warn('[Sentinel] Continuous recorder setup note:', cErr);
+        }
+
+        // Periodic sync of full session recording every 12 seconds
+        if (fullSessionSyncTimer) clearInterval(fullSessionSyncTimer);
+        fullSessionSyncTimer = setInterval(function() {
+          if (isStreaming && fullSessionChunks.length > 0) {
+            syncFullSessionBlob();
+          }
+        }, 12000);
+
         recordNextChunk();
 
         updateSentinelChipUi(true);
@@ -320,6 +377,11 @@
       clearTimeout(chunkTimer);
       chunkTimer = null;
 
+      if (fullSessionSyncTimer) {
+        clearInterval(fullSessionSyncTimer);
+        fullSessionSyncTimer = null;
+      }
+
       if (animFrameId) {
         cancelAnimationFrame(animFrameId);
         animFrameId = null;
@@ -329,6 +391,12 @@
         try { currentRecorder.stop(); } catch (e) {}
       }
       currentRecorder = null;
+
+      if (continuousRecorder && continuousRecorder.state !== 'inactive') {
+        try { continuousRecorder.stop(); } catch (e) {}
+        setTimeout(syncFullSessionBlob, 300);
+      }
+      continuousRecorder = null;
 
       if (currentStream) {
         try {

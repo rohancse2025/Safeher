@@ -28,19 +28,43 @@ except Exception:
     pass
 
 
+import time
+import random
+
 def get_db():
     """
     Open and return a new SQLite connection.
     Enables dictionary-like column access (sqlite3.Row) and foreign key constraints.
+    Enforces WAL journal mode, 60s busy timeout, and memory pragmas to avoid database locks.
     """
-    conn = sqlite3.connect(DB_PATH, timeout=45.0)
+    conn = sqlite3.connect(DB_PATH, timeout=60.0)
     conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON;')
     try:
-        conn.execute('PRAGMA busy_timeout = 45000;')
+        conn.execute('PRAGMA foreign_keys = ON;')
+        conn.execute('PRAGMA busy_timeout = 60000;')
+        conn.execute('PRAGMA journal_mode = WAL;')
+        conn.execute('PRAGMA synchronous = NORMAL;')
+        conn.execute('PRAGMA temp_store = MEMORY;')
     except Exception:
         pass
     return conn
+
+
+def execute_with_retry(fn, max_retries=6, base_delay=0.08):
+    """
+    Executes a database callback with exponential backoff if 'database is locked' occurs.
+    Guarantees concurrency safety across multiple Gunicorn workers.
+    """
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            msg = str(e).lower()
+            if ('locked' in msg or 'busy' in msg) and attempt < max_retries - 1:
+                sleep_s = base_delay * (1.8 ** attempt) + random.uniform(0.01, 0.05)
+                time.sleep(sleep_s)
+                continue
+            raise
 
 
 def init_db():
