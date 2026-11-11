@@ -346,10 +346,18 @@ def send_location_share_whatsapp_notifications_background(share_id, user_name, d
         frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
         track_url = f"{frontend_url}/track.html?t={token}" if token else f"{frontend_url}/track.html"
         maps_url = f"https://www.google.com/maps?q={lat},{lng}"
+        sep = '&' if '?' in track_url else '?'
+        watch_url = f"{track_url}{sep}action=watching"
+        call_url = f"{track_url}{sep}action=called"
+        safe_url = f"{track_url}{sep}action=safe_with_me"
         message = (
             f"📍 *SafeHer Live Location Shared* 📍\n\n"
             f"*{user_name}* is sharing her live real-time GPS location with you ({duration_str}).\n\n"
-            f"🔴 *Live Tracking Map*:\n{track_url}\n\n"
+            f"🔴 *Live Tracking Map & Status*:\n{track_url}\n\n"
+            f"💬 *Tap to Respond to {user_name} Instantly:*\n"
+            f"👀 *I'm Watching*: {watch_url}\n"
+            f"📞 *I Called Her*: {call_url}\n"
+            f"✅ *Safe With Me*: {safe_url}\n\n"
             f"📍 *Google Maps Location*:\n{maps_url}\n\n"
             f"Follow her movement live in your browser."
         )

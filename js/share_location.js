@@ -256,9 +256,18 @@ SafeHer.shareLocation = (function() {
     var mapsLink = 'https://www.google.com/maps?q=' + lat + ',' + lng;
     var endDesc = (endTime === null) ? 'until I stop' : ('until ' + endTimeStr);
 
+    var sep = trackLink.indexOf('?') !== -1 ? '&' : '?';
+    var watchLink = trackLink + sep + 'action=watching';
+    var callLink = trackLink + sep + 'action=called';
+    var safeLink = trackLink + sep + 'action=safe_with_me';
+
     return '📍 *SafeHer Live Location Sharing*\n\n' +
       '*' + userName + '* is sharing their live location with you ' + endDesc + '.\n\n' +
-      '🗺️ *Live Tracking Map*:\n' + trackLink + '\n\n' +
+      '🗺️ *Live Tracking Map & Status*:\n' + trackLink + '\n\n' +
+      '💬 *Tap to Respond to ' + userName + ' Instantly:*\n' +
+      '👀 *I\'m Watching*: ' + watchLink + '\n' +
+      '📞 *I Called Her*: ' + callLink + '\n' +
+      '✅ *Safe With Me*: ' + safeLink + '\n\n' +
       '📍 *Google Maps Pin*:\n' + mapsLink;
   }
 

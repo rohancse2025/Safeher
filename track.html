@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=75" />
+  <link rel="stylesheet" href="./css/style.css?v=76" />
   <style>
     body {
       background: #FCEFF3;
@@ -717,6 +717,56 @@
         </div>
       </div>
 
+      <!-- Contact Response Controls (Placed at TOP so Contact sees immediately without scrolling) -->
+      <div id="track-contact-actions-section" style="margin-bottom: 14px; background: #FFFFFF; border: 1.5px solid #EAD3DA; border-radius: 12px; padding: 14px; box-shadow: 0 2px 8px rgba(168,15,60,0.06);">
+        <div style="font-size: 15px; font-weight: 700; color: #A80F3C; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-rounded" style="font-size: 20px;">quickreply</span>
+          <span id="track-contact-actions-title">Quick Response to User</span>
+        </div>
+        <p id="track-contact-actions-sub" style="font-size: 12px; color: #555555; margin: 0 0 12px; line-height: 1.4;">Tap an update below — she will immediately see your response on her screen:</p>
+        <!-- Ask her to check in button (limit 3 per hour per contact) -->
+        <div id="track-ask-checkin-container" style="display: none; margin-bottom: 12px;">
+          <button type="button" class="btn-ask-checkin" id="btn-ask-checkin" onclick="askHerToCheckin()">
+            <span class="material-symbols-rounded">notifications_active</span>Ask her to check in
+          </button>
+          <div id="track-ask-checkin-msg" class="contact-confirm-banner" style="display: none; margin-top: -4px; margin-bottom: 8px;">
+            <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
+            <span id="track-ask-checkin-msg-text">Check-in request sent. She has 60 seconds to respond.</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button type="button" class="btn-contact-action" id="btn-resp-watching" onclick="respondContact('watching')">
+            <span class="material-symbols-rounded">visibility</span>👀 Watching your live trip
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-on-my-way" onclick="respondContact('on_my_way')">
+            <span class="material-symbols-rounded">directions_run</span>🏃 I’m on my way
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-called" onclick="respondContact('called')">
+            <span class="material-symbols-rounded">phone_in_talk</span>📞 I called her
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-safe-with-me" onclick="respondContact('safe_with_me')">
+            <span class="material-symbols-rounded">check_circle</span>✅ Safe with me / Reached
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-alerted-police" onclick="respondContact('alerted_police')">
+            <span class="material-symbols-rounded">local_police</span>🚓 I alerted police
+          </button>
+          <button type="button" class="btn-contact-action" id="btn-resp-cannot-reach" onclick="respondContact('cannot_reach')">
+            <span class="material-symbols-rounded">phone_missed</span>⚠️ I can’t reach her
+          </button>
+        </div>
+
+        <!-- Confirmation text after each -->
+        <div id="track-contact-confirmation" class="contact-confirm-banner" style="display: none;">
+          <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
+          <span id="track-contact-confirm-text">Sent. She can see this.</span>
+        </div>
+
+        <!-- Navigate to her button -->
+        <a id="track-navigate-her" href="#" target="_blank" rel="noopener noreferrer" class="btn-navigate-her" style="margin-top: 10px;">
+          <span class="material-symbols-rounded">directions</span>Navigate to her
+        </a>
+      </div>
+
       <!-- Leaflet Live Map -->
       <div id="track-map"></div>
 
@@ -779,56 +829,6 @@
         </div>
       </div>
 
-      <!-- Contact Response Controls -->
-      <div id="track-contact-actions-section" style="margin-bottom: 16px; background: #FFFFFF; border: 1px solid #EAD3DA; border-radius: 8px; padding: 14px;">
-        <div style="font-size: 14px; font-weight: 700; color: #A80F3C; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-          <span class="material-symbols-rounded" style="font-size: 19px;">quickreply</span>
-          <span>Respond to Emergency</span>
-        </div>
-        <p style="font-size: 12px; color: #666; margin: 0 0 10px; line-height: 1.4;">Tap an update below — she will immediately see your response on her screen:</p>
-        <!-- Ask her to check in button (limit 3 per hour per contact) -->
-        <div id="track-ask-checkin-container" style="display: none; margin-bottom: 12px;">
-          <button type="button" class="btn-ask-checkin" id="btn-ask-checkin" onclick="askHerToCheckin()">
-            <span class="material-symbols-rounded">notifications_active</span>Ask her to check in
-          </button>
-          <div id="track-ask-checkin-msg" class="contact-confirm-banner" style="display: none; margin-top: -4px; margin-bottom: 8px;">
-            <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
-            <span id="track-ask-checkin-msg-text">Check-in request sent. She has 60 seconds to respond.</span>
-          </div>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <button type="button" class="btn-contact-action" id="btn-resp-watching" onclick="respondContact('watching')">
-            <span class="material-symbols-rounded">visibility</span>👀 Watching your live trip
-          </button>
-          <button type="button" class="btn-contact-action" id="btn-resp-on-my-way" onclick="respondContact('on_my_way')">
-            <span class="material-symbols-rounded">directions_run</span>🏃 I’m on my way
-          </button>
-          <button type="button" class="btn-contact-action" id="btn-resp-called" onclick="respondContact('called')">
-            <span class="material-symbols-rounded">phone_in_talk</span>📞 I called her
-          </button>
-          <button type="button" class="btn-contact-action" id="btn-resp-safe-with-me" onclick="respondContact('safe_with_me')">
-            <span class="material-symbols-rounded">check_circle</span>✅ Safe with me / Reached
-          </button>
-          <button type="button" class="btn-contact-action" id="btn-resp-alerted-police" onclick="respondContact('alerted_police')">
-            <span class="material-symbols-rounded">local_police</span>🚓 I alerted police
-          </button>
-          <button type="button" class="btn-contact-action" id="btn-resp-cannot-reach" onclick="respondContact('cannot_reach')">
-            <span class="material-symbols-rounded">phone_missed</span>⚠️ I can’t reach her
-          </button>
-        </div>
-
-        <!-- Confirmation text after each -->
-        <div id="track-contact-confirmation" class="contact-confirm-banner" style="display: none;">
-          <span class="material-symbols-rounded" style="font-size: 18px;">check_circle</span>
-          <span id="track-contact-confirm-text">Sent. She can see this.</span>
-        </div>
-
-        <!-- Navigate to her button -->
-        <a id="track-navigate-her" href="#" target="_blank" rel="noopener noreferrer" class="btn-navigate-her">
-          <span class="material-symbols-rounded">directions</span>Navigate to her
-        </a>
-      </div>
-
       <!-- Action Buttons -->
       <div class="track-actions">
         <a id="track-gmaps-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-track btn-track-outline">
@@ -847,7 +847,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=75"></script>
+  <script src="./js/config.js?v=76"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -1162,11 +1162,19 @@
 
         // Show contact response buttons and navigate button for active tracking links
         var contactSection = document.getElementById('track-contact-actions-section');
+        var actTitle = document.getElementById('track-contact-actions-title');
+        var actSub = document.getElementById('track-contact-actions-sub');
         if (contactSection) {
-          if (data.status === 'Resolved' || data.status === 'Safe' || data.status === 'Journey ended') {
+          if (data.status === 'Resolved' || data.status === 'Safe' || data.status === 'Journey ended' || data.status === 'ended' || data.status === 'stopped') {
             contactSection.style.display = 'none';
           } else {
             contactSection.style.display = 'block';
+            if (actTitle) {
+              actTitle.textContent = isShare ? ('Quick Response to ' + firstName) : ('Respond to ' + firstName + "'s Alert");
+            }
+            if (actSub) {
+              actSub.textContent = 'Tap an update below — ' + firstName + ' will immediately see your response on screen:';
+            }
           }
         }
       }
