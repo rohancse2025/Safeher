@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=79" />
+  <link rel="stylesheet" href="./css/style.css?v=81" />
   <style>
     body {
       background: #FCEFF3;
@@ -847,7 +847,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=79"></script>
+  <script src="./js/config.js?v=81"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -1610,8 +1610,25 @@
       window.downloadSentinelClip = function() {
         var token = getToken();
         if (!token) return;
-        var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
-        window.open(downloadUrl, '_blank');
+        var btn = document.getElementById('btn-sentinel-save-clip');
+        if (btn) btn.disabled = true;
+        var checkUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio';
+        fetch(checkUrl)
+          .then(function(res) { return res.json(); })
+          .then(function(meta) {
+            if (btn) btn.disabled = false;
+            if (!meta || !meta.ok || !meta.has_audio) {
+              alert('No audio recording is available yet. Ambient audio streaming is still buffering from device.');
+              return;
+            }
+            var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
+            window.open(downloadUrl, '_blank');
+          })
+          .catch(function() {
+            if (btn) btn.disabled = false;
+            var downloadUrl = getApiBase() + '/api/track/' + encodeURIComponent(token) + '/live-audio/download';
+            window.open(downloadUrl, '_blank');
+          });
       };
 
       function fetchTrackData(token) {

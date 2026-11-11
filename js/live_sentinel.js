@@ -148,7 +148,7 @@
     formData.append('mime_type', mime);
     formData.append('duration_ms', 4000);
 
-    var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0) ? currentAlertId : null);
+    var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0 || currentAlertId.indexOf('escort_') === 0) ? currentAlertId : null);
     if (tok) {
       formData.append('share_token', tok);
     }

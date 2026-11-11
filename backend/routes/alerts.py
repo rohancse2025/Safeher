@@ -2920,17 +2920,27 @@ def resolve_alert_from_token(token, conn=None):
         ''', (clean_token,))
         row = cursor.fetchone()
 
-    # 3. Check escort_contacts linked alerts
+    # 3. Check escort_contacts (Escort journey link)
     if not row:
         cursor.execute('''
-            SELECT a.id, a.user_id, a.mode, a.status, a.lat, a.lng, a.started_at,
-                   u.name AS owner_name, c.name AS contact_name, ec.token AS share_token
+            SELECT e.id, e.user_id, 'escort' AS mode, e.status, e.last_lat AS lat, e.last_lng AS lng, e.started_at,
+                   u.name AS owner_name, c.name AS contact_name, ec.token AS share_token, e.alert_id
             FROM escort_contacts ec
             JOIN escorts e ON ec.escort_id = e.id
-            JOIN alerts a ON e.alert_id = a.id
-            JOIN users u ON a.user_id = u.id
-            JOIN contacts c ON ec.contact_id = c.id
+            JOIN users u ON e.user_id = u.id
+            LEFT JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.token = ?;
+        ''', (clean_token,))
+        row = cursor.fetchone()
+
+    # 3b. Fallback: if token starts with escort_ and no exact ec.token matched yet
+    if not row and clean_token.startswith('escort_'):
+        cursor.execute('''
+            SELECT e.id, e.user_id, 'escort' AS mode, e.status, e.last_lat AS lat, e.last_lng AS lng, e.started_at,
+                   u.name AS owner_name, 'Emergency Contact' AS contact_name, ? AS share_token, e.alert_id
+            FROM escorts e
+            JOIN users u ON e.user_id = u.id
+            ORDER BY e.id DESC LIMIT 1;
         ''', (clean_token,))
         row = cursor.fetchone()
 
@@ -3011,13 +3021,18 @@ def get_sentinel_search_dirs(token_or_id, alert=None):
         aid = alert.get('id')
         stok = alert.get('share_token')
         mode = alert.get('mode')
+        alt_aid = alert.get('alert_id')
         add_target(aid)
         add_target(stok)
+        if alt_aid:
+            add_target(alt_aid)
         if aid is not None:
             if mode == 'share':
                 add_target(f"share_{aid}")
             elif mode == 'ride':
                 add_target(f"ride_{aid}")
+            elif mode == 'escort':
+                add_target(f"escort_{aid}")
 
     return dirs
 
@@ -3165,7 +3180,7 @@ def get_sentinel_live_audio(token):
 
     alert_id = alert['id']
     status = alert['status']
-    is_active = (status == 'active')
+    is_active = (status in ('active', 'On route', 'monitoring'))
 
     candidate_dirs = get_sentinel_search_dirs(token, alert)
     latest_data = None

@@ -2092,7 +2092,9 @@ SafeHer.escort = (function() {
 
         requestWakeLock();
 
-
+        if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
+          try { SafeHer.sentinel.start(localId, ''); } catch(e) {}
+        }
 
         if (SafeHer.toast) SafeHer.toast('🛡️ Solo Guardian Active! Your phone is actively tracking your journey.');
 
@@ -2110,7 +2112,12 @@ SafeHer.escort = (function() {
 
       requestWakeLock();
 
-
+      if (SafeHer.sentinel && typeof SafeHer.sentinel.start === 'function') {
+        var primaryToken = (result.tokens && Object.values(result.tokens)[0]) || '';
+        try {
+          SafeHer.sentinel.start(result.id, primaryToken);
+        } catch(e) {}
+      }
 
       if (SafeHer.toast) SafeHer.toast('Escort Mode started! Live tracking link sent.');
 
@@ -2546,6 +2553,10 @@ SafeHer.escort = (function() {
     if (pollIntervalId !== null) {
       clearInterval(pollIntervalId);
       pollIntervalId = null;
+    }
+
+    if (SafeHer.sentinel && typeof SafeHer.sentinel.stop === 'function') {
+      try { SafeHer.sentinel.stop(); } catch(e) {}
     }
 
     receivedEscortResponses = [];

@@ -43,7 +43,9 @@ SafeHer.pocketGuard = (function() {
 
       var u8 = new Uint8Array(buffer, 44, numSamples);
       for (var i = 0; i < numSamples; i++) {
-        u8[i] = 128; // 8-bit unsigned PCM silence
+        // 20Hz sub-audible carrier (completely inaudible, but prevents OS power management from killing audio hardware)
+        var wave = Math.sin((2 * Math.PI * 20 * i) / sampleRate);
+        u8[i] = Math.round(128 + wave * 2);
       }
 
       var blob = new Blob([buffer], { type: 'audio/wav' });
@@ -56,6 +58,41 @@ SafeHer.pocketGuard = (function() {
     }
   }
 
+  // Synthesize instant private feedback tone in user's earphones on headset button clicks
+  function playEarphoneTone(type) {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var now = ctx.currentTime;
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === 'tap1') {
+        osc.frequency.setValueAtTime(800, now);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      } else if (type === 'tap2') {
+        osc.frequency.setValueAtTime(1000, now);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } else if (type === 'sos') {
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.25);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      }
+    } catch(e) {}
+  }
+
   function startSilentAudio(callback) {
     if (!silentAudio) {
       silentAudio = new Audio();
@@ -63,14 +100,10 @@ SafeHer.pocketGuard = (function() {
       silentAudio.loop = true;
       silentAudio.volume = 0.05; // Inaudible PCM silence, but above 0 to prevent OS battery killing
 
-      // Keep alive if paused by mobile OS power manager
+      // Keep alive immediately if paused by mobile OS power manager
       silentAudio.addEventListener('pause', function() {
-        if (isEnabled && !isTesting) {
-          setTimeout(function() {
-            if (isEnabled && silentAudio && silentAudio.paused) {
-              silentAudio.play().catch(function() {});
-            }
-          }, 400);
+        if (isEnabled) {
+          silentAudio.play().catch(function() {});
         }
       });
 
@@ -173,6 +206,7 @@ SafeHer.pocketGuard = (function() {
       if ('vibrate' in navigator) {
         navigator.vibrate([120, 60, 200]);
       }
+      playEarphoneTone('sos');
       executeEmergencyTrigger('Triple-tap previoustrack');
       return;
     }
@@ -188,15 +222,18 @@ SafeHer.pocketGuard = (function() {
     // Generous 5.0-second rolling window to accommodate physical button debounce and Bluetooth latency
     actionHistory = actionHistory.filter(function(t) { return now - t <= 5000; });
 
-    // Haptic feedback on EVERY single click so user feels confirmation through pocket clothing!
+    // Haptic and Earphone audio feedback on EVERY single click so user gets confirmation through pocket clothing AND earphones!
     if (actionHistory.length === 1) {
       if ('vibrate' in navigator) navigator.vibrate(80);
+      playEarphoneTone('tap1');
     } else if (actionHistory.length === 2) {
       if ('vibrate' in navigator) navigator.vibrate([80, 50, 80]);
+      playEarphoneTone('tap2');
     }
 
     if (actionHistory.length >= 3) {
       actionHistory = [];
+      playEarphoneTone('sos');
       executeEmergencyTrigger('3-tap sequence (' + action + ')');
     }
   }
@@ -270,9 +307,16 @@ SafeHer.pocketGuard = (function() {
       navigator.vibrate(80);
     }
 
+    if (testClicks === 1) {
+      playEarphoneTone('tap1');
+    } else if (testClicks === 2) {
+      playEarphoneTone('tap2');
+    }
+
     updateTestUi();
 
     if (testClicks >= 3 || action === 'previoustrack') {
+      playEarphoneTone('sos');
       // Test passed!
       if ('vibrate' in navigator) {
         navigator.vibrate([150, 80, 250]);
@@ -490,6 +534,21 @@ SafeHer.pocketGuard = (function() {
     } catch(e) {
       updateUi();
     }
+
+    // Attach user-gesture unlock to satisfy mobile browser autoplay policy
+    var unlockAudio = function() {
+      if (isEnabled && (!silentAudio || silentAudio.paused)) {
+        startSilentAudio();
+      }
+      if (silentAudio && !silentAudio.paused) {
+        ['click', 'touchstart', 'pointerdown'].forEach(function(evt) {
+          document.removeEventListener(evt, unlockAudio, true);
+        });
+      }
+    };
+    ['click', 'touchstart', 'pointerdown'].forEach(function(evt) {
+      document.addEventListener(evt, unlockAudio, true);
+    });
 
     // Keep MediaSession and silent audio keepalive active across tab switches & lock screen
     document.addEventListener('visibilitychange', function() {
