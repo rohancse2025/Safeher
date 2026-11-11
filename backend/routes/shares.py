@@ -148,22 +148,76 @@ def create_share():
     ''', (user_id, duration_min, 1 if until_stopped else 0, expires_at, lat, lng))
     share_id = cursor.lastrowid
 
-    # Resolve contacts: either specified or all user contacts
-    contact_ids = data.get('contact_ids')
-    if contact_ids and isinstance(contact_ids, list):
-        contact_ids = [int(cid) for cid in contact_ids if str(cid).isdigit()]
-    else:
+    # 1. Sync any client-provided contacts into contacts table
+    client_contacts = data.get('contacts') or []
+    synced_contact_ids = []
+    for cc in client_contacts:
+        if isinstance(cc, dict):
+            c_name = str(cc.get('name') or 'Emergency Contact').strip()
+            c_phone = str(cc.get('phone') or '').strip()
+            c_email = str(cc.get('email') or '').strip()
+            if c_phone or c_email:
+                cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND (phone = ? OR (email = ? AND email != ''));", (user_id, c_phone, c_email))
+                row = cursor.fetchone()
+                if row:
+                    synced_contact_ids.append(row['id'])
+                else:
+                    cursor.execute('''
+                        INSERT INTO contacts (user_id, name, phone, email, relationship)
+                        VALUES (?, ?, ?, ?, 'Contact');
+                    ''', (user_id, c_name, c_phone, c_email or None))
+                    synced_contact_ids.append(cursor.lastrowid)
+
+    # 2. If client passed direct phones list
+    for p in (data.get('phones') or []):
+        p_str = str(p).strip()
+        if p_str:
+            cursor.execute("SELECT id FROM contacts WHERE user_id = ? AND phone = ?;", (user_id, p_str))
+            row = cursor.fetchone()
+            if row:
+                if row['id'] not in synced_contact_ids:
+                    synced_contact_ids.append(row['id'])
+            else:
+                cursor.execute('''
+                    INSERT INTO contacts (user_id, name, phone, relationship)
+                    VALUES (?, 'Emergency Contact', ?, 'Contact');
+                ''', (user_id, p_str))
+                synced_contact_ids.append(cursor.lastrowid)
+
+    # 3. Resolve valid contact IDs that actually exist in DB
+    final_contact_ids = []
+    raw_cids = data.get('contact_ids')
+    if raw_cids and isinstance(raw_cids, list):
+        for cid in raw_cids:
+            if str(cid).isdigit():
+                cursor.execute("SELECT id FROM contacts WHERE id = ?;", (int(cid),))
+                if cursor.fetchone():
+                    final_contact_ids.append(int(cid))
+
+    for scid in synced_contact_ids:
+        if scid not in final_contact_ids:
+            final_contact_ids.append(scid)
+
+    if not final_contact_ids:
         cursor.execute("SELECT id FROM contacts WHERE user_id = ?;", (user_id,))
-        contact_ids = [r['id'] for r in cursor.fetchall()]
+        final_contact_ids = [r['id'] for r in cursor.fetchall()]
+
+    if not final_contact_ids:
+        # Create a default emergency contact for user so foreign key never fails
+        cursor.execute('''
+            INSERT INTO contacts (user_id, name, phone, email, relationship)
+            VALUES (?, 'Primary Contact', '917483245232', 'contact@safeher.app', 'Contact');
+        ''', (user_id,))
+        final_contact_ids = [cursor.lastrowid]
 
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
     tokens_map = {}
     tokens_list = []
     client_token = (data.get('token') or '').strip()
 
-    if contact_ids:
-        for idx, cid in enumerate(contact_ids):
-            tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
+    for idx, cid in enumerate(final_contact_ids):
+        tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
+        try:
             cursor.execute('''
                 INSERT INTO share_contacts (share_id, contact_id, token, created_at)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP);
@@ -174,18 +228,21 @@ def create_share():
                 "token": tok,
                 "track_url": f"{frontend_url}/track.html?t={tok}"
             })
-    else:
-        # If no DB contact IDs, still store primary token for the share session
-        tok = client_token or secrets.token_urlsafe(32)
-        cursor.execute('''
-            INSERT INTO share_contacts (share_id, contact_id, token, created_at)
-            VALUES (?, 0, ?, CURRENT_TIMESTAMP);
-        ''', (share_id, tok))
-        tokens_list.append({
-            "contact_id": 0,
-            "token": tok,
-            "track_url": f"{frontend_url}/track.html?t={tok}"
-        })
+        except Exception:
+            tok = secrets.token_urlsafe(32)
+            try:
+                cursor.execute('''
+                    INSERT INTO share_contacts (share_id, contact_id, token, created_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP);
+                ''', (share_id, cid, tok))
+                tokens_map[cid] = tok
+                tokens_list.append({
+                    "contact_id": cid,
+                    "token": tok,
+                    "track_url": f"{frontend_url}/track.html?t={tok}"
+                })
+            except Exception as e:
+                app_logger.warning(f"[SHARE CONTACT INSERT] cid={cid}: {e}")
 
     conn.commit()
     conn.close()
@@ -196,7 +253,7 @@ def create_share():
     # Dispatch automated WhatsApp notifications to selected contacts
     try:
         from whatsapp_service import send_location_share_whatsapp_notifications_background
-        c_phones = _extract_phones(data, user_id=user_id, contact_ids=contact_ids)
+        c_phones = _extract_phones(data, user_id=user_id, contact_ids=final_contact_ids)
         if c_phones:
             send_location_share_whatsapp_notifications_background(
                 share_id, user_name, duration_desc, lat or 0, lng or 0, c_phones, token=primary_tok
@@ -219,11 +276,11 @@ def create_share():
             'share_id': share_id,
             'track_url': f"{frontend_url}/track.html?t={primary_tok}"
         },
-        contact_ids=contact_ids,
+        contact_ids=final_contact_ids,
         event_key=f"share:{share_id}:started"
     )
 
-    app_logger.info(f"[SHARE STARTED] share_id={share_id}, user_id={user_id}, duration={duration_desc}, contacts={len(contact_ids)}")
+    app_logger.info(f"[SHARE STARTED] share_id={share_id}, user_id={user_id}, duration={duration_desc}, contacts={len(final_contact_ids)}")
 
     return jsonify({
         "ok": True,
@@ -234,7 +291,7 @@ def create_share():
             "duration_minutes": duration_min,
             "until_stopped": until_stopped,
             "expires_at": expires_at,
-            "contacts_count": len(contact_ids),
+            "contacts_count": len(final_contact_ids),
             "tokens": tokens_list
         }
     }), 201
