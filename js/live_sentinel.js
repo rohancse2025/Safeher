@@ -146,7 +146,7 @@
     formData.append('amplitude_db', db);
     formData.append('noise_level', category);
     formData.append('mime_type', mime);
-    formData.append('duration_ms', 4000);
+    formData.append('duration_ms', 1800);
 
     var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0 || currentAlertId.indexOf('escort_') === 0) ? currentAlertId : null);
     if (tok) {
@@ -185,19 +185,17 @@
 
     var mime = getBestAudioMime();
     var recorder = null;
+    var recorderOpts = { audioBitsPerSecond: 32000 };
+    if (mime) recorderOpts.mimeType = mime;
 
     try {
-      if (mime) {
-        recorder = new MediaRecorder(currentStream, { mimeType: mime });
-      } else {
-        recorder = new MediaRecorder(currentStream);
-      }
+      recorder = new MediaRecorder(currentStream, recorderOpts);
     } catch (e1) {
       try {
         recorder = new MediaRecorder(currentStream);
       } catch (e2) {
         console.warn('[Sentinel] Recorder initialization error:', e2);
-        stop();
+        if (isStreaming) setTimeout(recordNextChunk, 400);
         return;
       }
     }
@@ -212,30 +210,45 @@
         }
       };
 
+      recorder.onerror = function(err) {
+        console.warn('[Sentinel] MediaRecorder runtime error:', err);
+        if (isStreaming) {
+          setTimeout(recordNextChunk, 200);
+        }
+      };
+
       recorder.onstop = function() {
         if (chunkParts.length > 0) {
           var standaloneBlob = new Blob(chunkParts, { type: mime || 'audio/webm' });
           uploadAudioChunk(standaloneBlob, chunkSeq, lastCalculatedDb, lastNoiseCategory);
           chunkSeq++;
         }
+        // Trigger next chunk ONLY AFTER previous recorder has finished stopping!
+        if (isStreaming) {
+          setTimeout(recordNextChunk, 30);
+        }
       };
 
-      // Start standalone chunk
+      // Start recording 1.8-second live chunk
       recorder.start();
 
       clearTimeout(chunkTimer);
       chunkTimer = setTimeout(function() {
         if (!isStreaming) return;
-        if (recorder && recorder.state !== 'inactive') {
-          try { recorder.stop(); } catch (e) {}
+        if (recorder && recorder.state === 'recording') {
+          try {
+            recorder.stop();
+          } catch (e) {
+            if (isStreaming) setTimeout(recordNextChunk, 50);
+          }
         }
-        // Immediately trigger next standalone chunk
-        recordNextChunk();
-      }, 4000);
+      }, 1800);
 
     } catch (e) {
       console.warn('[Sentinel] Recorder error:', e);
-      stop();
+      if (isStreaming) {
+        setTimeout(recordNextChunk, 400);
+      }
     }
   }
 

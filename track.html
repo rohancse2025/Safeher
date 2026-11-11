@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=83" />
+  <link rel="stylesheet" href="./css/style.css?v=84" />
   <style>
     body {
       background: #FCEFF3;
@@ -847,7 +847,7 @@
   </div>
 
   <!-- Config and Leaflet JS -->
-  <script src="./js/config.js?v=83"></script>
+  <script src="./js/config.js?v=84"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function() {
@@ -1438,15 +1438,19 @@
       var queuedChunks = [];
       var isAudioPlaying = false;
 
+      var chunkPlayTimeout = null;
+
       function getSentinelAudioEl() {
         if (!sentinelAudioEl) {
           sentinelAudioEl = document.getElementById('sentinel-audio-player');
           if (sentinelAudioEl) {
             sentinelAudioEl.onended = function() {
+              if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
               isAudioPlaying = false;
               playNextQueuedChunk();
             };
             sentinelAudioEl.onerror = function() {
+              if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
               isAudioPlaying = false;
               playNextQueuedChunk();
             };
@@ -1462,8 +1466,19 @@
         if (!audio || !nextUrl) return;
         isAudioPlaying = true;
         audio.src = nextUrl;
+
+        if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
+        // Safety watchdog: advance within 2.5s if chunk ends or stalls
+        chunkPlayTimeout = setTimeout(function() {
+          if (isAudioPlaying && (!audio.duration || audio.currentTime >= audio.duration - 0.2 || audio.paused)) {
+            isAudioPlaying = false;
+            playNextQueuedChunk();
+          }
+        }, 2500);
+
         audio.play().catch(function(err) {
           console.warn('[Sentinel] Autoplay deferred:', err);
+          if (chunkPlayTimeout) clearTimeout(chunkPlayTimeout);
           isAudioPlaying = false;
         });
       }
@@ -1511,7 +1526,7 @@
           if (sentinelPollTimer) clearInterval(sentinelPollTimer);
           sentinelPollTimer = setInterval(function() {
             if (isSentinelListening) fetchSentinelStatus(token);
-          }, 3000);
+          }, 1200);
 
         } else {
           if (btn) btn.classList.remove('is-listening');
@@ -1586,18 +1601,31 @@
               }
             }
 
-            // Queue new audio chunk if sequence changed or if contact just tapped Listen
+            // Queue new audio chunks if sequence changed or if contact just tapped Listen
             if (res.chunk_url && res.latest_seq) {
               if (isSentinelListening) {
-                var fullChunkUrl = getApiBase() + res.chunk_url;
-                if (res.latest_seq > lastPlayedSeq || (lastPlayedSeq === 0 && !isAudioPlaying && queuedChunks.length === 0)) {
+                if (res.recent_chunks && res.recent_chunks.length > 0) {
+                  // Sort chronologically by sequence number
+                  var sorted = res.recent_chunks.slice().sort(function(a, b) { return a.sequence - b.sequence; });
+                  sorted.forEach(function(item) {
+                    if (item.sequence > lastPlayedSeq) {
+                      var cUrl = getApiBase() + item.url;
+                      if (queuedChunks.indexOf(cUrl) === -1) {
+                        queuedChunks.push(cUrl);
+                      }
+                      lastPlayedSeq = item.sequence;
+                    }
+                  });
+                } else if (res.latest_seq > lastPlayedSeq || (lastPlayedSeq === 0 && !isAudioPlaying && queuedChunks.length === 0)) {
                   lastPlayedSeq = res.latest_seq;
+                  var fullChunkUrl = getApiBase() + res.chunk_url;
                   if (queuedChunks.indexOf(fullChunkUrl) === -1) {
                     queuedChunks.push(fullChunkUrl);
                   }
-                  if (!isAudioPlaying) {
-                    playNextQueuedChunk();
-                  }
+                }
+
+                if (!isAudioPlaying && queuedChunks.length > 0) {
+                  playNextQueuedChunk();
                 }
               }
             }
