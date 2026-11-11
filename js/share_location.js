@@ -625,11 +625,11 @@ SafeHer.shareLocation = (function() {
 
     if (startBtn) {
       startBtn.disabled = false;
-      startBtn.innerHTML = '<span class="material-symbols-rounded">chat</span>Start &amp; Share via WhatsApp';
+      startBtn.innerHTML = '<span class="material-symbols-rounded">share_location</span>Start Sharing (Auto WhatsApp)';
     }
 
-    // 2. Launch WhatsApp immediately from the user click gesture
-    shareViaWhatsApp();
+    // 2. Auto-dispatch in background via server (like SOS - no app switching required!)
+    SafeHer.toast('Starting live location... Alerting contacts automatically via WhatsApp');
 
     // 3. Background GPS refinement
     if (navigator.geolocation) {
