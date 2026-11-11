@@ -2410,6 +2410,13 @@ SafeHer.escort = (function() {
 
                 }
 
+                var rList = (res && res.data && res.data.contact_responses) || (res && res.contact_responses);
+                if (rList && rList.length) {
+                  rList.forEach(function(r) {
+                    addEscortResponseItem(r);
+                  });
+                }
+
               });
 
             }
@@ -2580,9 +2587,42 @@ SafeHer.escort = (function() {
       }
     } catch(e) {}
 
-    var token = (activeEscort.tokens && Object.values(activeEscort.tokens)[0]) || '';
-    if (token && window.SafeHerConfig && window.SafeHerConfig.API_BASE) {
-      fetch(window.SafeHerConfig.API_BASE.replace(/\/+$/, '') + '/api/track/' + encodeURIComponent(token))
+    var apiBase = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || '';
+    if (!apiBase && SafeHer.api && typeof SafeHer.api.getBaseUrl === 'function') {
+      apiBase = SafeHer.api.getBaseUrl();
+    }
+    if (!apiBase) apiBase = '';
+
+    var token = activeEscort.token || activeEscort.share_token || '';
+    if (!token && activeEscort.tokens) {
+      if (typeof activeEscort.tokens === 'string') {
+        token = activeEscort.tokens;
+      } else if (typeof activeEscort.tokens === 'object') {
+        token = Object.values(activeEscort.tokens)[0] || '';
+      }
+    }
+
+    if (apiBase) {
+      var baseClean = apiBase.replace(/\/+$/, '');
+      if (token) {
+        fetch(baseClean + '/api/track/' + encodeURIComponent(token))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json && json.ok && json.data && json.data.contact_responses) {
+              json.data.contact_responses.forEach(function(r) {
+                addEscortResponseItem(r);
+              });
+            }
+          })
+          .catch(function() {});
+      }
+
+      // Also check /api/escorts/active for authenticated user
+      var authTok = (SafeHer.auth && SafeHer.auth.getToken) ? SafeHer.auth.getToken() : localStorage.getItem('safeher_token');
+      var authHeaders = { 'Content-Type': 'application/json' };
+      if (authTok) authHeaders['Authorization'] = 'Bearer ' + authTok;
+
+      fetch(baseClean + '/api/escorts/active', { headers: authHeaders })
         .then(function(res) { return res.json(); })
         .then(function(json) {
           if (json && json.ok && json.data && json.data.contact_responses) {
@@ -2594,6 +2634,28 @@ SafeHer.escort = (function() {
         .catch(function() {});
     }
   }
+
+  try {
+    if (window.BroadcastChannel) {
+      var escBc = new BroadcastChannel('safeher_cross_tab');
+      escBc.onmessage = function(ev) {
+        if (ev && ev.data && ev.data.status) {
+          addEscortResponseItem(ev.data);
+        }
+      };
+    }
+  } catch(e) {}
+
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'safeher_response_update' && e.newValue) {
+      try {
+        var parsed = JSON.parse(e.newValue);
+        if (parsed && parsed.status) {
+          addEscortResponseItem(parsed);
+        }
+      } catch(err) {}
+    }
+  });
 
   function addEscortResponseItem(resp) {
     var exists = false;
@@ -2730,16 +2792,9 @@ SafeHer.escort = (function() {
 
     // Initial starting straight-line distance from user's origin to destination
     if (!activeEscort.start_lat || !activeEscort.start_lng) {
-      if (currentRoutePoints && currentRoutePoints.length > 0) {
-        activeEscort.start_lat = currentRoutePoints[0][0];
-        activeEscort.start_lng = currentRoutePoints[0][1];
-      } else if (userOrigin) {
-        activeEscort.start_lat = userOrigin.lat;
-        activeEscort.start_lng = userOrigin.lng;
-      } else {
-        activeEscort.start_lat = userLat;
-        activeEscort.start_lng = userLng;
-      }
+      // Prioritize actual live user GPS coordinates where the journey begins
+      activeEscort.start_lat = userLat;
+      activeEscort.start_lng = userLng;
     }
 
     if (!activeEscort._startDist || activeEscort._startDist <= 0) {

@@ -1490,8 +1490,10 @@ SafeHer.ride = (function() {
 
 
     // Clear active ride
-
     activeRide = null;
+    receivedRideResponses = [];
+    var respCard = document.getElementById('ride-contact-responses-card');
+    if (respCard) respCard.style.display = 'none';
 
     platePhotoBlob = null;
 
@@ -1596,6 +1598,168 @@ SafeHer.ride = (function() {
 
   // ─── Overdue Monitoring & "Are you OK?" Check ──────────────
 
+  var receivedRideResponses = [];
+  var lastRideResponsesPollTime = 0;
+
+  function checkRideResponses() {
+    if (!activeRide || activeRide.status !== 'active') return;
+
+    try {
+      var raw = localStorage.getItem('safeher_response_update');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.status && (Date.now() - parsed.time < 3600000)) {
+          addRideResponseItem(parsed);
+        }
+      }
+    } catch(e) {}
+
+    var apiBase = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || '';
+    if (!apiBase && SafeHer.api && typeof SafeHer.api.getBaseUrl === 'function') {
+      apiBase = SafeHer.api.getBaseUrl();
+    }
+    if (!apiBase) apiBase = '';
+
+    var token = activeRide.shareToken || activeRide.token || '';
+    if (!token && activeRide.tokens && activeRide.tokens.length > 0) {
+      token = activeRide.tokens[0].token || '';
+    }
+
+    if (apiBase) {
+      var baseClean = apiBase.replace(/\/+$/, '');
+
+      if (token) {
+        fetch(baseClean + '/api/track/' + encodeURIComponent(token))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json && json.ok && json.data && json.data.contact_responses) {
+              json.data.contact_responses.forEach(function(r) {
+                addRideResponseItem(r);
+              });
+            }
+          })
+          .catch(function() {});
+      }
+
+      var authTok = (SafeHer.auth && SafeHer.auth.getToken) ? SafeHer.auth.getToken() : localStorage.getItem('safeher_token');
+      var authHeaders = { 'Content-Type': 'application/json' };
+      if (authTok) authHeaders['Authorization'] = 'Bearer ' + authTok;
+
+      fetch(baseClean + '/api/rides/active', { headers: authHeaders })
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          if (json && json.ok && json.data && json.data.contact_responses) {
+            json.data.contact_responses.forEach(function(r) {
+              addRideResponseItem(r);
+            });
+          }
+        })
+        .catch(function() {});
+    }
+  }
+
+  function addRideResponseItem(resp) {
+    var exists = false;
+    var respTime = resp.time || resp.timestamp || Date.now();
+    for (var i = 0; i < receivedRideResponses.length; i++) {
+      if (receivedRideResponses[i].status === resp.status && Math.abs(receivedRideResponses[i].time - respTime) < 5000) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      receivedRideResponses.unshift({
+        name: resp.name || resp.contact || 'Emergency Contact',
+        status: resp.status,
+        time: respTime
+      });
+      renderRideContactResponses();
+
+      var statusLabels = {
+        'watching': '👀 Watching your live ride',
+        'called': '📞 Called you',
+        'on_my_way': '🏃 On the way to you',
+        'safe_with_me': '✅ Safe with me / Reached',
+        'alerted_police': '🚓 Alerted police',
+        'cannot_reach': '⚠️ Cannot reach'
+      };
+      var sText = statusLabels[resp.status] || resp.status;
+      if (SafeHer.toast) {
+        SafeHer.toast('🔔 ' + (resp.name || 'Contact') + ': ' + sText);
+      }
+      if (navigator.vibrate) {
+        navigator.vibrate([150, 100, 150]);
+      }
+    }
+  }
+
+  function renderRideContactResponses() {
+    var card = document.getElementById('ride-contact-responses-card');
+    var list = document.getElementById('ride-contact-responses-list');
+    var badge = document.getElementById('ride-responses-count-badge');
+    if (!card || !list) return;
+
+    if (receivedRideResponses.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    if (badge) badge.textContent = receivedRideResponses.length + (receivedRideResponses.length === 1 ? ' response' : ' responses');
+
+    var statusLabels = {
+      'watching': '👀 Watching your live ride',
+      'called': '📞 Called you',
+      'on_my_way': '🏃 On the way to you',
+      'safe_with_me': '✅ Safe with me / Reached',
+      'alerted_police': '🚓 Alerted police',
+      'cannot_reach': '⚠️ Cannot reach'
+    };
+
+    var html = '';
+    for (var i = 0; i < receivedRideResponses.length; i++) {
+      var r = receivedRideResponses[i];
+      var label = statusLabels[r.status] || r.status;
+      var timeStr = new Date(r.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:#DCFCE7;color:#15803D;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px;">' +
+            escapeHtml((r.name.charAt(0) || 'C').toUpperCase()) +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:12px;font-weight:700;color:#1F2937;">' + escapeHtml(r.name) + '</div>' +
+            '<div style="font-size:11px;font-weight:600;color:#047857;">' + escapeHtml(label) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;color:#6B7280;">' + timeStr + '</span>' +
+      '</div>';
+    }
+    list.innerHTML = html;
+  }
+
+  try {
+    if (window.BroadcastChannel) {
+      var rideBc = new BroadcastChannel('safeher_cross_tab');
+      rideBc.onmessage = function(ev) {
+        if (ev && ev.data && ev.data.status) {
+          addRideResponseItem(ev.data);
+        }
+      };
+    }
+  } catch(e) {}
+
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'safeher_response_update' && e.newValue) {
+      try {
+        var parsed = JSON.parse(e.newValue);
+        if (parsed && parsed.status) {
+          addRideResponseItem(parsed);
+        }
+      } catch(err) {}
+    }
+  });
+
   function startMonitoring() {
 
     if (monitorInterval) clearInterval(monitorInterval);
@@ -1612,9 +1776,12 @@ SafeHer.ride = (function() {
 
     if (!activeRide || activeRide.status !== 'active') return;
 
-
-
     var now = Date.now();
+
+    if (now - lastRideResponsesPollTime > 3000) {
+      lastRideResponsesPollTime = now;
+      checkRideResponses();
+    }
 
     var diffMs = activeRide.expectedArrival - now;
 

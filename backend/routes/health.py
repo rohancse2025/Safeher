@@ -9,7 +9,7 @@ from db import get_db
 
 health_bp = Blueprint('health', __name__)
 
-BUILD_VERSION = "v85"
+BUILD_VERSION = "v86"
 BUILD_TIMESTAMP = datetime.datetime.now().isoformat()
 
 

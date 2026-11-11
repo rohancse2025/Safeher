@@ -502,6 +502,7 @@ def update_escort_position(escort_id):
     user = getattr(g, 'current_user', None) or get_user_from_request()
     user_id = user['id'] if user else 10000
     user_name = user['name'] if user else 'SafeHer User'
+    responses = []
     data = request.get_json(silent=True) or {}
 
     lat = data.get('lat')
@@ -636,6 +637,31 @@ def update_escort_position(escort_id):
             ''', (escort_id,))
             contacts_to_notify = [dict(c) for c in cursor.fetchall()]
 
+        # Query contact responses for this escort journey
+        try:
+            cursor.execute('''
+                SELECT detail_json, ts FROM incident_events
+                WHERE (escort_id = ? OR (user_id = ? AND type = 'contact_responded'))
+                AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+                ORDER BY id DESC LIMIT 10;
+            ''', (escort_id, user_id))
+            ev_rows = cursor.fetchall()
+            import json as py_json
+            for ev in ev_rows:
+                try:
+                    raw_det = ev['detail_json']
+                    det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+                    if isinstance(det, dict) and det.get('status'):
+                        responses.append({
+                            "name": det.get('contact') or 'Contact',
+                            "status": det.get('status'),
+                            "time": ev['ts']
+                        })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         conn.commit()
     finally:
         conn.close()
@@ -680,7 +706,8 @@ def update_escort_position(escort_id):
             "off_route": bool(off_route_since),
             "stationary": bool(stationary_since),
             "arrived": arrived,
-            "status": current_status
+            "status": current_status,
+            "contact_responses": responses
         }
     }), 200
 
@@ -1324,12 +1351,50 @@ def get_active_escort():
             ORDER BY id DESC LIMIT 1;
         ''')
     row = cursor.fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         return jsonify({"ok": True, "data": None}), 200
 
-    return jsonify({"ok": True, "data": dict(row)}), 200
+    res_data = dict(row)
+
+    # Fetch escort contact tokens so frontend activeEscort has tokens
+    cursor.execute("SELECT contact_id, token FROM escort_contacts WHERE escort_id = ?;", (row['id'],))
+    c_toks = cursor.fetchall()
+    tokens_map = {str(c['contact_id']): c['token'] for c in c_toks}
+    res_data['tokens'] = tokens_map
+    if tokens_map:
+        res_data['token'] = list(tokens_map.values())[0]
+
+    # Fetch contact responses for this escort journey
+    esc_owner_id = user_id if user_id else (row['user_id'] if 'user_id' in row.keys() else 1)
+    cursor.execute('''
+        SELECT detail_json, ts FROM incident_events
+        WHERE (escort_id = ? OR (user_id = ? AND type = 'contact_responded'))
+        AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+        ORDER BY id DESC LIMIT 10;
+    ''', (row['id'], esc_owner_id))
+    ev_rows = cursor.fetchall()
+    responses = []
+    import json as py_json
+    for ev in ev_rows:
+        try:
+            raw_det = ev['detail_json']
+            det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+            if isinstance(det, dict) and det.get('status'):
+                responses.append({
+                    "name": det.get('contact') or 'Contact',
+                    "status": det.get('status'),
+                    "time": ev['ts']
+                })
+        except Exception:
+            pass
+
+    res_data['contact_responses'] = responses
+
+    conn.close()
+
+    return jsonify({"ok": True, "data": res_data}), 200
 
 
 @escorts_bp.route('/api/escorts/<int:escort_id>', methods=['GET'])

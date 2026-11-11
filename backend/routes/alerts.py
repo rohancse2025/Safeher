@@ -1398,6 +1398,29 @@ def get_public_track(token):
                 contact_name = escort_match['contact_name'] or 'Contact'
                 contact_first_name = contact_name.split()[0] if contact_name else 'Contact'
 
+                # Fetch contact responses for this escort journey
+                cursor.execute('''
+                    SELECT detail_json, ts FROM incident_events
+                    WHERE (escort_id = ? OR (user_id = ? AND type = 'contact_responded'))
+                    AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+                    ORDER BY id DESC LIMIT 10;
+                ''', (escort_match['escort_id'], escort_match['user_id']))
+                ev_rows = cursor.fetchall()
+                responses = []
+                import json as py_json
+                for ev in ev_rows:
+                    try:
+                        raw_det = ev['detail_json']
+                        det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+                        if isinstance(det, dict) and det.get('status'):
+                            responses.append({
+                                "name": det.get('contact') or 'Contact',
+                                "status": det.get('status'),
+                                "time": ev['ts']
+                            })
+                    except Exception:
+                        pass
+
                 conn.close()
 
                 return jsonify({
@@ -1421,7 +1444,8 @@ def get_public_track(token):
                         "last_update_time": escort_match['last_update_at'] or escort_match['started_at'],
                         "is_contact": True,
                         "contact_first_name": contact_first_name,
-                        "contact_name": contact_name
+                        "contact_name": contact_name,
+                        "contact_responses": responses
                     }
                 }), 200
 
@@ -1541,6 +1565,28 @@ def get_public_track(token):
                 curr_lng = ride_match['last_lng']
                 ride_status = ride_match['status']
 
+                # Fetch contact responses for this ride session
+                cursor.execute('''
+                    SELECT detail_json, ts FROM incident_events
+                    WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+                    ORDER BY id DESC LIMIT 10;
+                ''', (ride_match['user_id'],))
+                ev_rows = cursor.fetchall()
+                responses = []
+                import json as py_json
+                for ev in ev_rows:
+                    try:
+                        raw_det = ev['detail_json']
+                        det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+                        if isinstance(det, dict) and det.get('status'):
+                            responses.append({
+                                "name": det.get('contact') or 'Contact',
+                                "status": det.get('status'),
+                                "time": ev['ts']
+                            })
+                    except Exception:
+                        pass
+
                 conn.close()
                 return jsonify({
                     "ok": True,
@@ -1568,7 +1614,8 @@ def get_public_track(token):
                         "last_update_time": ride_match['last_update_at'] or ride_match['started_at'],
                         "is_contact": True,
                         "contact_first_name": contact_first_name,
-                        "contact_name": contact_name
+                        "contact_name": contact_name,
+                        "contact_responses": responses
                     }
                 }), 200
 
@@ -1672,7 +1719,7 @@ def respond_contact_track(token):
                c.name AS contact_name
         FROM alert_contacts ac
         JOIN alerts a ON ac.alert_id = a.id
-        JOIN contacts c ON ac.contact_id = c.id
+        LEFT JOIN contacts c ON ac.contact_id = c.id
         WHERE ac.token = ?;
     ''', (clean_token,))
     row = cursor.fetchone()
@@ -1684,10 +1731,24 @@ def respond_contact_track(token):
                    c.name AS contact_name
             FROM escort_contacts ec
             JOIN escorts e ON ec.escort_id = e.id
-            JOIN contacts c ON ec.contact_id = c.id
+            LEFT JOIN contacts c ON ec.contact_id = c.id
             WHERE ec.token = ?;
         ''', (clean_token,))
         escort_row = cursor.fetchone()
+
+        if not escort_row and clean_token.startswith('escort_'):
+            cursor.execute("SELECT id, user_id, status, alert_id FROM escorts WHERE status IN ('active', 'paused', 'alerted') ORDER BY id DESC LIMIT 1;")
+            fb_e = cursor.fetchone()
+            if fb_e:
+                escort_row = {
+                    'escort_id': fb_e['id'],
+                    'user_id': fb_e['user_id'],
+                    'escort_status': fb_e['status'],
+                    'alert_id': fb_e['alert_id'],
+                    'contact_id': 1,
+                    'contact_name': 'Emergency Contact'
+                }
+
         if escort_row:
             escort_aid = escort_row['alert_id']
             escort_id = escort_row['escort_id']

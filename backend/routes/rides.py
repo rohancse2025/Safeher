@@ -363,6 +363,29 @@ def update_ride_position(ride_id):
         WHERE id = ?;
     ''', (lat, lng, real_ride_id))
     conn.commit()
+
+    # Query contact responses for this ride session
+    cursor.execute('''
+        SELECT detail_json, ts FROM incident_events
+        WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+        ORDER BY id DESC LIMIT 10;
+    ''', (row['user_id'],))
+    ev_rows = cursor.fetchall()
+    responses = []
+    import json as py_json
+    for ev in ev_rows:
+        try:
+            raw_det = ev['detail_json']
+            det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+            if isinstance(det, dict) and det.get('status'):
+                responses.append({
+                    "name": det.get('contact') or 'Contact',
+                    "status": det.get('status'),
+                    "time": ev['ts']
+                })
+        except Exception:
+            pass
+
     conn.close()
 
     return jsonify({
@@ -370,7 +393,8 @@ def update_ride_position(ride_id):
         "data": {
             "ride_id": real_ride_id,
             "lat": lat,
-            "lng": lng
+            "lng": lng,
+            "contact_responses": responses
         }
     }), 200
 
@@ -499,13 +523,39 @@ def get_active_ride():
         SELECT contact_id, token FROM ride_contacts WHERE ride_id = ?;
     ''', (row['id'],))
     c_rows = cursor.fetchall()
+
+    # Query contact responses for this ride session
+    cursor.execute('''
+        SELECT detail_json, ts FROM incident_events
+        WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
+        ORDER BY id DESC LIMIT 10;
+    ''', (user['id'],))
+    ev_rows = cursor.fetchall()
+    responses = []
+    import json as py_json
+    for ev in ev_rows:
+        try:
+            raw_det = ev['detail_json']
+            det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
+            if isinstance(det, dict) and det.get('status'):
+                responses.append({
+                    "name": det.get('contact') or 'Contact',
+                    "status": det.get('status'),
+                    "time": ev['ts']
+                })
+        except Exception:
+            pass
+
     conn.close()
 
     frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
-    tokens = [{"contact_id": r['contact_id'], "track_url": f"{frontend_url}/track.html?t={r['token']}"} for r in c_rows]
+    tokens = [{"contact_id": r['contact_id'], "track_url": f"{frontend_url}/track.html?t={r['token']}", "token": r['token']} for r in c_rows]
 
     ride_dict = dict(row)
     ride_dict['tokens'] = tokens
+    if tokens:
+        ride_dict['share_token'] = tokens[0]['token']
+    ride_dict['contact_responses'] = responses
 
     return jsonify({
         "ok": True,

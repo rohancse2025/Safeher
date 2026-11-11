@@ -401,8 +401,17 @@ window.addEventListener('error', function(e) {
     if (SafeHer.sos.showSilentOverlay) SafeHer.sos.showSilentOverlay();
     return;
   }
-  // Only surface for serious script runtime exceptions, not harmless asset load issues
+  // Only surface for serious script runtime exceptions, not harmless asset load issues or extensions
   if (e && e.error) {
+    var msg = (e.message || (e.error && e.error.message) || '').toLowerCase();
+    var fn = (e.filename || '').toLowerCase();
+    // Ignore cross-origin script errors, browser extensions, or harmless media/network errors
+    if (msg.indexOf('script error') !== -1 || fn.indexOf('extension') !== -1 || fn.indexOf('chrome-extension') !== -1 || fn.indexOf('moz-extension') !== -1) {
+      return;
+    }
+    if (msg.indexOf('audio') !== -1 || msg.indexOf('play()') !== -1 || msg.indexOf('tile') !== -1 || msg.indexOf('fetch') !== -1) {
+      return;
+    }
     showGlobalErrorNotice();
   }
 });
