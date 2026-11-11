@@ -141,13 +141,16 @@
     try {
       var mime = getBestAudioMime() || 'audio/webm';
       var ext = mime.indexOf('mp4') !== -1 ? '.mp4' : '.webm';
+      // Combine ALL accumulated chunks into ONE complete growing Blob
+      // (WebM/Opus format supports this — incremental chunks from start(timeslice) produce a valid growing file)
       var masterBlob = new Blob(fullSessionChunks, { type: mime });
-      if (masterBlob.size < 50) return;
+      if (masterBlob.size < 100) return;
 
       var apiBase = getApiBase();
       var formData = new FormData();
       formData.append('audio', masterBlob, 'full_session' + ext);
-      formData.append('duration_ms', fullSessionChunks.length * 3000);
+      formData.append('mime_type', mime);
+      formData.append('duration_ms', String(Math.round(masterBlob.size / 4000))); // rough estimate
 
       var tok = currentShareToken || (typeof currentAlertId === 'string' && (currentAlertId.indexOf('share_') === 0 || currentAlertId.indexOf('ride_') === 0 || currentAlertId.indexOf('escort_') === 0) ? currentAlertId : null);
       if (tok) {
@@ -326,6 +329,8 @@
         setupAudioAnalysis(currentStream);
 
         // Start continuous session recorder for full evidence download
+        // Uses timeslice=1000ms so data accumulates in 1s increments
+        // Every sync, we send ALL chunks as one growing Blob = valid complete audio file
         try {
           fullSessionChunks = [];
           var cMime = getBestAudioMime();
@@ -337,18 +342,24 @@
               fullSessionChunks.push(e.data);
             }
           };
-          continuousRecorder.start(3000);
+          continuousRecorder.onstop = function() {
+            // Final sync when recording ends
+            if (fullSessionChunks.length > 0) {
+              syncFullSessionBlob();
+            }
+          };
+          continuousRecorder.start(1000); // 1-second timeslice for smooth accumulation
         } catch (cErr) {
           console.warn('[Sentinel] Continuous recorder setup note:', cErr);
         }
 
-        // Periodic sync of full session recording every 12 seconds
+        // Sync full session to backend every 5 seconds (not 12) for timely evidence updates
         if (fullSessionSyncTimer) clearInterval(fullSessionSyncTimer);
         fullSessionSyncTimer = setInterval(function() {
           if (isStreaming && fullSessionChunks.length > 0) {
             syncFullSessionBlob();
           }
-        }, 12000);
+        }, 5000);
 
         recordNextChunk();
 
@@ -393,8 +404,14 @@
       currentRecorder = null;
 
       if (continuousRecorder && continuousRecorder.state !== 'inactive') {
-        try { continuousRecorder.stop(); } catch (e) {}
-        setTimeout(syncFullSessionBlob, 300);
+        // stop() will fire onstop → syncFullSessionBlob() automatically
+        try { continuousRecorder.stop(); } catch (e) {
+          // If stop fails, do a manual sync
+          if (fullSessionChunks.length > 0) syncFullSessionBlob();
+        }
+      } else if (fullSessionChunks.length > 0) {
+        // Already stopped but chunks available — sync now
+        syncFullSessionBlob();
       }
       continuousRecorder = null;
 
