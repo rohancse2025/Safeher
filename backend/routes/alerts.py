@@ -1360,22 +1360,38 @@ def get_public_track(token):
                 else:
                     status_label = "On route"
 
-                route_dist = float(escort_match['route_distance_m'] or 0)
-                curr_lat = escort_match['last_lat'] if escort_match['last_lat'] is not None else escort_match['dest_lat']
-                curr_lng = escort_match['last_lng'] if escort_match['last_lng'] is not None else escort_match['dest_lng']
-
-                if status_label == "Arrived":
-                    progress_percent = 100.0
-                elif route_dist > 0 and curr_lat is not None and curr_lng is not None:
-                    rem_dist = haversine_m(curr_lat, curr_lng, escort_match['dest_lat'], escort_match['dest_lng'])
-                    progress_percent = max(0.0, min(100.0, round((1.0 - rem_dist / route_dist) * 100, 1)))
-                else:
-                    progress_percent = 0.0
-
                 try:
                     route_points = json.loads(escort_match['route_json']) if escort_match['route_json'] else []
                 except Exception:
                     route_points = []
+
+                route_dist = float(escort_match['route_distance_m'] or 0)
+                curr_lat = escort_match['last_lat'] if escort_match['last_lat'] is not None else escort_match['dest_lat']
+                curr_lng = escort_match['last_lng'] if escort_match['last_lng'] is not None else escort_match['dest_lng']
+                dest_lat = escort_match['dest_lat']
+                dest_lng = escort_match['dest_lng']
+
+                if status_label == "Arrived":
+                    progress_percent = 100.0
+                elif curr_lat is not None and curr_lng is not None and dest_lat is not None and dest_lng is not None:
+                    rem_dist = haversine_m(curr_lat, curr_lng, dest_lat, dest_lng)
+                    if rem_dist <= 30.0:
+                        progress_percent = 100.0
+                    elif route_points and len(route_points) > 0:
+                        start_lat, start_lng = route_points[0][0], route_points[0][1]
+                        dist_from_start = haversine_m(curr_lat, curr_lng, start_lat, start_lng)
+                        start_dist = haversine_m(start_lat, start_lng, dest_lat, dest_lng)
+                        if dist_from_start < 40.0:
+                            progress_percent = 0.0
+                        elif start_dist > 40.0:
+                            walked = max(0.0, start_dist - rem_dist)
+                            progress_percent = max(0.0, min(100.0, round((walked / start_dist) * 100, 1)))
+                        else:
+                            progress_percent = 0.0
+                    else:
+                        progress_percent = 0.0
+                else:
+                    progress_percent = 0.0
 
                 owner_name = escort_match['owner_name'] or 'User'
                 first_name = owner_name.split()[0] if owner_name else 'User'

@@ -2722,51 +2722,48 @@ SafeHer.escort = (function() {
 
 
   function updateProgressDisplay(userLat, userLng) {
-
     if (!activeEscort || !currentDest || currentDest.lat === undefined) return;
 
-    var remDist = haversineDistM(userLat, userLng, currentDest.lat, currentDest.lng);
+    var destLat = currentDest.lat;
+    var destLng = currentDest.lng;
+    var remDist = haversineDistM(userLat, userLng, destLat, destLng);
 
-    var totalDist = activeEscort.route_distance_m || 1000;
-
-
-
-    if (!activeEscort._startDist) {
-
-      activeEscort._startDist = Math.max(remDist, totalDist);
-
+    // Initial starting straight-line distance from user's origin to destination
+    if (!activeEscort.start_lat || !activeEscort.start_lng) {
+      if (currentRoutePoints && currentRoutePoints.length > 0) {
+        activeEscort.start_lat = currentRoutePoints[0][0];
+        activeEscort.start_lng = currentRoutePoints[0][1];
+      } else if (userOrigin) {
+        activeEscort.start_lat = userOrigin.lat;
+        activeEscort.start_lng = userOrigin.lng;
+      } else {
+        activeEscort.start_lat = userLat;
+        activeEscort.start_lng = userLng;
+      }
     }
 
-    var walked = Math.max(0, activeEscort._startDist - remDist);
+    if (!activeEscort._startDist || activeEscort._startDist <= 0) {
+      activeEscort._startDist = haversineDistM(activeEscort.start_lat, activeEscort.start_lng, destLat, destLng);
+      saveActiveEscortToStorage();
+    }
+
+    var distFromStart = haversineDistM(userLat, userLng, activeEscort.start_lat, activeEscort.start_lng);
 
     var pct = 0;
-
     if (activeEscort.status === 'arrived' || remDist <= 30) {
-
       pct = 100;
-
-    } else if (walked < 50) {
-
-      // Prevent false starting percentage due to GPS settling
-
+    } else if (distFromStart < 40) {
+      // User is still at origin / hasn't walked 40m yet: strictly 0%
       pct = 0;
-
-    } else if (activeEscort._startDist > 50) {
-
+    } else if (activeEscort._startDist > 40) {
+      var walked = Math.max(0, activeEscort._startDist - remDist);
       pct = Math.max(0, Math.min(100, Math.round((walked / activeEscort._startDist) * 100)));
-
     }
 
-
-
     var textEl = document.getElementById('escort-active-progress-text');
-
     var barEl = document.getElementById('escort-active-progress-bar');
-
     if (textEl) textEl.textContent = pct + '%';
-
     if (barEl) barEl.style.width = pct + '%';
-
   }
 
 
