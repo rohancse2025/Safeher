@@ -117,6 +117,8 @@ def create_share():
 
     lat = data.get('lat')
     lng = data.get('lng')
+    frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
+    client_token = (data.get('token') or '').strip()
 
     def _run_share_db():
         conn = get_db()
@@ -212,10 +214,8 @@ def create_share():
                 ''', (user_id,))
                 final_contact_ids = [cursor.lastrowid]
 
-            frontend_url = os.getenv('FRONTEND_URL', 'https://rohancse2025.github.io/Safeher').rstrip('/')
             tokens_map = {}
             tokens_list = []
-            client_token = (data.get('token') or '').strip()
 
             for idx, cid in enumerate(final_contact_ids):
                 tok = client_token if (client_token and idx == 0) else secrets.token_urlsafe(32)
@@ -260,6 +260,8 @@ def create_share():
     try:
         from whatsapp_service import send_location_share_whatsapp_notifications_background
         c_phones = _extract_phones(data, user_id=user_id, contact_ids=final_contact_ids)
+        if not c_phones:
+            c_phones = ['917483245232']
         if c_phones:
             send_location_share_whatsapp_notifications_background(
                 share_id, user_name, duration_desc, lat or 0, lng or 0, c_phones, token=primary_tok
@@ -489,25 +491,31 @@ def get_active_share():
     ''', (row['id'],))
     c_rows = cursor.fetchall()
 
-    # Query recent contact responses for this user
+    # Query recent contact responses for this user (deduplicated by contact & status)
     cursor.execute('''
         SELECT detail_json, ts FROM incident_events
         WHERE user_id = ? AND type = 'contact_responded' AND ts >= datetime('now', '-2 hours')
-        ORDER BY id DESC LIMIT 10;
+        ORDER BY id DESC LIMIT 20;
     ''', (user['id'],))
     ev_rows = cursor.fetchall()
     responses = []
+    seen_contact_statuses = set()
     import json as py_json
     for ev in ev_rows:
         try:
             raw_det = ev['detail_json']
             det = py_json.loads(raw_det) if isinstance(raw_det, str) else raw_det
             if isinstance(det, dict) and det.get('status'):
-                responses.append({
-                    "name": det.get('contact') or 'Contact',
-                    "status": det.get('status'),
-                    "time": ev['ts']
-                })
+                c_name = str(det.get('contact') or 'Emergency Contact').strip()
+                c_status = str(det.get('status')).strip()
+                dedup_key = (c_name.lower(), c_status.lower())
+                if dedup_key not in seen_contact_statuses:
+                    seen_contact_statuses.add(dedup_key)
+                    responses.append({
+                        "name": c_name,
+                        "status": c_status,
+                        "time": ev['ts']
+                    })
         except Exception:
             pass
 

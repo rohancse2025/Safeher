@@ -1851,14 +1851,21 @@ def respond_contact_track(token):
                 if fb_share:
                     owner_user_id = fb_share['user_id']
                     first_name = 'Contact'
-                    log_event(
-                        user_id=owner_user_id,
-                        type='contact_responded',
-                        actor='contact',
-                        detail={'contact': first_name, 'status': status, 'share_id': fb_share['id']},
-                        cursor=cursor
-                    )
-                    conn.commit()
+                    cursor.execute('''
+                        SELECT id FROM incident_events
+                        WHERE user_id = ? AND type = 'contact_responded'
+                          AND ts >= datetime('now', '-30 seconds')
+                          AND detail_json LIKE ?;
+                    ''', (owner_user_id, f'%{status}%'))
+                    if not cursor.fetchone():
+                        log_event(
+                            user_id=owner_user_id,
+                            type='contact_responded',
+                            actor='contact',
+                            detail={'contact': first_name, 'status': status, 'share_id': fb_share['id']},
+                            cursor=cursor
+                        )
+                        conn.commit()
                     conn.close()
                     return jsonify({
                         "ok": True,
@@ -1873,14 +1880,21 @@ def respond_contact_track(token):
                 owner_user_id = sc_row['user_id']
                 contact_name_val = (sc_row['contact_name'] or 'Contact').strip()
                 first_name = contact_name_val.split()[0] if contact_name_val else 'Contact'
-                log_event(
-                    user_id=owner_user_id,
-                    type='contact_responded',
-                    actor='contact',
-                    detail={'contact': first_name, 'status': status, 'share_id': sc_row['share_id']},
-                    cursor=cursor
-                )
-                conn.commit()
+                cursor.execute('''
+                    SELECT id FROM incident_events
+                    WHERE user_id = ? AND type = 'contact_responded'
+                      AND ts >= datetime('now', '-30 seconds')
+                      AND detail_json LIKE ?;
+                ''', (owner_user_id, f'%{status}%'))
+                if not cursor.fetchone():
+                    log_event(
+                        user_id=owner_user_id,
+                        type='contact_responded',
+                        actor='contact',
+                        detail={'contact': first_name, 'status': status, 'share_id': sc_row['share_id']},
+                        cursor=cursor
+                    )
+                    conn.commit()
                 conn.close()
                 return jsonify({
                     "ok": True,

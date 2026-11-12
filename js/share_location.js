@@ -283,6 +283,9 @@ SafeHer.shareLocation = (function() {
 
     var targetPhone = '';
     var contacts = (SafeHer.api && SafeHer.api.getContacts) ? SafeHer.api.getContacts() : [];
+    if ((!contacts || contacts.length === 0) && SafeHer.storage && SafeHer.storage.get) {
+      contacts = SafeHer.storage.get('contacts') || [];
+    }
     if (session && session.contactIds && session.contactIds.length > 0) {
       for (var i = 0; i < contacts.length; i++) {
         if (session.contactIds.indexOf(contacts[i].id) !== -1 && contacts[i].phone) {
@@ -299,6 +302,10 @@ SafeHer.shareLocation = (function() {
     var waUrl = targetPhone
       ? ('https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(message))
       : ('https://api.whatsapp.com/send?text=' + encodeURIComponent(message));
+
+    if (SafeHer.toast) {
+      SafeHer.toast('Opening WhatsApp...');
+    }
 
     try {
       window.location.href = waUrl;
@@ -402,6 +409,19 @@ SafeHer.shareLocation = (function() {
 
   // ─── Contact Responses Tracking ────────────────────────────
   var receivedResponses = [];
+  var seenResponseKeys = {};
+  var isInitialResponsePoll = true;
+
+  function parseResponseTime(t) {
+    if (!t) return Date.now();
+    if (typeof t === 'number') return t;
+    if (typeof t === 'string') {
+      var normalized = t.indexOf('T') === -1 ? t.replace(/-/g, '/') : t;
+      var parsed = new Date(normalized).getTime();
+      return isNaN(parsed) ? Date.now() : parsed;
+    }
+    return Date.now();
+  }
 
   function checkContactResponses() {
     var session = getActiveSession();
@@ -411,8 +431,8 @@ SafeHer.shareLocation = (function() {
       var raw = localStorage.getItem('safeher_response_update');
       if (raw) {
         var parsed = JSON.parse(raw);
-        if (parsed && parsed.status && (Date.now() - parsed.time < 3600000)) {
-          addResponseItem(parsed);
+        if (parsed && parsed.status && (Date.now() - (parsed.time || 0) < 3600000)) {
+          addResponseItem(parsed, false);
         }
       }
     } catch(e) {}
@@ -427,55 +447,61 @@ SafeHer.shareLocation = (function() {
         .then(function(res) { return res.json(); })
         .then(function(json) {
           if (json && json.ok && json.data && json.data.contact_responses) {
-            json.data.contact_responses.forEach(function(r) {
-              addResponseItem(r);
-            });
+            var items = json.data.contact_responses;
+            for (var i = 0; i < items.length; i++) {
+              addResponseItem(items[i], isInitialResponsePoll);
+            }
+            isInitialResponsePoll = false;
           }
         })
         .catch(function() {});
-
-      if (session.shareToken) {
-        fetch(apiBase + '/api/track/' + encodeURIComponent(session.shareToken))
-          .then(function(res) { return res.json(); })
-          .then(function(json) {
-            if (json && json.ok && json.data && json.data.contact_responses) {
-              json.data.contact_responses.forEach(function(r) {
-                addResponseItem(r);
-              });
-            }
-          })
-          .catch(function() {});
-      }
     }
   }
 
-  function addResponseItem(resp) {
-    var exists = false;
-    var respTime = resp.time || resp.timestamp || Date.now();
+  function addResponseItem(resp, suppressToast) {
+    if (!resp || !resp.status) return;
+
+    var rName = (resp.name || resp.contact || 'Emergency Contact').trim();
+    var rStatus = String(resp.status).trim().toLowerCase();
+    var epochTime = parseResponseTime(resp.time || resp.timestamp);
+    var dedupKey = rName.toLowerCase() + '_' + rStatus;
+
+    if (seenResponseKeys[dedupKey]) {
+      return; // Already recorded, never duplicate rows or toasts
+    }
+    seenResponseKeys[dedupKey] = true;
+
+    // Check if this contact already has this status in receivedResponses
     for (var i = 0; i < receivedResponses.length; i++) {
-      if (receivedResponses[i].status === resp.status && Math.abs(receivedResponses[i].time - respTime) < 5000) {
-        exists = true;
-        break;
+      if (receivedResponses[i].name.toLowerCase() === rName.toLowerCase() && receivedResponses[i].status === rStatus) {
+        return;
       }
     }
-    if (!exists) {
-      receivedResponses.unshift({
-        name: resp.name || resp.contact || 'Emergency Contact',
-        status: resp.status,
-        time: respTime
-      });
-      renderContactResponses();
 
+    receivedResponses.unshift({
+      name: rName,
+      status: rStatus,
+      time: epochTime
+    });
+
+    if (receivedResponses.length > 8) {
+      receivedResponses = receivedResponses.slice(0, 8);
+    }
+
+    renderContactResponses();
+
+    if (!suppressToast) {
       var statusLabels = {
         'watching': '👀 Watching your live trip',
         'called': '📞 Called you',
         'on_my_way': '🏃 On the way to you',
         'safe_with_me': '✅ Safe with me / Reached',
-        'alerted_police': '🚓 Alerted police'
+        'alerted_police': '🚓 Alerted police',
+        'cannot_reach': '⚠️ Cannot reach'
       };
-      var sText = statusLabels[resp.status] || resp.status;
+      var sText = statusLabels[rStatus] || rStatus;
       if (SafeHer.toast) {
-        SafeHer.toast('🔔 ' + (resp.name || 'Contact') + ': ' + sText);
+        SafeHer.toast('🔔 ' + rName + ': ' + sText);
       }
       if (navigator.vibrate) {
         navigator.vibrate([150, 100, 150]);
@@ -601,6 +627,10 @@ SafeHer.shareLocation = (function() {
       isOffline: !navigator.onLine
     };
 
+    receivedResponses = [];
+    seenResponseKeys = {};
+    isInitialResponsePoll = true;
+
     saveActiveSession(session);
 
     // Save fallback tracking session in localStorage
@@ -703,9 +733,8 @@ SafeHer.shareLocation = (function() {
           }
           session.isOffline = true;
           saveActiveSession(session);
-          // Fallback to opening WhatsApp directly with the tracking link
-          SafeHer.toast('Opening WhatsApp to share live tracking link directly with contacts...');
-          shareViaWhatsApp();
+          // Inform user to tap the green button on screen
+          SafeHer.toast('Tracking active! Tap "Send via WhatsApp" below to message contacts directly.');
           return;
         }
 
@@ -776,6 +805,8 @@ SafeHer.shareLocation = (function() {
     renderSetupView();
 
     receivedResponses = [];
+    seenResponseKeys = {};
+    isInitialResponsePoll = true;
     var respCard = document.getElementById('share-contact-responses-card');
     if (respCard) respCard.style.display = 'none';
 
