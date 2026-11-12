@@ -1691,6 +1691,26 @@ def get_alert_volunteer_status(alert_id):
 
     volunteers_coming = len(responders)
 
+    # Count approved+available volunteers dispatched near this alert (shown immediately on SOS screen)
+    dispatched_to = volunteers_coming  # at minimum, those who responded
+    try:
+        a_lat_d = alert['lat'] if alert['lat'] is not None else None
+        a_lng_d = alert['lng'] if alert['lng'] is not None else None
+        if a_lat_d is not None and a_lng_d is not None:
+            cursor.execute("SELECT lat, lng FROM volunteers WHERE available = 1 AND status = 'approved' AND lat IS NOT NULL AND lng IS NOT NULL;")
+            vol_rows_d = cursor.fetchall()
+            cnt_d = 0
+            for vr in vol_rows_d:
+                if haversine_km(a_lat_d, a_lng_d, vr['lat'], vr['lng']) <= 50.0:
+                    cnt_d += 1
+            dispatched_to = max(dispatched_to, cnt_d)
+        else:
+            cursor.execute("SELECT COUNT(*) AS cnt FROM volunteers WHERE available = 1 AND status = 'approved';")
+            dr = cursor.fetchone()
+            dispatched_to = max(dispatched_to, dr['cnt'] if dr else 0)
+    except Exception:
+        pass
+
 
 
     # Fetch contact responses (name, status, time)
@@ -1744,6 +1764,8 @@ def get_alert_volunteer_status(alert_id):
             "status": alert['status'],
 
             "volunteers_coming": volunteers_coming,
+
+            "dispatched_to": dispatched_to,
 
             "contact_responses": contact_responses,
 

@@ -1359,19 +1359,21 @@ SafeHer.sos = (function() {
       SafeHer.api.getAlertVolunteerStatus(alertId, function(err, data) {
         if (err || !data) return;
         var coming = data.volunteers_coming !== undefined ? data.volunteers_coming : 0;
+        var dispatched = data.dispatched_to !== undefined ? data.dispatched_to : 0;
         var contactResponses = data.contact_responses || [];
         var responders = data.responders || [];
         currentAlertResponders = responders;
         var act = SafeHer.api.getActiveSos ? SafeHer.api.getActiveSos() : null;
         if (act) {
           act.volunteersEnRoute = coming;
+          act.dispatchedTo = dispatched;
           act.volunteerStatus = coming > 0 ? (coming + ' volunteer' + (coming > 1 ? 's are' : ' is') + ' on the way') : 'Waiting for volunteers...';
           act.contactResponses = contactResponses;
           act.responders = responders;
           SafeHer.api.setActiveSos(act);
         }
         updateVolunteerStatusDisplay();
-        renderResponders(responders);
+        renderResponders(responders, dispatched);
         renderContactsResponding(contactResponses);
         if (contactResponses.length > prevContactResponseCount) {
           if (contactResponses.length > 0) {
@@ -1856,7 +1858,7 @@ SafeHer.sos = (function() {
   }
 
   // ─── Responders List on Victim's Screen ───────────────────────
-  function renderResponders(responders) {
+  function renderResponders(responders, dispatchedTo) {
     var listEl = document.getElementById('sos-responders-list');
     var countEl = document.getElementById('sos-responders-count');
     var emListEl = document.getElementById('em-responders-list');
@@ -1868,23 +1870,26 @@ SafeHer.sos = (function() {
       var startTime = (act && (act.createdAt || act.timestamp)) ? new Date(act.createdAt || act.timestamp).getTime() : Date.now();
       var elapsedSec = Math.floor((Date.now() - startTime) / 1000);
 
-      var readyVolunteersCount = 0;
-      try {
-        var rawCount = localStorage.getItem('safeher_volunteers_count');
-        if (rawCount !== null) readyVolunteersCount = parseInt(rawCount, 10) || 0;
-      } catch(e) {}
+      // Use dispatched_to from backend first, then cached count
+      var readyVolunteersCount = dispatchedTo || 0;
+      if (!readyVolunteersCount && act && act.dispatchedTo) readyVolunteersCount = act.dispatchedTo;
+      if (!readyVolunteersCount) {
+        try {
+          var rawCount = localStorage.getItem('safeher_volunteers_count');
+          if (rawCount !== null) readyVolunteersCount = parseInt(rawCount, 10) || 0;
+        } catch(e) {}
+      }
 
       var emptyHtml = '';
-      if (elapsedSec < 60) {
-        if (readyVolunteersCount > 0) {
-          emptyHtml = '<div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
-            '<span class="material-symbols-rounded" style="color: #16A34A; font-size: 22px; display: block; margin-bottom: 2px;">sensors</span>' +
-            '<strong style="font-size: 13px; color: #166534; display: block;">Alert dispatched to ' + readyVolunteersCount + ' nearby volunteer' + (readyVolunteersCount > 1 ? 's' : '') + '</strong>' +
-            '<span style="font-size: 11px; color: #15803D; display: block; margin-top: 2px;">Waiting for volunteer to accept on their phone... (' + Math.max(1, 60 - elapsedSec) + 's)</span>' +
-          '</div>';
-        } else {
-          emptyHtml = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Broadcasting emergency alert to nearby volunteers... (' + Math.max(1, 60 - elapsedSec) + 's)</p>';
-        }
+      if (readyVolunteersCount > 0) {
+        // We KNOW volunteers are dispatched — show green status regardless of elapsed time
+        emptyHtml = '<div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
+          '<span class="material-symbols-rounded" style="color: #16A34A; font-size: 22px; display: block; margin-bottom: 2px;">sensors</span>' +
+          '<strong style="font-size: 13px; color: #166534; display: block;">Alert dispatched to ' + readyVolunteersCount + ' nearby volunteer' + (readyVolunteersCount > 1 ? 's' : '') + '</strong>' +
+          '<span style="font-size: 11px; color: #15803D; display: block; margin-top: 2px;">Waiting for volunteer to accept on their phone...</span>' +
+        '</div>';
+      } else if (elapsedSec < 60) {
+        emptyHtml = '<p style="font-size: 12px; color: var(--text-gray); margin: 0; text-align: center; padding: 8px 0;">Broadcasting emergency alert to nearby volunteers... (' + Math.max(1, 60 - elapsedSec) + 's)</p>';
       } else {
         emptyHtml = '<div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 10px 12px; text-align: center;">' +
           '<span class="material-symbols-rounded" style="color: #DC2626; font-size: 24px; display: block; margin-bottom: 2px;">warning</span>' +

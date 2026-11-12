@@ -108,12 +108,16 @@ SafeHer.volunteer = (function() {
 
   function pollNearbyAlerts() {
     var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
-    if (!profile || !profile.isAvailable || profile.status === 'suspended') {
+    // Only hard-stop if explicitly suspended. For 'submitted'/'pending' states the backend
+    // handles eligibility via auto_approve, so keep polling.
+    if (profile && profile.status === 'suspended') {
       hideAlertCard();
       hideGlobalBanner();
       stopPolling();
       return;
     }
+    // If we have no profile at all, skip silently
+    if (!profile) return;
 
     if (!SafeHer.api || !SafeHer.api.getNearbyAlerts) return;
 
@@ -122,6 +126,15 @@ SafeHer.volunteer = (function() {
         var firstAlert = alerts[0];
         var id = firstAlert.alert_id || firstAlert.id;
         currentAlertId = id;
+
+        // Backend returned alerts — this means we ARE eligible. Sync local approval state.
+        if (profile && profile.status !== 'approved') {
+          profile.status = 'approved';
+          profile.isAvailable = true;
+          if (SafeHer.storage && SafeHer.storage.set) SafeHer.storage.set('volunteer_profile', profile);
+          var toggle = document.getElementById('volunteer-available-toggle');
+          if (toggle) { toggle.checked = true; toggle.disabled = false; }
+        }
 
         if (dismissedAlertId && dismissedAlertId === id) {
           hideAlertCard();
@@ -1263,9 +1276,10 @@ SafeHer.volunteer = (function() {
 
 
   function init() {
-    // If volunteer is marked available, start global real-time SOS monitoring immediately
+    // Always start polling on app load — backend filters eligibility.
+    // A registered volunteer (even pending) will get auto-approved by backend if needed.
     var prof = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
-    if (prof && prof.isAvailable && prof.status === 'approved') {
+    if (prof && prof.status !== 'suspended') {
       startPolling();
     }
 
@@ -1275,7 +1289,8 @@ SafeHer.volunteer = (function() {
 
     SafeHer.router.onShow('home', function() {
       var p = SafeHer.api ? SafeHer.api.getVolunteerProfile() : null;
-      if (p && p.isAvailable && p.status === 'approved') {
+      // Resume polling on home screen if volunteer exists and not suspended
+      if (p && p.status !== 'suspended') {
         startPolling();
       }
       updateHomeVolunteerCount();
