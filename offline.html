@@ -8,10 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
-  <link rel="stylesheet" href="./css/style.css?v=16" />
+  <link rel="stylesheet" href="./css/style.css?v=92" />
   <style>
     body {
-      background: var(--pink-light);
+      background: var(--pink-light, #FFF0F5);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -22,42 +22,141 @@
       font-family: 'Poppins', sans-serif;
     }
     .offline-card {
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-tile);
+      background: var(--white, #FFFFFF);
+      border: 1px solid var(--border, #FAD2E1);
+      border-radius: 16px;
       padding: 32px 20px;
       text-align: center;
-      max-width: 360px;
+      max-width: 380px;
       width: 100%;
       box-sizing: border-box;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
     }
     .offline-icon {
       font-size: 54px;
-      color: var(--crimson);
+      color: var(--crimson, #DC2626);
       margin-bottom: 12px;
     }
     .offline-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text-dark);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-dark, #111827);
       margin: 0 0 8px;
     }
     .offline-desc {
       font-size: 13px;
-      color: var(--text-gray);
+      color: var(--text-gray, #6B7280);
       line-height: 1.5;
-      margin: 0 0 24px;
+      margin: 0 0 20px;
+    }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn-main {
+      background: #A80F3C;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .btn-secondary {
+      background: #FFF;
+      color: #A80F3C;
+      border: 1.5px solid #A80F3C;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      box-sizing: border-box;
     }
   </style>
 </head>
 <body>
   <div class="offline-card">
     <span class="material-symbols-rounded offline-icon">wifi_off</span>
-    <h1 class="offline-title">You're Offline</h1>
-    <p class="offline-desc">SafeHer cached emergency tools are available, but an internet connection is required to load new maps and online features.</p>
-    <button class="btn btn-primary" onclick="window.location.reload()">
-      <span class="material-symbols-rounded">refresh</span>Retry
-    </button>
+    <h1 class="offline-title">Offline Mode</h1>
+    <p class="offline-desc">You can still open SafeHer to use offline emergency features like Emergency SMS, Siren, and cached contacts.</p>
+
+    <div class="btn-group">
+      <button type="button" class="btn-main" onclick="openApp()">
+        <span class="material-symbols-rounded">shield</span>Launch SafeHer App
+      </button>
+
+      <button type="button" id="retry-btn" class="btn-secondary" onclick="retryConnection()">
+        <span class="material-symbols-rounded">refresh</span>Retry Connection
+      </button>
+    </div>
+
+    <div style="margin-top: 18px; font-size: 11px;">
+      <a href="./index.html?reset=1" style="color: #6B7280; text-decoration: underline;">Reset App & Clear Cache</a>
+    </div>
   </div>
+
+  <script>
+    function openApp() {
+      window.location.href = './index.html';
+    }
+
+    function retryConnection() {
+      var btn = document.getElementById('retry-btn');
+      if (btn) btn.innerHTML = '<span class="material-symbols-rounded">sync</span>Connecting...';
+
+      // Attempt to load fresh index.html directly
+      fetch('./index.html?t=' + Date.now(), { cache: 'no-store' })
+        .then(function(res) {
+          if (res.ok) {
+            window.location.href = './index.html';
+          } else {
+            fallbackReload();
+          }
+        })
+        .catch(function() {
+          // If service worker is blocking, update registration and attempt direct load
+          fallbackReload();
+        });
+    }
+
+    function fallbackReload() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.update(); });
+        });
+      }
+      setTimeout(function() {
+        window.location.href = './index.html';
+      }, 500);
+    }
+
+    // Auto-redirect as soon as network is detected
+    window.addEventListener('online', function() {
+      window.location.href = './index.html';
+    });
+
+    // Check online status every 3 seconds
+    setInterval(function() {
+      if (navigator.onLine) {
+        window.location.href = './index.html';
+      }
+    }, 3000);
+  </script>
 </body>
 </html>

@@ -11,9 +11,13 @@ SafeHer.api = (function() {
   // ─── Configuration & State ─────────────────────────────────
 
   function getApiBase() {
-
-    return (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || 'http://localhost:5000';
-
+    var base = (window.SafeHerConfig && window.SafeHerConfig.API_BASE) || '';
+    var isLocalHost = typeof window !== 'undefined' && window.location && window.location.hostname && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    var cloudUrl = (window.SafeHerConfig && window.SafeHerConfig.CLOUD_BACKEND_URL) || 'https://safeher-dwkj.onrender.com';
+    if (!base || (!isLocalHost && (base.indexOf('localhost') !== -1 || base.indexOf('127.0.0.1') !== -1))) {
+      return cloudUrl;
+    }
+    return base;
   }
 
 
@@ -228,7 +232,10 @@ SafeHer.api = (function() {
 
     var headers = options.headers || {};
 
-    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    var method = (options.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    }
 
 
 

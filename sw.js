@@ -1,5 +1,5 @@
 // sw.js - SafeHer Service Worker with offline caching for GitHub Pages
-var CACHE_NAME = 'safeher-v91';
+var CACHE_NAME = 'safeher-v92';
 
 var ASSETS = [
   './',
@@ -33,10 +33,13 @@ var ASSETS = [
   './js/places.js',
   './js/ride.js',
   './js/volunteer.js',
+  './js/volunteer-apply.js',
   './js/timer.js',
   './js/fakecall.js',
   './js/evidence.js',
   './js/vault.js',
+  './js/escort.js',
+  './js/notifications.js',
   './js/pocket_guard.js',
   './js/live_sentinel.js',
   './assets/logo.png',
@@ -98,24 +101,63 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // Navigation requests: Network-first to always load latest index.html on mobile
+  // Navigation requests: Network-first with mobile timeout, fallback to cached index.html
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).then(function(response) {
-        if (response && response.status === 200) {
-          var copy = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(event.request, copy);
-            cache.put('./index.html', copy.clone());
-          });
-        }
-        return response;
-      }).catch(function() {
-        return caches.match(event.request).then(function(response) {
-          if (response) return response;
-          return caches.match('./index.html').then(function(indexMatch) {
-            return indexMatch || caches.match('./offline.html');
-          });
+      new Promise(function(resolve, reject) {
+        var didRespond = false;
+        var timeoutId = setTimeout(function() {
+          if (!didRespond) {
+            didRespond = true;
+            caches.match(event.request, { ignoreSearch: true }).then(function(match) {
+              if (match) return resolve(match);
+              return caches.match('./index.html', { ignoreSearch: true }).then(function(idxMatch) {
+                if (idxMatch) return resolve(idxMatch);
+                return caches.match('./', { ignoreSearch: true }).then(function(rootMatch) {
+                  if (rootMatch) return resolve(rootMatch);
+                  return caches.match('./offline.html', { ignoreSearch: true }).then(function(offMatch) {
+                    if (offMatch) return resolve(offMatch);
+                    reject(new Error('Offline fallback failed'));
+                  });
+                });
+              });
+            }).catch(reject);
+          }
+        }, 3500);
+
+        fetch(event.request).then(function(response) {
+          if (!didRespond) {
+            didRespond = true;
+            clearTimeout(timeoutId);
+            if (response && response.status === 200) {
+              var copy = response.clone();
+              caches.open(CACHE_NAME).then(function(cache) {
+                cache.put(event.request, copy);
+                cache.put('./index.html', copy.clone());
+              });
+            }
+            resolve(response);
+          }
+        }).catch(function(err) {
+          if (!didRespond) {
+            didRespond = true;
+            clearTimeout(timeoutId);
+            caches.match(event.request, { ignoreSearch: true }).then(function(response) {
+              if (response) return resolve(response);
+              return caches.match('./index.html', { ignoreSearch: true }).then(function(indexMatch) {
+                if (indexMatch) return resolve(indexMatch);
+                return caches.match('./', { ignoreSearch: true }).then(function(rootMatch) {
+                  if (rootMatch) return resolve(rootMatch);
+                  return caches.match('./offline.html', { ignoreSearch: true }).then(function(offMatch) {
+                    if (offMatch) return resolve(offMatch);
+                    reject(err);
+                  });
+                });
+              });
+            }).catch(function() {
+              reject(err);
+            });
+          }
         });
       })
     );
@@ -134,7 +176,7 @@ self.addEventListener('fetch', function(event) {
         }
         return networkResponse;
       }).catch(function() {
-        return caches.match(event.request);
+        return caches.match(event.request, { ignoreSearch: true });
       })
     );
     return;
@@ -142,7 +184,7 @@ self.addEventListener('fetch', function(event) {
 
   // Other static assets (images, icons, fonts): Cache-first with network fallback
   event.respondWith(
-    caches.match(event.request).then(function(cachedResponse) {
+    caches.match(event.request, { ignoreSearch: true }).then(function(cachedResponse) {
       if (cachedResponse) {
         return cachedResponse;
       }
@@ -156,7 +198,7 @@ self.addEventListener('fetch', function(event) {
         return networkResponse;
       }).catch(function() {
         if (event.request.destination === 'document') {
-          return caches.match('./offline.html');
+          return caches.match('./offline.html', { ignoreSearch: true });
         }
       });
     })
