@@ -125,23 +125,31 @@ SafeHer.volunteer = (function() {
 
         if (dismissedAlertId && dismissedAlertId === id) {
           hideAlertCard();
+          hideGlobalBanner();
+          hideEmergencyModal();
           return;
         }
 
         showAlertCardData(firstAlert);
         showGlobalBanner(firstAlert);
+        if (!firstAlert.responded && respondedAlertId !== id) {
+          showEmergencyModal(firstAlert);
+        } else {
+          hideEmergencyModal();
+        }
       } else {
         hideAlertCard();
         hideGlobalBanner();
+        hideEmergencyModal();
       }
     });
   }
 
-  // --- Global In-App Alert Banner for Available Volunteers ---
+  // --- Global In-App Alert Banner & Modal for Available Volunteers ---
   var lastBannerBeep = 0;
   function playAlertBeep() {
     var now = Date.now();
-    if (now - lastBannerBeep < 4000) return;
+    if (now - lastBannerBeep < 3500) return;
     lastBannerBeep = now;
     try {
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -160,12 +168,66 @@ SafeHer.volunteer = (function() {
     } catch(e) {}
   }
 
-  function showGlobalBanner(alertData) {
-    var cur = (SafeHer.router && SafeHer.router.getCurrentScreen) ? SafeHer.router.getCurrentScreen() : '';
-    if (cur === 'volunteers') {
-      hideGlobalBanner();
-      return;
+  function showEmergencyModal(alertData) {
+    var modal = document.getElementById('global-volunteer-sos-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'global-volunteer-sos-modal';
+      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99999999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+      document.body.appendChild(modal);
     }
+    var dist = formatDistanceBand(alertData.distance_km, alertData.distance_band);
+    var victimName = escapeHtml(alertData.name || 'SafeHer User');
+    var alertId = alertData.alert_id || alertData.id;
+    currentAlertId = alertId;
+
+    modal.innerHTML = '<div style="background:#FFFFFF;border-radius:18px;max-width:390px;width:100%;padding:22px 20px;text-align:center;box-shadow:0 20px 48px rgba(0,0,0,0.5);border:2.5px solid #DC2626;box-sizing:border-box;">' +
+      '<div style="width:64px;height:64px;border-radius:50%;background:#FEE2E2;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(220,38,38,0.15);">' +
+        '<span class="material-symbols-rounded" style="color:#DC2626;font-size:38px;">emergency</span>' +
+      '</div>' +
+      '<span style="display:inline-block;background:#FEE2E2;color:#991B1B;font-weight:800;font-size:11px;padding:3px 10px;border-radius:12px;letter-spacing:0.8px;margin-bottom:6px;">PRIORITY SOS BROADCAST</span>' +
+      '<h3 style="margin:4px 0 6px;font-size:19px;color:#111827;font-weight:800;">Emergency SOS Nearby!</h3>' +
+      '<p style="margin:0 0 14px;font-size:13px;color:#4B5563;line-height:1.4;">A user has activated emergency SOS and requested urgent community assistance.</p>' +
+      '<div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:10px;padding:12px;margin-bottom:18px;text-align:left;">' +
+        '<div style="font-size:13px;color:#7F1D1D;margin-bottom:4px;"><strong>Victim:</strong> ' + victimName + '</div>' +
+        '<div style="font-size:13px;color:#7F1D1D;margin-bottom:4px;"><strong>Proximity:</strong> ' + escapeHtml(dist) + '</div>' +
+        '<div style="font-size:11px;color:#991B1B;">⚡ You are one of the closest verified volunteers.</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;">' +
+        '<button type="button" onclick="SafeHer.volunteer.respondComingFromModal()" style="width:100%;padding:14px;background:#16A34A;color:#FFFFFF;border:none;border-radius:10px;font-weight:800;font-size:15px;cursor:pointer;box-shadow:0 4px 16px rgba(22,163,74,0.35);display:flex;align-items:center;justify-content:center;gap:8px;">' +
+          '<span class="material-symbols-rounded" style="font-size:22px;">directions_run</span>I AM ON MY WAY (ACCEPT)' +
+        '</button>' +
+        '<button type="button" onclick="SafeHer.volunteer.closeEmergencyModal()" style="width:100%;padding:10px;background:transparent;color:#6B7280;border:1px solid #D1D5DB;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600;">' +
+          'Cannot Help Right Now' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+    modal.style.display = 'flex';
+    playAlertBeep();
+    if (navigator.vibrate) {
+      try { navigator.vibrate([300, 150, 300, 150, 500]); } catch(e) {}
+    }
+  }
+
+  function hideEmergencyModal() {
+    var modal = document.getElementById('global-volunteer-sos-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function closeEmergencyModal() {
+    hideEmergencyModal();
+    if (currentAlertId) {
+      dismissedAlertId = currentAlertId;
+    }
+  }
+
+  function respondComingFromModal() {
+    hideEmergencyModal();
+    confirmSafeComing();
+    SafeHer.router.go('volunteers');
+  }
+
+  function showGlobalBanner(alertData) {
     var banner = document.getElementById('global-volunteer-sos-banner');
     if (!banner) {
       banner = document.createElement('div');
@@ -197,6 +259,10 @@ SafeHer.volunteer = (function() {
   function openAlertFromBanner() {
     hideGlobalBanner();
     SafeHer.router.go('volunteers');
+    var alertCard = document.getElementById('volunteer-alert-card');
+    if (alertCard) {
+      alertCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   // ─── Save & Toggle Availability ───────────────────────────
@@ -950,81 +1016,57 @@ SafeHer.volunteer = (function() {
 
 
   function demoApproveSelf() {
-
     var prof = (SafeHer.api && SafeHer.api.getVolunteerProfile) ? SafeHer.api.getVolunteerProfile() : {};
-
     prof.status = 'approved';
-
-    prof.level = prof.level || 'provisional';
-
-    prof.badge = 'Provisional';
-
+    prof.level = prof.level || 'trusted';
+    prof.badge = 'Trusted';
+    prof.isAvailable = true;
     prof.valid_until = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
-
-
-    if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
-
-      SafeHer.api.setVolunteerProfile(prof);
-
+    if (SafeHer.storage && SafeHer.storage.set) {
+      SafeHer.storage.set('volunteer_profile', prof);
     }
-
-
+    if (SafeHer.api && SafeHer.api.setVolunteerProfile) {
+      SafeHer.api.setVolunteerProfile(prof);
+    }
 
     if (SafeHer.api && SafeHer.api.apiFetch) {
-
       SafeHer.api.apiFetch('/api/volunteers/status', {
-
         method: 'POST',
-
         headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ auto_approve: true, available: false }),
-
+        body: JSON.stringify({ auto_approve: true, available: true, status: 'approved' }),
         _silent: true
-
       }).catch(function() {});
-
-
 
       SafeHer.api.apiFetch('/api/admin/volunteers/approve-all', {
-
         method: 'POST',
-
         headers: {
-
           'Content-Type': 'application/json',
-
           'X-Admin-Key': 'safeher-admin-secret-key-123'
-
         },
-
         _silent: true
-
       }).catch(function() {});
-
     }
-
-
 
     renderProfileCard(prof);
-
     var toggle = document.getElementById('volunteer-available-toggle');
-
-    if (toggle) toggle.disabled = false;
-
+    if (toggle) {
+      toggle.disabled = false;
+      toggle.checked = true;
+    }
     var descEl = document.getElementById('volunteer-status-desc');
+    if (descEl) descEl.textContent = 'You are available to help nearby users in distress.';
 
-    if (descEl) descEl.textContent = 'Turn on to receive emergency alerts near you.';
+    updateHomeVolunteerCount();
+    startPolling();
 
-
-
-    if (SafeHer.toast) {
-
-      SafeHer.toast('Volunteer approved! You can now turn on Available to help.');
-
+    if (SafeHer.volunteerApply && SafeHer.volunteerApply.initOrRender) {
+      SafeHer.volunteerApply.initOrRender();
     }
 
+    if (SafeHer.toast) {
+      SafeHer.toast('⚡ Volunteer Approved & Available to help enabled!');
+    }
   }
 
 
@@ -1092,6 +1134,27 @@ SafeHer.volunteer = (function() {
   function render() {
 
     var profile = SafeHer.api ? SafeHer.api.getVolunteerProfile() : { isAvailable: false };
+
+    // Auto-sync approval from server in background (non-blocking)
+    // If the local profile isn't approved, quietly check the server.
+    if (profile && profile.status !== 'approved' && profile.status !== 'suspended') {
+      if (SafeHer.api && SafeHer.api.getVolunteerServerProfile) {
+        SafeHer.api.getVolunteerServerProfile(function(sErr, serverProf) {
+          if (!sErr && serverProf && serverProf.status === 'approved') {
+            // Server says approved – update local and re-render once
+            profile = serverProf;
+            if (SafeHer.storage && SafeHer.storage.set) {
+              SafeHer.storage.set('volunteer_profile', serverProf);
+            }
+            if (SafeHer.volunteerApply && SafeHer.volunteerApply.initOrRender) {
+              SafeHer.volunteerApply.initOrRender();
+            } else {
+              render();
+            }
+          }
+        });
+      }
+    }
 
     var toggle = document.getElementById('volunteer-available-toggle');
 
@@ -1222,35 +1285,23 @@ SafeHer.volunteer = (function() {
 
 
   return {
-
     init: init,
-
     render: render,
-
     toggleAvailable: toggleAvailable,
-
     promptSafeConfirm: promptSafeConfirm,
-
     cancelSafeConfirm: cancelSafeConfirm,
-
     confirmSafeComing: confirmSafeComing,
-
     respondComing: promptSafeConfirm,
     respondCantContinue: respondCantContinue,
     openAlertFromBanner: openAlertFromBanner,
-
+    respondComingFromModal: respondComingFromModal,
+    closeEmergencyModal: closeEmergencyModal,
     respondCantHelp: respondCantHelp,
-
     demoApproveSelf: demoApproveSelf,
-
     reverify: reverify,
-
     saveNote: saveNote,
-
     startPolling: startPolling,
-
     stopPolling: stopPolling
-
   };
 
 })();
