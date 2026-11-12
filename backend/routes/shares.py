@@ -247,11 +247,11 @@ def create_share():
                         app_logger.warning(f"[SHARE CONTACT INSERT] cid={cid}: {e}")
 
             conn.commit()
-            return share_id, tokens_map, tokens_list
+            return share_id, tokens_map, tokens_list, final_contact_ids
         finally:
             conn.close()
 
-    share_id, tokens_map, tokens_list = execute_with_retry(_run_share_db)
+    share_id, tokens_map, tokens_list, final_contact_ids = execute_with_retry(_run_share_db)
 
     duration_desc = f"{duration_min} minutes" if not until_stopped else "until stopped"
     primary_tok = tokens_list[0]['token'] if tokens_list else (client_token or secrets.token_urlsafe(32))
@@ -271,20 +271,23 @@ def create_share():
         app_logger.warning(f"[SHARE WHATSAPP DISPATCH] {e}")
 
     # Dispatch share_started notification via central engine
-    notify(
-        event_type='share_started',
-        user_id=user_id,
-        context={
-            'user_name': user_name,
-            'duration_str': duration_desc,
-            'lat': lat,
-            'lng': lng,
-            'share_id': share_id,
-            'track_url': f"{frontend_url}/track.html?t={primary_tok}"
-        },
-        contact_ids=final_contact_ids,
-        event_key=f"share:{share_id}:started"
-    )
+    try:
+        notify(
+            event_type='share_started',
+            user_id=user_id,
+            context={
+                'user_name': user_name,
+                'duration_str': duration_desc,
+                'lat': lat,
+                'lng': lng,
+                'share_id': share_id,
+                'track_url': f"{frontend_url}/track.html?t={primary_tok}"
+            },
+            contact_ids=final_contact_ids,
+            event_key=f"share:{share_id}:started"
+        )
+    except Exception as e:
+        app_logger.warning(f"[SHARE NOTIFY] {e}")
 
     app_logger.info(f"[SHARE STARTED] share_id={share_id}, user_id={user_id}, duration={duration_desc}, contacts={len(final_contact_ids)}")
 

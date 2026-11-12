@@ -252,7 +252,8 @@ SafeHer.shareLocation = (function() {
     var userName = (user && (user.name || user.full_name)) ? (user.name || user.full_name) : 'SafeHer User';
     var session = getActiveSession();
     var frontendBase = (window.SafeHerConfig && window.SafeHerConfig.FRONTEND_URL) || 'https://rohancse2025.github.io/Safeher';
-    var trackLink = (session && session.trackUrl) ? session.trackUrl : (frontendBase.replace(/\/+$/, '') + '/track.html');
+    var tok = (session && session.shareToken) ? session.shareToken : '';
+    var trackLink = (session && session.trackUrl) ? session.trackUrl : (frontendBase.replace(/\/+$/, '') + '/track.html' + (tok ? ('?t=' + encodeURIComponent(tok)) : ''));
     var mapsLink = 'https://www.google.com/maps?q=' + lat + ',' + lng;
     var endDesc = (endTime === null) ? 'until I stop' : ('until ' + endTimeStr);
 
@@ -702,6 +703,9 @@ SafeHer.shareLocation = (function() {
           }
           session.isOffline = true;
           saveActiveSession(session);
+          // Fallback to opening WhatsApp directly with the tracking link
+          SafeHer.toast('Opening WhatsApp to share live tracking link directly with contacts...');
+          shareViaWhatsApp();
           return;
         }
 
@@ -720,6 +724,7 @@ SafeHer.shareLocation = (function() {
         saveActiveSession(session);
         updateLiveLinkDisplay(session);
         renderActiveContactsList(session);
+        SafeHer.toast('Live tracking active! WhatsApp alert dispatched to contacts');
       });
     }
 

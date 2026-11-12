@@ -3095,6 +3095,7 @@ SafeHer.api = (function() {
       if (useBackend()) {
         apiFetch('/api/shares', {
           method: 'POST',
+          _silent: true,
           body: JSON.stringify(data)
         })
         .then(function(res) {
